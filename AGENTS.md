@@ -5,6 +5,7 @@
 - Read `docs/architecture.md` before changing project identity, scheduling, Procore sync, analytics, accounting, authentication, or permissions.
 - Check `git status --short` before editing. This repository often contains active local work; preserve unrelated changes and generated evidence.
 - Treat the current code, `prisma/schema.prisma`, and migrations as authoritative. Several older root-level design notes describe earlier implementations.
+- Before every production deployment, inspect Netlify's currently published deploy and verify its source commit is an ancestor of the release (`git merge-base --is-ancestor <published-commit> HEAD`). Manual deploys record the source commit in the deploy title when `commit_ref` is empty. Integrate any newer production commits, rebuild, and repeat this check immediately before publishing. Separate billing and Commitment Maker worktrees have overwritten each other's fixes; a prior successful deployment does not establish the current baseline.
 
 ## Stack and layout
 

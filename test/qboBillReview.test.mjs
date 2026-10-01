@@ -8,6 +8,7 @@ import { registerHooks } from 'node:module';
 registerHooks({ resolve(specifier, context, next) {
   if (specifier === './qboBillComparison') return next('./qboBillComparison.ts', context);
   if (specifier === './qboBillBridge') return next('./qboBillBridge.ts', context);
+  if (specifier === './qboBillIssues') return next('./qboBillIssues.ts', context);
   return next(specifier, context);
 } });
 const { loadQboBillReview } = await import('../src/lib/loadQboBillReview.ts');
@@ -35,11 +36,11 @@ test('review uses explicit project identity, reserved number, and posted or unce
     const requestId = `pc-${'a'.repeat(40)}`;
     await writeFile(path.join(claim, 'receipt.json'), JSON.stringify({ billId: '10', docNumber: 'PMCDC001', requestId, fingerprint: 'one' }));
     await writeFile(path.join(claim, 'attempt.json'), JSON.stringify({ requestId, fingerprint: 'one', payload: { VendorRef: { value: '' }, Line: [] } }));
-    assert.equal((await loadQboBillReview('2', '3', '2026-09', emptyDraft)).action, 'current');
+    assert.equal((await loadQboBillReview('2', '3', '2026-09', emptyDraft)).action, 'reconcile', 'an existing bill requires review even when its successful request also had no lines');
     const nextRequest = `pc-${'b'.repeat(40)}`;
     await writeFile(path.join(claim, 'receipt.json'), JSON.stringify({ billId: '10', requestId: nextRequest, fingerprint: 'two' }));
     await writeFile(path.join(claim, `update-${nextRequest}.json`), JSON.stringify({ prepared: { fingerprint: 'two', payload: { VendorRef: { value: 'changed' }, Line: [] } } }));
-    assert.equal((await loadQboBillReview('2', '3', '2026-09', emptyDraft)).action, 'update', 'compare last successful update instead of initial creation');
+    assert.equal((await loadQboBillReview('2', '3', '2026-09', emptyDraft)).action, 'reconcile', 'an updated receipt cannot turn removed costs into a writable empty bill');
     await writeFile(path.join(claim, 'update-pending.json'), '{}');
     assert.equal((await loadQboBillReview('2', '3', '2026-09')).action, 'reconcile');
   } finally {

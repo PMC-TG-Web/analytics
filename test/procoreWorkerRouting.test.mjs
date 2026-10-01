@@ -12,6 +12,8 @@ const workers = [
   ['pm-dashboard-sync', 'pm-dashboard-sync-background'],
   ['calendar-sync', 'calendar-sync-background'],
   ['project-reconciliation', 'project-reconciliation-background'],
+  ['analytics-connection-check', 'analytics-connection-check'],
+  ['qbo-bill-batch', 'qbo-bill-batch-background'],
 ];
 
 test('Netlify worker paths bypass Next routing while application routes remain protected', () => {

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
+import { loadCostCodeSalesLines } from "@/lib/loadCostCodeSalesLines";
 import { prisma } from "@/lib/prisma";
 import { loadEstimatingDashboardProjects } from "@/lib/estimatingDashboard";
 import {
@@ -76,52 +76,13 @@ export async function GET() {
     )].sort((left, right) => left.localeCompare(right));
 
     const selectedProposalIds = [...new Set(selectedProjects.map((project) => project.selectedProposalId as string))];
-    const [baseLines, costCodes, payloadAliases, qboSnapshot, excludedQboCustomerIds] = await Promise.all([
-      prisma.procoreEstimateLineItem.findMany({
-        where: {
-          companyId,
-          proposalId: { in: selectedProposalIds },
-        },
-        select: {
-          bidBoardProjectId: true,
-          proposalId: true,
-          lineItemId: true,
-          costItemId: true,
-          name: true,
-          groupId: true,
-          costCode: true,
-          itemSales: true,
-          laborSales: true,
-          itemCost: true,
-          laborCost: true,
-        },
-      }),
+    const [lines, costCodes, qboSnapshot, excludedQboCustomerIds] = await Promise.all([
+      loadCostCodeSalesLines(prisma, companyId, selectedProposalIds),
       prisma.procoreCostCodeStaging.findMany({
         where: { companyId },
         orderBy: { syncedAt: "desc" },
         select: { code: true, fullCode: true, name: true },
       }),
-      selectedProposalIds.length === 0 ? Promise.resolve([]) : prisma.$queryRaw<Array<{
-        bidBoardProjectId: string;
-        proposalId: string;
-        lineItemId: string;
-        payloadName: string | null;
-        payloadDescription: string | null;
-        costItemName: string | null;
-        costItemDescription: string | null;
-      }>>(Prisma.sql`
-        SELECT
-          bid_board_project_id AS "bidBoardProjectId",
-          proposal_id AS "proposalId",
-          line_item_id AS "lineItemId",
-          payload ->> 'name' AS "payloadName",
-          payload ->> 'description' AS "payloadDescription",
-          payload -> 'cost_item' ->> 'name' AS "costItemName",
-          payload -> 'cost_item' ->> 'description' AS "costItemDescription"
-        FROM procore_estimate_line_items
-        WHERE company_id = ${companyId}
-          AND proposal_id IN (${Prisma.join(selectedProposalIds)})
-      `),
       prisma.qboProfitabilitySnapshot.findFirst({
         orderBy: { importedAt: "desc" },
         select: {
@@ -155,14 +116,6 @@ export async function GET() {
       matchMethod: row.procoreMatchMethod,
       actualCost: row.actualCost,
     })));
-    const aliasesByLine = new Map(payloadAliases.map((row) => [
-      `${row.bidBoardProjectId}|${row.proposalId}|${row.lineItemId}`,
-      row,
-    ]));
-    const lines = baseLines.map((line) => ({
-      ...line,
-      ...aliasesByLine.get(`${line.bidBoardProjectId}|${line.proposalId}|${line.lineItemId}`),
-    }));
     const costCodeNameByCode = new Map<string, string>();
     for (const row of costCodes) {
       const code = normalizeAnalyticsCostCode(row.fullCode || row.code);

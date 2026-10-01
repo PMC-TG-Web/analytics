@@ -2,15 +2,17 @@ import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from './prisma';
 
-export async function requestQboBillRelay<T>(body: unknown): Promise<T> {
+export async function requestQboBillRelay<T>(body: unknown, readTimeoutMs?: number): Promise<T> {
   const request = body as { operation?: string; companyId?: string };
-  if (!['catalog', 'status', 'prepare', 'post', 'setup-options', 'setup'].includes(request.operation || '') || !/^\d+$/.test(request.companyId || '')) throw new Error('Invalid QBO relay request.');
+  if (!['catalog', 'status', 'prepare', 'post', 'budget-plan', 'setup-options', 'setup', 'reconcile-preview', 'reconcile-confirm'].includes(request.operation || '') || !/^\d+$/.test(request.companyId || '')) throw new Error('Invalid QBO relay request.');
   const hostId = process.env.QBO_BILL_RELAY_HOST_ID || 'primary';
   const host = await prisma.qboBillRelayHost.findUnique({ where: { id: hostId } });
   if (!host || host.companyId !== request.companyId || Date.now() - host.updatedAt.getTime() > 20_000) throw new Error('The QBO host computer is offline. Turn it on and sign in, then refresh the review.');
   const id = randomUUID();
-  await prisma.qboBillRelayJob.create({ data: { id, hostId, companyId: request.companyId!, operation: request.operation!, payload: body as Prisma.InputJsonValue, expiresAt: new Date(Date.now() + 50_000) } });
-  const deadline = Date.now() + 50_000;
+  const timeoutMs = ['catalog', 'status'].includes(request.operation || '') && Number.isFinite(readTimeoutMs)
+    ? Math.max(1000, Math.min(50_000, readTimeoutMs!)) : 50_000;
+  await prisma.qboBillRelayJob.create({ data: { id, hostId, companyId: request.companyId!, operation: request.operation!, payload: body as Prisma.InputJsonValue, expiresAt: new Date(Date.now() + timeoutMs) } });
+  const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     await new Promise(resolve => setTimeout(resolve, 450));
     const job = await prisma.qboBillRelayJob.findUnique({ where: { id } });

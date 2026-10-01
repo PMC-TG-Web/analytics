@@ -206,3 +206,29 @@ test('Commitment Maker background task runner selects its own credentials and re
   assert.deepEqual(observations, ['commitment-maker', 'commitment-maker']);
   assert.equal(connection.currentProcoreConnection(), 'shared');
 });
+
+test('Analytics sync requires explicit activation and distinct complete credentials',async()=>{
+ const analytics={...env,PROCORE_ANALYTICS_SYNC_ENABLED:'true',PROCORE_ANALYTICS_SYNC_CLIENT_ID:'analytics-client',PROCORE_ANALYTICS_SYNC_CLIENT_SECRET:'analytics-secret'};
+ assert.equal(connection.analyticsSyncProcoreConnection({}), 'shared');
+ assert.equal(connection.analyticsSyncProcoreConnection(analytics),'analytics-sync');
+ assert.throws(()=>connection.analyticsSyncProcoreConnection({...analytics,PROCORE_ANALYTICS_SYNC_CLIENT_SECRET:''}),/both/);
+ assert.throws(()=>connection.analyticsSyncProcoreConnection({...analytics,PROCORE_ANALYTICS_SYNC_CLIENT_ID:env.PROCORE_CLIENT_ID}),/distinct/);
+ await connection.withProcoreConnection('analytics-sync',async()=>{
+  assert.equal(connection.procoreServiceCredentials(analytics).clientId,'analytics-client');
+  assert.equal(connection.procoreCoordinationTables().controls,'procore_analytics_sync_controls');
+  assert.throws(()=>connection.procoreServiceCredentials(env),/missing/);
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(connection.currentProcoreConnection(),'analytics-sync');
+ });
+ assert.equal(connection.currentProcoreConnection(),'shared');
+});
+test('authenticated sync selects Analytics but preserves accounting and explicit apps',async()=>{
+ const keys=['PROCORE_ANALYTICS_SYNC_ENABLED','PROCORE_ANALYTICS_SYNC_CLIENT_ID','PROCORE_ANALYTICS_SYNC_CLIENT_SECRET'];const saved=keys.map(k=>process.env[k]);
+ Object.assign(process.env,{PROCORE_ANALYTICS_SYNC_ENABLED:'true',PROCORE_ANALYTICS_SYNC_CLIENT_ID:'unique-analytics-client',PROCORE_ANALYTICS_SYNC_CLIENT_SECRET:'test-secret'});
+ try {
+  const request=new Request('http://internal');
+  assert.equal(connection.withAuthenticatedSyncConnection(request,()=>connection.currentProcoreConnection()),'analytics-sync');
+  assert.equal(connection.withAuthenticatedSyncConnection(new Request('http://internal',{headers:{'x-procore-connection':'shared'}}),()=>connection.currentProcoreConnection()),'shared');
+  assert.equal(connection.withProcoreConnection('pm-dashboard',()=>connection.withAuthenticatedSyncConnection(request,()=>connection.currentProcoreConnection())),'pm-dashboard');
+  assert.equal(connection.withProcoreConnection('commitment-maker',()=>connection.withAuthenticatedSyncConnection(request,()=>connection.currentProcoreConnection())),'commitment-maker');
+ }finally{keys.forEach((k,i)=>{if(saved[i]===undefined)delete process.env[k];else process.env[k]=saved[i]})}
+});

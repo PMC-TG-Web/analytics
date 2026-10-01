@@ -398,6 +398,7 @@ export default function CommitmentMakerPage() {
     parsedOverride: CommitmentMakerParseResult | null = parsedWorkbook,
     combinationsOverride: EstimateCombination[] = estimateCombinations,
     refreshEstimate = false,
+    resetEstimateGrouping = false,
   ) {
     if (makerRequest.current) return;
     const controller = new AbortController();
@@ -425,6 +426,7 @@ export default function CommitmentMakerPage() {
           projectId,
           sourceType,
           estimateCombinations: sourceType === "primary_estimate" && (parsedOverride || combinationsOverride.length || refreshEstimate) ? combinationsOverride : undefined,
+          resetEstimateGrouping: sourceType === "primary_estimate" && resetEstimateGrouping,
           refreshEstimate: sourceType === "primary_estimate" && refreshEstimate,
           fileName,
           sheetName,
@@ -476,6 +478,7 @@ export default function CommitmentMakerPage() {
           throw new Error("Procore returned an incomplete preview. Refresh and try again.");
         }
         setPreview(nextPreview);
+        if (resetEstimateGrouping && nextPreview.success) setCombineMessage("Restored the original estimate groupings.");
         if (sourceType === "primary_estimate" && nextPreview.parsedSource) {
           setOriginalParsedWorkbook(nextPreview.parsedSource);
           setEstimateCombinations(nextPreview.estimateCombinations || []);
@@ -685,9 +688,9 @@ export default function CommitmentMakerPage() {
     setExpandedGroups({});
     setCombineSelection({});
     setCombinedGroupName("");
-    setCombineMessage("Restored the original estimate groupings.");
+    setCombineMessage("");
     setEstimateCombinations([]);
-    await callMaker("preview", originalParsedWorkbook, []);
+    await callMaker("preview", originalParsedWorkbook, [], false, true);
   }
 
   const readyToPreview = Boolean(
@@ -1102,6 +1105,17 @@ export default function CommitmentMakerPage() {
               </div>
             )}
 
+            {groupingChanged && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void resetCombinedGroups()}
+                className="rounded-lg border border-violet-300 bg-white px-3 py-2 text-xs font-black text-violet-800 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Reset to Original Groups
+              </button>
+            )}
+
             {combinableGroupCount >= 2 && (
               <div className="mt-5 rounded-xl border-2 border-violet-200 bg-violet-50 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1111,16 +1125,7 @@ export default function CommitmentMakerPage() {
                       Select two or more new POs below. Lines with the same budget code, description, unit, and cost type combine even when unit costs differ. Quantities are added and the weighted unit cost preserves the combined amount.
                     </p>
                   </div>
-                  {groupingChanged && (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void resetCombinedGroups()}
-                      className="rounded-lg border border-violet-300 bg-white px-3 py-2 text-xs font-black text-violet-800 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      Reset Original Groups
-                    </button>
-                  )}
+
                 </div>
                 <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-end">
                   <label className="block flex-1">

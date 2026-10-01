@@ -1,4 +1,8 @@
+import type { PurchasePriceEvidence } from './qboCatalogMapping';
+import type { ProjectPriceEvidence } from './qboBillLineRules';
 import { Prisma } from '@prisma/client';
+import { isShopDrawingCost, isHoursOnlyCost } from './qboDirectCostExclusions.js';
+import type { CatalogPriceEvidence } from './qboCostCatalog';
 
 export const DIRECT_COST_VENDOR = 'PMC Procore Direct Costs';
 // Concrete purchase quantities are tracked outside these internal-cost bills.
@@ -7,6 +11,7 @@ export const EXCLUDED_CONCRETE_COST_CODES = new Set([
   '03-300-10-20', // Wall Concrete
   '03-300-20-20', // Slab On Grade Concrete
   '03-300-30-20', // Site Concrete
+  '05-100-10-20', // Concrete Set And Fill Bollards
 ]);
 const EXCLUDED_PUMPING_ITEMS = new Set([
   'line dragon',
@@ -14,13 +19,29 @@ const EXCLUDED_PUMPING_ITEMS = new Set([
   'telebelt (4 hr minimum)',
   'trailer pump (includes 3 hr)',
 ]);
-function isExcludedPumpingItem(item: DirectCostItem, sourceName: string) {
-  const name = (item.description?.trim() || sourceName).normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase()
+function isExcludedConcrete(item: DirectCostItem, sourceName: string) {
+  const labor = /^(labor|l)$/i.test(item.costType?.trim() || '');
+  if (labor && !/^(cy|cu\.?\s*yd|cubic\s*yards?)$/i.test(item.uom?.trim() || '')) return false;
+  const code = (item.costCode || '').trim().replace(/\.[A-Z]+$/i, '');
+  const name = (item.description?.trim() || sourceName).normalize('NFKC').toLowerCase()
+    .replace(/^co\s*\d+\s*[-\u2013\u2014]\s*/, '').replace(/\s+/g, ' ').trim()
+    .replace(/\s+-\s+(site|sog|foundation|foundations|wall)$/, '');
+  return (!labor && EXCLUDED_CONCRETE_COST_CODES.has(code))
+    || /^(site concrete|slab on grade concrete|foundation concrete|wall concrete|bollards concrete|concrete set and fill bollards)$/.test(name);
+}
+function normalizedEquipmentName(item: DirectCostItem, sourceName: string) {
+  return (item.description?.trim() || sourceName).normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase()
     // Change-order labels do not change the equipment being excluded.
     .replace(/^co\s*\d+\s*[-\u2013\u2014]\s*/, '');
+}
+function isExcludedPumpingItem(item: DirectCostItem, sourceName: string) {
   return item.costCode?.trim() === '03-300-40-30'
     && !/^(labor|l)$/i.test(item.costType?.trim() || '')
-    && EXCLUDED_PUMPING_ITEMS.has(name);
+    && EXCLUDED_PUMPING_ITEMS.has(normalizedEquipmentName(item, sourceName));
+}
+function isExcludedBoomLiftRental(item: DirectCostItem, sourceName: string) {
+  return !/^(labor|l)$/i.test(item.costType?.trim() || '')
+    && normalizedEquipmentName(item, sourceName) === 'boom lift rental';
 }
 export function directCostMonth(month: string) {
   if (!/^20\d{2}-(0[1-9]|1[0-2])$/.test(month)) throw new Error('Choose a valid month (YYYY-MM).');
@@ -42,8 +63,12 @@ export type DirectCostItem = {
   costCode?: string | null; costType?: string | null;
   purchaseOrderContract?: { number: string | null; title: string | null } | null;
   procorePurchaseOrderContractId?: string | null;
+  pricingIssue?: string | null;
+  catalogPrice?: CatalogPriceEvidence | null;
+  projectPrice?: ProjectPriceEvidence | null;
+  poPrice?: PurchasePriceEvidence | null;
 };
-export type DirectCostIssueSource = { message: string; date: string; purchaseOrderId: string | null; target?: 'purchaseOrder' | 'dailyLog' };
+export type DirectCostIssueSource = { message: string; date: string; purchaseOrderId: string | null; catalogLineItemId?: string; target?: 'purchaseOrder' | 'dailyLog' | 'catalog' };
 function issueSource(log: DirectCostSource, item?: DirectCostItem) {
   const po = (number?: string | null, title?: string | null) =>
     [number?.trim() ? (/^PO\b/i.test(number.trim()) ? number.trim() : `PO ${number.trim()}`) : '', title?.trim()].filter(Boolean).join(' — ');
@@ -54,14 +79,16 @@ function issueSource(log: DirectCostSource, item?: DirectCostItem) {
   return `${references.join('; ')}; daily log ${log.date.toISOString().slice(0, 10)}`;
 }
 export function aggregateDirectCosts(logs: DirectCostSource[], items: DirectCostItem[], aliases: Map<string, string>) {
+  let laborHours = new Prisma.Decimal(0);
+  const hourlyLabor = (item: { costType?: string | null; uom?: string | null }) => /^(labor|l)$/i.test(item.costType?.trim() || '') && /^(h|hr|hrs|hour|hours)$/i.test(item.uom?.trim() || '');
   const issues: string[] = [];
   const issueSources: DirectCostIssueSource[] = [];
   const addIssue = (message: string, log: DirectCostSource, item?: DirectCostItem) => {
     issues.push(message);
     const poId = item?.procorePurchaseOrderContractId || (/purchase.?order/i.test(log.lineItemHolderType || '') ? log.lineItemHolderId : null);
-    issueSources.push({ message, date: log.date.toISOString().slice(0, 10), purchaseOrderId: /^\d+$/.test(poId || '') ? poId! : null, target: item ? 'purchaseOrder' : 'dailyLog' });
+    issueSources.push({ message, date: log.date.toISOString().slice(0, 10), purchaseOrderId: /^\d+$/.test(poId || '') ? poId! : null, ...(item?.pricingIssue && item.procoreId ? { catalogLineItemId: item.procoreId } : {}), target: item?.pricingIssue ? 'catalog' : item ? 'purchaseOrder' : 'dailyLog' });
   };
-  const excluded = { unapproved: 0, billingFile: 0, zeroUsage: 0, concrete: 0, pumpingEquipment: 0 };
+  const excluded = { unapproved: 0, billingFile: 0, zeroUsage: 0, concrete: 0, pumpingEquipment: 0, boomLiftRental: 0, shopDrawings: 0 };
   const seen = new Set<string>();
   const itemMap = new Map<string, DirectCostItem[]>();
   for (const item of items) {
@@ -82,12 +109,24 @@ export function aggregateDirectCosts(logs: DirectCostSource[], items: DirectCost
     const matches = itemMap.get(itemId || '') || [];
     if (matches.length !== 1) { addIssue(`${sourceLabel}: expected one matching Procore cost line; found ${matches.length}.`, log); continue; }
     const item = matches[0];
+    // Shop drawing vendor bills are entered separately, including legacy PO
+    // charges labeled Labor or carried under a different cost code.
+    if (isHoursOnlyCost(item.costCode)) continue;
+    if (isShopDrawingCost(item.costCode, item.description?.trim() || sourceName)) {
+      excluded.shopDrawings++; continue;
+    }
     if (isExcludedPumpingItem(item, sourceName)) {
       excluded.pumpingEquipment++; continue;
     }
-    if (EXCLUDED_CONCRETE_COST_CODES.has(item.costCode || '') && !/^(labor|l)$/i.test(item.costType || '')) {
+    // Variable rental charges are entered manually, without catalog pricing.
+    if (isExcludedBoomLiftRental(item, sourceName)) {
+      excluded.boomLiftRental++; continue;
+    }
+    if (isExcludedConcrete(item, sourceName)) {
       excluded.concrete++; continue;
     }
+    if (hourlyLabor(item)) laborHours = laborHours.plus(String(log.quantityUsed));
+    if (item.pricingIssue) { addIssue(`${item.pricingIssue} ${issueSource(log, item)}.`, log, item); continue; }
     const missingCost = item.unitCost === null || !Number.isFinite(item.unitCost) || item.unitCost <= 0;
     const missingUnit = !item.uom?.trim();
     if (missingCost || missingUnit) {
@@ -103,6 +142,7 @@ export function aggregateDirectCosts(logs: DirectCostSource[], items: DirectCost
   const lines = [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([procoreLineItemId, group]) => ({
     procoreLineItemId,
     description: group.item.description || `Procore item ${procoreLineItemId}`,
+    purchaseOrder: group.item.purchaseOrderContract || null,
     costCode: group.item.costCode || null,
     costType: group.item.costType || null,
     quantity: group.quantity.toString(),
@@ -110,8 +150,13 @@ export function aggregateDirectCosts(logs: DirectCostSource[], items: DirectCost
     uom: group.item.uom!,
     amount: group.quantity.mul(String(group.item.unitCost)).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP).toFixed(2),
     rateUpdatedAt: group.item.updatedAt.toISOString(),
+    ...(group.item.poPrice ? { poPrice: group.item.poPrice } : {}),
+    ...(group.item.projectPrice ? { projectPrice: group.item.projectPrice } : {}),
+    ...(group.item.catalogPrice ? { catalogPrice: group.item.catalogPrice } : {}),
     sourceLogs: group.sourceLogs.sort((a, b) => a.id.localeCompare(b.id)),
   }));
-  return { lines, issues, issueSources, excluded, total: lines.reduce((sum, line) => sum.plus(line.amount), new Prisma.Decimal(0)).toFixed(2) };
+  return { lines, issues, issueSources, excluded, laborHours: laborHours.toString(),
+    pricedLaborHours: lines.filter(hourlyLabor).reduce((sum, line) => sum.plus(line.quantity), new Prisma.Decimal(0)).toString(),
+    total: lines.reduce((sum, line) => sum.plus(line.amount), new Prisma.Decimal(0)).toFixed(2) };
 }
 

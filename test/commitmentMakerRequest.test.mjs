@@ -149,3 +149,23 @@ test('leaving during status polling cancels recovery without another write', asy
   await assert.rejects(runCommitmentMakerRequest(f.options), { name: 'AbortError' });
   assert.equal(f.calls(), 1);
 });
+
+
+test('creation continuations preserve the prepared source and publish only the final result', async () => {
+ const id = '11111111-1111-4111-8111-111111111111';
+ const f = fixture([response(202, { preparing: true, retryable: true, preparationId: id, resumeAt: new Date(start + 250).toISOString() }),
+  response(202, { continuing: true, retryable: true, resumeAt: new Date(start + 500).toISOString(), results: [{ contractId: 'same-po' }] }),
+  response(200, { success: true, results: [{ contractId: 'same-po' }] })]);
+ const send = f.options.request, ids = [];
+ f.options.request = async id => { ids.push(id); return send(); };
+ const result = await runCommitmentMakerRequest(f.options);
+ assert.equal(result.payload.success, true);
+ assert.deepEqual(ids, [undefined, id, id]);
+ assert.equal(f.calls(), 3);
+});
+test('unknown mutations never continue even with a continuation flag', async () => {
+ const f = fixture([response(202, { continuing: true, retryable: true, outcomeUnknown: true, resumeAt: new Date(start + 250).toISOString() })]);
+ await runCommitmentMakerRequest(f.options);
+ assert.equal(f.calls(), 1);
+ assert.equal(f.waits.length, 0);
+});

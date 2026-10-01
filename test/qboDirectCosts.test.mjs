@@ -16,11 +16,28 @@ test('sums used quantities and prices once per line with decimal rounding', () =
 test('excludes zero usage, unapproved logs and billing-file records', () => {
   const result = aggregateDirectCosts([log('1', 0), log('2', 100, { status: 'pending' }), log('3', 50, { lineItemHolderTitle: 'Billing File - SOG' })], [item], new Map());
   assert.equal(result.total, '0.00');
-  assert.deepEqual(result.excluded, { unapproved: 1, billingFile: 1, zeroUsage: 1, concrete: 0, pumpingEquipment: 0 });
+  assert.deepEqual(result.excluded, { unapproved: 1, billingFile: 1, zeroUsage: 1, concrete: 0, pumpingEquipment: 0, boomLiftRental: 0, shopDrawings: 0 });
 });
 
-test('omits the four concrete material codes before pricing, but keeps labor and other materials', () => {
-  for (const costCode of ['03-300-00-20', '03-300-10-20', '03-300-20-20', '03-300-30-20']) {
+test('shop drawing vendor charges are omitted before catalog pricing and product mapping', () => {
+  for (const overrides of [
+    { description: 'Shop Drawings', costCode: '01-300-10-40', costType: 'Subcontractors' },
+    { description: 'CO6 - SHOP  DRAWINGS - Pier', costCode: '01-300-10-40', costType: 'Other' },
+    { description: 'Rebar Shop Drawings Lump Sum', costCode: '01-300-10-30', costType: 'Labor' },
+    { description: 'Renamed drawing charge', costCode: '01-300-10-40.C', costType: 'Subcontractors' },
+  ]) {
+    const r = aggregateDirectCosts([log('1', 1, { lineItemId: 'old' })], [{ ...item, ...overrides, unitCost: null, pricingIssue: 'multiple Cost Catalog matches' }], new Map([['old', '10']]));
+    assert.equal(r.total, '0.00'); assert.equal(r.lines.length, 0); assert.equal(r.excluded.shopDrawings, 1);
+    assert.deepEqual(r.issues, []); assert.deepEqual(r.issueSources, []);
+  }
+  for (const description of ['Shop and Office Time', 'Labor Travel', 'Rebar Fabrication Time']) {
+    const r = aggregateDirectCosts([log('1', 1)], [{ ...item, description, costCode: '01-300-10-30', costType: 'Labor' }], new Map());
+    assert.equal(r.lines.length, 1); assert.equal(r.excluded.shopDrawings, 0);
+  }
+});
+
+test('omits concrete material codes including bollard concrete before pricing, but keeps labor and other materials', () => {
+  for (const costCode of ['03-300-00-20', '03-300-10-20', '03-300-20-20', '03-300-30-20', '05-100-10-20']) {
     const result = aggregateDirectCosts([log('1', 4, { lineItemId: 'old' })], [{ ...item, costCode, costType: 'Materials', unitCost: null }], new Map([['old', '10']]));
     assert.equal(result.total, '0.00');
     assert.equal(result.lines.length, 0);
@@ -30,6 +47,7 @@ test('omits the four concrete material codes before pricing, but keeps labor and
   }
   assert.equal(aggregateDirectCosts([log('1', 4)], [{ ...item, costCode: '03-300-20-10', costType: 'Labor' }], new Map()).lines.length, 1);
   assert.equal(aggregateDirectCosts([log('1', 4)], [{ ...item, costCode: '03-150-10-85', costType: 'Materials' }], new Map()).lines.length, 1);
+  assert.equal(aggregateDirectCosts([log('1', 12)], [{ ...item, description: 'Steel bollard', costCode: '05-100-10-10', costType: 'Materials' }], new Map()).lines.length, 1);
 });
 test('resolves explicit aliases and blocks ambiguous, missing, duplicate, or negative sources', () => {
   assert.equal(aggregateDirectCosts([log('1', 2, { lineItemId: 'old' })], [item], new Map([['old', '10']])).total, '306.48');
@@ -73,6 +91,35 @@ test('excludes change-order-prefixed pumping items while preserving other descri
     assert.equal(result.excluded.pumpingEquipment, 0);
   }
 });
+test('boom lift rental is manual-only across cost codes, aliases and change-order labels before pricing checks', () => {
+  for (const overrides of [
+    { description: 'Boom lift rental', costCode: '03-300-20-30', costType: 'Equipment' },
+    { description: ' BOOM  LIFT\u00a0RENTAL ', costCode: '03-300-00-30', costType: 'E' },
+    { description: 'CO6 - Boom lift rental', costCode: '03-300-40-30', costType: 'Other' },
+    { description: 'co 12 \u2013 Boom lift rental', costCode: null, costType: 'Materials' },
+    { description: null, costCode: '03-300-20-30', costType: null },
+  ]) {
+    const result = aggregateDirectCosts([log('1', 2, { lineItemId: 'old', lineItemDescription: 'Boom lift rental' })],
+      [{ ...item, ...overrides, unitCost: null, uom: null, pricingIssue: 'Ambiguous catalog rates' }], new Map([['old', '10']]));
+    assert.equal(result.total, '0.00'); assert.equal(result.lines.length, 0);
+    assert.equal(result.excluded.boomLiftRental, 1); assert.equal(result.excluded.pumpingEquipment, 0);
+    assert.deepEqual(result.issues, []); assert.deepEqual(result.issueSources, []);
+  }
+});
+test('boom lift exclusion preserves employee labor and other equipment', () => {
+  for (const overrides of [
+    { description: 'Boom lift rental', costType: 'Labor', uom: 'hr' },
+    { description: 'Boom lift rental', costType: 'L', uom: 'hr' },
+    { description: 'Boom lift operator', costType: 'Labor', uom: 'hr' },
+    { description: 'Somero boom screed' }, { description: 'Scissor lift rental' },
+    { description: 'Boom lift rental supplies' },
+  ]) {
+    const result = aggregateDirectCosts([log('1', 2)], [{ ...item, costCode: '03-300-20-30', costType: 'Equipment', ...overrides }], new Map());
+    assert.equal(result.lines.length, 1); assert.equal(result.excluded.boomLiftRental, 0);
+    if (/^(Labor|L)$/.test(overrides.costType || '')) assert.equal(result.laborHours, '2');
+  }
+});
+
 test('calendar-month bounds support year rollover and reject malformed input', () => {
   assert.equal(directCostMonth('2026-12').end.toISOString(), '2027-01-01T00:00:00.000Z');
   for (const value of ['2026-13', '2026-1', '', "2026-09' OR TRUE"]) assert.throws(() => directCostMonth(value));
@@ -109,3 +156,20 @@ test('errors retain PO references and each affected daily-log date, including al
 });
 
 
+
+test('legacy concrete names exclude only actual concrete despite wrong codes', () => {
+  for (const description of ['Bollards Concrete', 'Site Concrete - Site', 'CO6 - Concrete Set And Fill Bollards']) {
+    const r = aggregateDirectCosts([log('1', 4)], [{ ...item, description, costCode: '05-100-10-10', costType: 'Materials', unitCost: null, pricingIssue: 'No catalog match' }], new Map());
+    assert.equal(r.excluded.concrete, 1); assert.deepEqual(r.issues, []); assert.equal(r.lines.length, 0);
+    assert.equal(aggregateDirectCosts([log('1', 4)], [{ ...item, description, costCode: '05-100-10-10', costType: 'Labor', uom: 'hr' }], new Map()).lines.length, 1);
+    assert.equal(aggregateDirectCosts([log('1', 4)], [{ ...item, description, costCode: '03-300-20-10', costType: 'Labor', uom: 'cy' }], new Map()).excluded.concrete, 1);
+  }
+  for (const description of ['Concrete Repair Epoxy', 'Concrete Saw Rental', 'Bollard Sch 40', 'Labor Site Concrete']) assert.equal(aggregateDirectCosts([log('1', 4)], [{ ...item, description, costCode: '05-100-10-10', costType: 'Materials' }], new Map()).lines.length, 1);
+});
+
+test('priced lines retain PO names for actionable integration errors', () => {
+ const purchaseOrderContract={number:'PO-001',title:'Sidewalk'};
+ const result=aggregateDirectCosts([log('1',2)],[{...item,purchaseOrderContract}],new Map());
+ assert.deepEqual(result.lines[0].purchaseOrder,purchaseOrderContract);
+ assert.equal(result.lines[0].sourceLogs[0].date,'2026-09-10');
+});

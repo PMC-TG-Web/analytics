@@ -1,3 +1,5 @@
+import { streamSyncResponse } from '@/lib/procoreSyncStream';
+import { withAnalyticsSyncProcoreConnection } from '@/lib/procoreConnection';
 import { NextRequest, NextResponse } from "next/server";
 import { purchaseOrderDiscoveryPolling } from "@/lib/procorePollingPolicy";
 import { prisma } from "@/lib/prisma";
@@ -102,7 +104,7 @@ async function runStep(params: {
     const detail = await readDetail(response);
     const rateLimited = procoreSyncResponseIsRateLimited(response.status, detail);
     const reset = rateLimited ? resetAt(response, detail) : null;
-    const apiRequests = Number.parseInt(response.headers.get("x-procore-api-request-count") || "0", 10) || 0;
+    const apiRequests = Number.parseInt(response.headers.get("x-procore-api-request-count") || String((detail as { apiRequests?: number } | null)?.apiRequests || 0), 10) || 0;
     return {
       step: params.step,
       status: response.ok && !procoreSyncDetailHasErrors(detail) && !rateLimited ? "ok" : "error",
@@ -124,6 +126,11 @@ async function runStep(params: {
 }
 
 export async function POST(request: NextRequest) {
+  if (!authorized(request)) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+  return withAnalyticsSyncProcoreConnection(() => streamSyncResponse(() => runPostInConnection(request)));
+}
+
+async function runPostInConnection(request: NextRequest) {
   if (!authorized(request)) {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
@@ -421,7 +428,7 @@ export async function POST(request: NextRequest) {
       const success = response.ok && !procoreSyncDetailHasErrors(detail) && !rateLimited;
       const reset = rateLimited ? resetAt(response, detail) : null;
       const until = reset?.until || null;
-      const apiRequests = Number.parseInt(response.headers.get("x-procore-api-request-count") || "0", 10) || 0;
+      const apiRequests = Number.parseInt(response.headers.get("x-procore-api-request-count") || String((detail as { apiRequests?: number } | null)?.apiRequests || 0), 10) || 0;
       const error = success ? null : JSON.stringify(detail).slice(0, 4_000);
       if (until && !reset?.inherited) {
         await setProcoreRateLimit({ companyId: COMPANY_ID, until, error });

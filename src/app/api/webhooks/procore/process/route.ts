@@ -1,4 +1,4 @@
-import { pmDashboardProcoreConnection, withProcoreConnection, type ProcoreConnection } from '@/lib/procoreConnection';
+import { analyticsSyncProcoreConnection, pmDashboardProcoreConnection, withProcoreConnection, type ProcoreConnection } from '@/lib/procoreConnection';
 import { parseBidBoardStatusChangedAt } from "@/lib/productivityReviewCooldown";
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
@@ -1720,6 +1720,7 @@ export async function POST(request: NextRequest) {
   const workers = new Map<string, { connection: ProcoreConnection; companyId: string; leaseId: string }>();
   const deferredConnections = new Map<string, Date>();
   const pmConnection = pmDashboardProcoreConnection();
+  const analyticsConnection = analyticsSyncProcoreConnection();
   try {
 
   let claimed = 0;
@@ -1739,11 +1740,11 @@ export async function POST(request: NextRequest) {
     const workKey = getWebhookWorkKey(queueItem.event);
 
     const connection: ProcoreConnection = pmActionItemSourceType((queueItem.event.resourceName || '').toLowerCase())
-      ? pmConnection : 'shared';
+      ? pmConnection : analyticsConnection;
     const companyId = String(queueItem.event.companyId || cooldownCompanyId).trim();
     const connectionKey = `${connection}:${companyId}`;
     let deferredUntil = deferredConnections.get(connectionKey);
-    if (!deferredUntil && activeOrRecentSync && connection === 'shared') {
+    if (!deferredUntil && activeOrRecentSync && connection === analyticsConnection) {
       deferredUntil = new Date(Date.now() + syncWindowMinutes * 60_000);
     }
     if (!deferredUntil && !workers.has(connectionKey)) {

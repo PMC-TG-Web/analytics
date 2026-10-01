@@ -1,4 +1,4 @@
-import { commitmentMakerProcoreConnection, pmDashboardProcoreConnection, procoreCoordinationTables, withProcoreConnection, type ProcoreConnection } from '@/lib/procoreConnection';
+import { withAnalyticsSyncProcoreConnection, analyticsSyncProcoreConnection, commitmentMakerProcoreConnection, pmDashboardProcoreConnection, procoreCoordinationTables, withProcoreConnection, type ProcoreConnection } from '@/lib/procoreConnection';
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { procoreApiUsageSummary } from "@/lib/procoreRequestGate";
@@ -84,7 +84,7 @@ async function loadHealth(companyId: string) {
         SELECT worker_locked_by, worker_locked_until, rate_limit_until, last_429_at,
                last_error, rate_limit_limit, rate_limit_remaining, rate_limit_reset_at,
                rate_limit_observed_at, updated_at
-        FROM procore_sync_controls
+        FROM ${procoreCoordinationTables(analyticsSyncProcoreConnection()).controls}
         WHERE company_id = $1
       `,
       companyId
@@ -128,7 +128,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
   const companyId = String(request.nextUrl.searchParams.get("companyId") || process.env.PROCORE_COMPANY_ID || "").trim();
-  const [health, apiUsage] = await Promise.all([loadHealth(companyId), procoreApiUsageSummary(companyId)]);
+  const [health, apiUsage] = await Promise.all([loadHealth(companyId), withAnalyticsSyncProcoreConnection(() => procoreApiUsageSummary(companyId))]);
   async function connectionHealth(selectConnection: () => ProcoreConnection) {
     try {
       const connection = selectConnection();
@@ -145,10 +145,10 @@ export async function GET(request: NextRequest) {
       return { configured: false, error: error instanceof Error ? error.message : 'Procore connection unavailable.' };
     }
   }
-  const [pmDashboard, commitmentMaker] = await Promise.all([
-    connectionHealth(pmDashboardProcoreConnection), connectionHealth(commitmentMakerProcoreConnection),
+  const [pmDashboard, commitmentMaker, analyticsSync] = await Promise.all([
+    connectionHealth(pmDashboardProcoreConnection), connectionHealth(commitmentMakerProcoreConnection), connectionHealth(analyticsSyncProcoreConnection),
   ]);
-  return NextResponse.json({ success: true, ...health, apiUsage, pmDashboard, commitmentMaker });
+  return NextResponse.json({ success: true, ...health, apiUsage, pmDashboard, commitmentMaker, analyticsSync });
 }
 
 function getSyncHealthAlertRecipients(

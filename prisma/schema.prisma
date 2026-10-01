@@ -1,5 +1,61 @@
 generator client {
   provider = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+/// Immutable individual Food expenses; entry ID makes retries idempotent.
+model QboBillFoodEntry {
+  id String @id
+  companyId String @map("company_id")
+  projectId String @map("project_id")
+  month String
+  spentOn String @map("spent_on")
+  note String @default("")
+  amount Decimal @db.Decimal(12, 2)
+  createdBy String @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@index([companyId, projectId, month])
+  @@map("qbo_bill_food_entries")
+}
+
+/// Operator-entered total Food spend for one project/month; never a unit price.
+model QboBillFoodTotal {
+  companyId String @map("company_id")
+  projectId String @map("project_id")
+  month String
+  amount Decimal @db.Decimal(12, 2)
+  revision Int @default(1)
+  updatedBy String @map("updated_by")
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  @@id([companyId, projectId, month])
+  @@map("qbo_bill_food_totals")
+}
+model QboBillFoodTotalRevision {
+  companyId String @map("company_id")
+  projectId String @map("project_id")
+  month String
+  revision Int
+  amount Decimal @db.Decimal(12, 2)
+  updatedBy String @map("updated_by")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@id([companyId, projectId, month, revision])
+  @@map("qbo_bill_food_total_revisions")
+}
+
+/// Explicit catalog price choice for one Procore PO line; rates remain live catalog values.
+model QboCostCatalogMapping {
+  companyId       String   @map("company_id")
+  projectId       String   @map("project_id")
+  lineItemId      String   @map("line_item_id")
+  catalogItemId   String?  @map("catalog_item_id")
+  sourceSignature String   @map("source_signature")
+  revision        Int      @default(1)
+  updatedBy       String   @map("updated_by")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@id([companyId, projectId, lineItemId])
+  @@map("qbo_cost_catalog_mappings")
 }
 
 /// Transient transport to the single QBO host; OAuth tokens and bill ledger stay on that host.
@@ -2769,4 +2825,73 @@ model CommitmentMakerProcoreApiUsage {
   @@id([companyId, hour, lane, endpoint, status])
   @@index([hour], map: "procore_cm_api_usage_hour_idx")
   @@map("procore_cm_api_usage")
+}
+
+/// Project-only bill exclusions and explicit purchase-line pricing; separate from source catalog.
+model QboBillLineRule {
+ companyId String @map("company_id")
+ projectId String @map("project_id")
+ lineKey String @map("line_key")
+ description String
+ sourceSignature String @map("source_signature")
+ ignored Boolean @default(false)
+ unitCost Decimal? @map("unit_cost") @db.Decimal(18, 8)
+ reason String
+ revision Int @default(1)
+ updatedBy String @map("updated_by")
+ updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+ @@id([companyId, projectId, lineKey])
+ @@map("qbo_bill_line_rules")
+}
+model QboBillLineRuleRevision {
+ companyId String @map("company_id")
+ projectId String @map("project_id")
+ lineKey String @map("line_key")
+ revision Int
+ rule Json
+ createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+ @@id([companyId, projectId, lineKey, revision])
+ @@map("qbo_bill_line_rule_revisions")
+}
+
+model QboBillBatchRun {
+  id String @id @default(uuid())
+  companyId String
+  month String
+  requestedBy String
+  requestKey String
+  activeKey String? @unique
+  status String @default("running")
+  retryOf String?
+  leaseToken String?
+  leaseUntil DateTime? @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+  finishedAt DateTime? @db.Timestamptz(6)
+  projects QboBillBatchProject[]
+  @@unique([companyId, requestKey])
+  @@index([companyId, month, createdAt])
+  @@map("qbo_bill_batch_runs")
+}
+
+model QboBillBatchProject {
+  id String @id @default(uuid())
+  runId String
+  projectId String
+  projectName String
+  status String @default("queued")
+  stage String @default("catalog")
+  message String @default("Waiting to refresh sources.")
+  attempts Int @default(0)
+  context Json @default("{}")
+  issues Json @default("[]")
+  issueSources Json @default("[]")
+  billNumber String?
+  writeStartedAt DateTime? @db.Timestamptz(6)
+  nextAttemptAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+  run QboBillBatchRun @relation(fields: [runId], references: [id], onDelete: Restrict)
+  @@unique([runId, projectId])
+  @@index([runId, status, nextAttemptAt])
+  @@map("qbo_bill_batch_projects")
 }

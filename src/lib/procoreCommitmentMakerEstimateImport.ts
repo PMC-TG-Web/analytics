@@ -1,13 +1,22 @@
+import type { CommitmentMakerOwnedLineItem } from '@/lib/procore/commitmentMaker';
 import { randomUUID } from 'node:crypto';
 import { prisma } from '@/lib/prisma';
 import { estimateRecord, PrimaryEstimateError } from '@/lib/procore/commitmentMakerEstimate';
 
-export type EstimateImportTarget = { name: string; id: string; number: string };
+export type EstimateImportTarget = { name: string; id: string; number: string; ownedLineItems?: CommitmentMakerOwnedLineItem[]; completedResult?: Record<string, unknown> };
 export type EstimateImportState = { fingerprint: string; status: string; targets: EstimateImportTarget[]; combinations: unknown };
 type Identity = { companyId: string; projectId: string };
 type Claim = Identity & { owner: string };
 
-export async function readPrimaryEstimateImport({ companyId, projectId }: Identity) {
+export function isBaseEstimateAudit(value: unknown): boolean {
+  const changes = estimateRecord(value);
+  // Older CO audits predate sourceChangeOrder but retain their source sheet.
+  return !changes.sourceChangeOrder
+    && changes.sourceType !== 'approved_change_order'
+    && String(changes.sheetName || '').trim().toLowerCase() !== 'approved change order';
+}
+
+export async function readPrimaryEstimateImport({ companyId, projectId }: Identity): Promise<EstimateImportState | null> {
   const [row] = await prisma.$queryRaw<EstimateImportState[]>`SELECT fingerprint, status, targets, combinations
     FROM commitment_maker_estimate_imports WHERE company_id = ${companyId} AND project_id = ${projectId}`;
   if (row) return row;
@@ -16,7 +25,7 @@ export async function readPrimaryEstimateImport({ companyId, projectId }: Identi
   const audits = await prisma.auditLog.findMany({ where: { entity: 'ProcoreCommitmentMaker',
     action: { in: ['create', 'resume'] }, changes: { path: ['projectId'], equals: projectId } },
     select: { entityId: true, changes: true } });
-  const targets = audits.filter(audit => !estimateRecord(audit.changes).sourceChangeOrder).map(audit => {
+  const targets = audits.filter(audit => isBaseEstimateAudit(audit.changes)).map(audit => {
     const changes = estimateRecord(audit.changes);
     return { name: String(changes.group || ''), id: audit.entityId || '', number: String(changes.number || '') };
   });
@@ -54,7 +63,7 @@ export async function releaseDeletedEstimateImport(identity: Identity, state: Es
         AND status = 'completed' AND fingerprint = ${state.fingerprint} AND targets = ${JSON.stringify(state.targets)}::jsonb`;
     if (changed !== 1) throw new PrimaryEstimateError('The import changed while checking its deleted POs. Preview again.');
     await tx.auditLog.create({ data: { entity: 'ProcoreCommitmentMaker', action: 'release-deleted-estimate',
-      entityId: identity.projectId, userEmail, changes: { ...identity, fingerprint: state.fingerprint, targets: state.targets } } });
+      entityId: identity.projectId, userEmail, changes: JSON.parse(JSON.stringify({ ...identity, fingerprint: state.fingerprint, targets: state.targets })) } });
   });
   return { ...state, status: 'deleted' };
 }
@@ -79,4 +88,21 @@ export async function savePrimaryEstimateImport(claim: Claim, targets: EstimateI
     SET targets = ${JSON.stringify(targets)}::jsonb, status = ${status}, updated_at = NOW()
     WHERE company_id = ${claim.companyId} AND project_id = ${claim.projectId} AND owner = ${claim.owner} AND status = 'running'`;
   if (changed !== 1) throw new PrimaryEstimateError('The primary estimate import ownership could not be saved. Review the created POs before proceeding.');
+}
+
+/** Only abandoned/deleted imports may discard their saved grouping. */
+export async function resetPrimaryEstimateGrouping(identity: Identity, userEmail: string) {
+  return prisma.$transaction(async tx => {
+    const [state] = await tx.$queryRaw<EstimateImportState[]>`SELECT fingerprint, status, targets, combinations
+      FROM commitment_maker_estimate_imports
+      WHERE company_id = ${identity.companyId} AND project_id = ${identity.projectId} FOR UPDATE`;
+    if (!state) return;
+    if (state.status !== 'deleted') throw new PrimaryEstimateError('This estimate already has an active or completed import. Its grouping cannot be reset while its POs exist or need review.');
+    if (!Array.isArray(state.combinations) || state.combinations.length === 0) return;
+    await tx.auditLog.create({ data: { entity: 'ProcoreCommitmentMaker', entityId: identity.projectId,
+      action: 'reset-estimate-grouping', userEmail,
+      changes: { ...identity, previousCombinations: state.combinations, combinations: [] } } });
+    await tx.$executeRaw`UPDATE commitment_maker_estimate_imports SET combinations = '[]'::jsonb, updated_at = NOW()
+      WHERE company_id = ${identity.companyId} AND project_id = ${identity.projectId} AND status = 'deleted'`;
+  });
 }

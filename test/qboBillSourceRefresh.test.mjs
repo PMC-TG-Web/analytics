@@ -36,6 +36,21 @@ test('active worker or quota cooldown performs no ingestion', async () => {
   assert.equal((await h.refresh('1', '2026-09', async () => assert.fail())).status, 'waiting');
   assert.equal(h.writes.length, 0);
 });
+
+test('company catalog refresh precedes PO identity refresh and releases the shared lease', async () => {
+  const h = setup();
+  const r = await h.refresh('1', '2026-09', async () => assert.fail('PO sync should wait'), async () => ({ synced: true, checkedAt: 'now' }));
+  assert.equal(r.scope, 'catalog'); assert.equal(h.calls.length, 1);
+  assert.equal(h.writes.length, 0);
+});
+
+test('catalog cooldown allows PO refresh and failed catalog refresh still releases lease', async () => {
+  const h = setup(); let po = 0;
+  await h.refresh('1', '2026-09', async () => po++, async () => ({ synced: false }));
+  assert.equal(po, 1);
+  await assert.rejects(h.refresh('1', '2026-09', async () => assert.fail(), async () => { throw Error('catalog unavailable'); }));
+  assert.equal(h.calls.length, 2);
+});
 test('failed sync is recorded and releases lease for automatic retries', async () => {
   const h = setup();
   await assert.rejects(h.refresh('1', '2026-09', async () => { throw Error('private provider response'); }), /Automatic checks will retry/);

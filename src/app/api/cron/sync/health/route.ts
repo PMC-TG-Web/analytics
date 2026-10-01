@@ -1,4 +1,4 @@
-import { withAnalyticsSyncProcoreConnection, analyticsSyncProcoreConnection, commitmentMakerProcoreConnection, pmDashboardProcoreConnection, procoreCoordinationTables, withProcoreConnection, type ProcoreConnection } from '@/lib/procoreConnection';
+import { withAnalyticsSyncProcoreConnection, analyticsSyncProcoreConnection, billingProcoreConnection, commitmentMakerProcoreConnection, pmDashboardProcoreConnection, procoreCoordinationTables, withProcoreConnection, type ProcoreConnection } from '@/lib/procoreConnection';
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { procoreApiUsageSummary } from "@/lib/procoreRequestGate";
@@ -145,10 +145,10 @@ export async function GET(request: NextRequest) {
       return { configured: false, error: error instanceof Error ? error.message : 'Procore connection unavailable.' };
     }
   }
-  const [pmDashboard, commitmentMaker, analyticsSync] = await Promise.all([
-    connectionHealth(pmDashboardProcoreConnection), connectionHealth(commitmentMakerProcoreConnection), connectionHealth(analyticsSyncProcoreConnection),
+  const [pmDashboard, commitmentMaker, analyticsSync, billing] = await Promise.all([
+    connectionHealth(pmDashboardProcoreConnection), connectionHealth(commitmentMakerProcoreConnection), connectionHealth(analyticsSyncProcoreConnection), connectionHealth(billingProcoreConnection),
   ]);
-  return NextResponse.json({ success: true, ...health, apiUsage, pmDashboard, commitmentMaker, analyticsSync });
+  return NextResponse.json({ success: true, ...health, apiUsage, pmDashboard, commitmentMaker, analyticsSync, billing });
 }
 
 function getSyncHealthAlertRecipients(

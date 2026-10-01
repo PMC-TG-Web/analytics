@@ -7,6 +7,7 @@ globalThis.__budgetDb={pmcProject:{findFirst:async()=>({projectNumber:'P'})},pro
 globalThis.__budgetWorker={acquireProcoreWorker:async()=>{state.acquires++;return {acquired:false,reason:'rate_limit_cooldown'}},releaseProcoreWorker:async()=>{}};
 registerHooks({resolve(s,c,n){if(c.parentURL?.endsWith('/ensureQboBudgetReadiness.ts')){
  if(s==='./prisma')return n('data:text/javascript,export const prisma=globalThis.__budgetDb;',c);
+ if(s==='./procoreConnection')return n('data:text/javascript,export const withBillingProcoreConnection=fn=>fn();',c);
  if(s==='./procoreSyncQueue')return n('data:text/javascript,export const {acquireProcoreWorker,releaseProcoreWorker}=globalThis.__budgetWorker;',c);
  if(s==='./procore')return n('data:text/javascript,export const getClientCredentialsToken=()=>{throw Error("Unexpected token")};export const makeRequest=()=>{throw Error("Unexpected API")};export const withProcoreLiveApiBypassForSyncSecret=(r,fn)=>fn();',c);
  if(s==='./qboBudgetReadiness')return n(new URL('../src/lib/qboBudgetReadiness.ts',import.meta.url).href,c);

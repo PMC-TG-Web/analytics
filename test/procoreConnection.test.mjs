@@ -10,6 +10,100 @@ import * as rateLimit from '../src/lib/procoreRateLimit.ts';
 const env = { PROCORE_COMMITMENT_MAKER_ENABLED: 'true', PROCORE_CLIENT_ID: 'shared-client', PROCORE_CLIENT_SECRET: 'shared-secret',
   PROCORE_PM_DASHBOARD_CLIENT_ID: 'pm-client', PROCORE_PM_DASHBOARD_CLIENT_SECRET: 'pm-secret',
   PROCORE_COMMITMENT_MAKER_CLIENT_ID: 'cm-client', PROCORE_COMMITMENT_MAKER_CLIENT_SECRET: 'cm-secret' };
+const fiveApps = { ...env, PROCORE_BILLING_ENABLED: 'true', PROCORE_BILLING_CLIENT_ID: 'billing-client', PROCORE_BILLING_CLIENT_SECRET: 'billing-secret',
+  PROCORE_ANALYTICS_SYNC_ENABLED: 'true', PROCORE_ANALYTICS_SYNC_CLIENT_ID: 'analytics-client', PROCORE_ANALYTICS_SYNC_CLIENT_SECRET: 'analytics-secret' };
+
+test('Billing requires explicit activation and credentials distinct from all four existing apps', () => {
+  assert.equal(connection.billingProcoreConnection({}), 'shared');
+  assert.equal(connection.billingProcoreConnection({ ...fiveApps, PROCORE_BILLING_ENABLED: 'false' }), 'shared');
+  assert.equal(connection.billingProcoreConnection(fiveApps), 'billing');
+  assert.throws(() => connection.billingProcoreConnection({ ...fiveApps, PROCORE_BILLING_CLIENT_SECRET: '' }), /both/);
+  for (const clientId of ['shared-client', 'pm-client', 'cm-client', 'analytics-client']) {
+    assert.throws(() => connection.billingProcoreConnection({ ...fiveApps, PROCORE_BILLING_CLIENT_ID: clientId }), /distinct/);
+  }
+  connection.withProcoreConnection('billing', () => {
+    assert.equal(connection.procoreServiceCredentials(fiveApps).clientId, 'billing-client');
+    assert.throws(() => connection.procoreServiceCredentials(env), /missing|disabled/);
+  });
+});
+
+test('all five concurrent connections use separate token caches and quota tables', async () => {
+  const requests = [];
+  const client = load('src/lib/procore.ts', {
+    'node:async_hooks': { AsyncLocalStorage }, '@/lib/procoreRateLimit': rateLimit,
+    '@/lib/procoreConnection': { ...connection, procoreServiceCredentials: () => connection.procoreServiceCredentials(fiveApps) },
+  }, async (_url, options) => {
+    const form = new URLSearchParams(options.body);
+    requests.push(form.get('client_id'));
+    return Response.json({ access_token: `${form.get('client_id')}-token`, expires_in: 3600 });
+  });
+  const profiles = { shared: 'shared-client', 'pm-dashboard': 'pm-client', 'commitment-maker': 'cm-client', 'analytics-sync': 'analytics-client', billing: 'billing-client' };
+  const tables = new Set();
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await Promise.all(Object.entries(profiles).map(([profile, id]) => connection.withProcoreConnection(profile, async () => {
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(await client.getClientCredentialsToken(), `${id}-token`);
+      tables.add(connection.procoreCoordinationTables().gates);
+      assert.equal(connection.currentProcoreConnection(), profile);
+    })));
+  }
+  assert.equal(tables.size, 5);
+  assert.equal(requests.length, 5);
+  assert.equal(connection.currentProcoreConnection(), 'shared');
+});
+
+test('Billing background context is selected before its worker and survives nested sync wrappers', () => {
+  const saved = Object.fromEntries(Object.keys(fiveApps).map(key => [key, process.env[key]]));
+  Object.assign(process.env, fiveApps);
+  try {
+    const request = new Request('http://internal', { headers: { 'x-procore-connection': 'billing' } });
+    connection.withAuthenticatedSyncConnection(request, () => {
+      assert.equal(connection.currentProcoreConnection(), 'billing');
+      assert.equal(connection.procoreCoordinationTables().controls, 'procore_billing_sync_controls');
+      connection.withAuthenticatedSyncConnection(new Request('http://internal'), () => assert.equal(connection.currentProcoreConnection(), 'billing'));
+      connection.withAuthenticatedSyncConnection(new Request('http://internal', { headers: { 'x-procore-connection': 'shared' } }), () => assert.equal(connection.currentProcoreConnection(), 'billing'));
+    });
+  } finally { for (const [key, value] of Object.entries(saved)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } }
+});
+
+test('Billing cooldown does not block the original app and vice versa', async () => {
+  const queries = [];
+  const quota = load('src/lib/procoreQuotaControl.ts', {
+    '@/lib/procoreConnection': connection,
+    '@/lib/prisma': { prisma: { $queryRawUnsafe: async sql => { queries.push(sql); return []; } } },
+  });
+  const until = new Date(Date.now() + 60_000);
+  quota.cacheProcoreBackgroundCooldown('company', until);
+  await connection.withProcoreConnection('billing', async () => {
+    assert.equal(await quota.getProcoreBackgroundCooldown('company'), null);
+    quota.cacheProcoreBackgroundCooldown('billing-only', until);
+  });
+  assert.match(queries[0], /procore_billing_sync_controls/);
+  assert.equal(await quota.getProcoreBackgroundCooldown('billing-only'), null);
+});
+
+for (const route of ['purchase-order-line-item-details', 'productivity-projects', 'timecard-entries']) {
+  test(`${route} cannot use a shared browser token when dedicated Billing authentication fails`, async () => {
+    let tokenAttempts = 0;
+    const handler = load(`src/app/api/procore/sync/${route}/route.ts`, {
+      'next/server': { NextResponse: Response },
+      'next/headers': { cookies: async () => ({ get: name => name === 'procore_access_token' ? { value: 'shared-browser-token' } : undefined }) },
+      '@/lib/procoreConnection': connection,
+      '@/lib/procore': {
+        procoreConfig: { companyId: '2' },
+        hasValidProcoreSyncSecret: () => false,
+        withProcoreLiveApiBypassForSyncSecret: (_request, work) => work(),
+        getClientCredentialsToken: async () => { tokenAttempts++; throw new Error('Billing authentication rejected'); },
+        makeRequest: async () => assert.fail('Must not send the shared browser token'),
+      },
+    });
+    const response = await connection.withProcoreConnection('billing', () => handler.POST(new Request('http://internal', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ companyId: '2', projectIds: ['3'], accessToken: 'shared-body-token' }),
+    })));
+    assert.equal(response.status, 401);
+    assert.equal(tokenAttempts, 1);
+  });
+}
 function load(path, dependencies, fetcher = () => assert.fail('Unexpected network request')) {
   const module = { exports: {} };
   const code = ts.transpileModule(readFileSync(path, 'utf8'), { compilerOptions: {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { getClientCredentialsToken, procoreConfig } from "@/lib/procore";
+import { getClientCredentialsToken, makeRequest, procoreConfig, withProcoreLiveApiBypassForAuthenticatedSession } from "@/lib/procore";
+import { cloneRateLimitResponse } from "@/lib/procoreCloneRateLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -109,32 +110,12 @@ async function procoreJson(params: {
   method?: string;
   body?: unknown;
 }) {
-  const method = params.method || "GET";
-  const response = await fetch(`${procoreConfig.apiUrl}${params.path}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${params.accessToken}`,
-      Accept: "application/json",
-      ...(params.body === undefined ? {} : { "Content-Type": "application/json" }),
-      "Procore-Company-Id": params.companyId,
-    },
+  return makeRequest(params.path, params.accessToken, {
+    method: params.method || "GET",
+    headers: params.body === undefined ? {} : { "Content-Type": "application/json" },
     body: params.body === undefined ? undefined : JSON.stringify(params.body),
     cache: "no-store",
-  });
-
-  const text = await response.text();
-  let payload: unknown = text;
-  try {
-    payload = text ? JSON.parse(text) : null;
-  } catch {
-    // Keep text response.
-  }
-
-  if (!response.ok) {
-    const message = typeof payload === "string" ? payload : JSON.stringify(payload);
-    throw new Error(`Procore ${method} ${params.path} failed (${response.status}): ${message}`);
-  }
-  return payload;
+  }, params.companyId, [429]);
 }
 
 async function fetchPaged(params: {
@@ -340,6 +321,10 @@ async function createSubmittal(params: {
 }
 
 export async function POST(request: Request) {
+  return withProcoreLiveApiBypassForAuthenticatedSession(request, () => handleClone(request));
+}
+
+async function handleClone(request: Request) {
   try {
     const body = (await request.json().catch(() => ({}))) as UnknownRecord;
     const { accessToken, tokenSource } = await getToken(body.accessToken);
@@ -372,21 +357,24 @@ export async function POST(request: Request) {
       );
     }
 
-    const [sourcePackagesRaw, targetPackages, sourceSubmittalsRaw] = await Promise.all([
-      fetchSubmittalPackages({ accessToken, companyId: sourceCompanyId, projectId: sourceProjectId, maxPages }),
-      fetchSubmittalPackages({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, maxPages }),
-      fetchSubmittals({ accessToken, companyId: sourceCompanyId, projectId: sourceProjectId, maxPages }),
-    ]);
+    // The shared request gate serializes each company's calls. Avoid launching
+    // competing reads (and continuing to consume quota after the first 429).
+    const sourcePackagesRaw = await fetchSubmittalPackages({ accessToken, companyId: sourceCompanyId, projectId: sourceProjectId, maxPages });
+    const targetPackages = await fetchSubmittalPackages({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, maxPages });
+    const sourceSubmittalsRaw = cloneSubmittals
+      ? await fetchSubmittals({ accessToken, companyId: sourceCompanyId, projectId: sourceProjectId, maxPages })
+      : [];
 
     const sourceSubmittalsList = submittalIds.size
       ? sourceSubmittalsRaw.filter((submittal) => submittalIds.has(readStr(submittal.id)) || submittalIds.has(readStr(submittal.number)))
       : sourceSubmittalsRaw;
 
-    const sourceSubmittals = await Promise.all(
-      sourceSubmittalsList.map((submittal) =>
-        fetchSubmittal({ accessToken, companyId: sourceCompanyId, projectId: sourceProjectId, submittalId: readStr(submittal.id) })
-      )
-    );
+    const sourceSubmittals: UnknownRecord[] = [];
+    for (const submittal of sourceSubmittalsList) {
+      sourceSubmittals.push(await fetchSubmittal({
+        accessToken, companyId: sourceCompanyId, projectId: sourceProjectId, submittalId: readStr(submittal.id),
+      }));
+    }
 
     const sourcePackageIds = new Set(
       sourceSubmittals.map((submittal) => readStr(nestedRecord(submittal, "submittal_package").id)).filter(Boolean)
@@ -475,6 +463,7 @@ export async function POST(request: Request) {
 
     const createResults: UnknownRecord[] = [];
     const packageCreateResults: UnknownRecord[] = [];
+    let rateLimit: ReturnType<typeof cloneRateLimitResponse> = null;
     if (!dryRun && missingMappings.length === 0) {
       const createdPackages: UnknownRecord[] = [...createdOrPlannedPackages];
       if (clonePackages) {
@@ -491,12 +480,14 @@ export async function POST(request: Request) {
             packageCreateResults.push({ sourceId: item.sourceId, ok: true, targetId, created, payload: item.payload });
             createdPackages.push({ ...item.payload, id: targetId, sourceId: item.sourceId });
           } catch (error) {
+            rateLimit = cloneRateLimitResponse(error);
             packageCreateResults.push({
               sourceId: item.sourceId,
               ok: false,
               error: error instanceof Error ? error.message : String(error),
               attemptedPayload: item.payload,
             });
+            if (rateLimit) break;
           }
           await new Promise((resolve) => setTimeout(resolve, 300));
         }
@@ -514,6 +505,7 @@ export async function POST(request: Request) {
             const created = await createSubmittal({ accessToken, companyId: targetCompanyId, projectId: targetProjectId, payload });
             createResults.push({ sourceId: item.sourceId, sourceNumber: item.sourceNumber, ok: true, created, payload });
           } catch (error) {
+            rateLimit = cloneRateLimitResponse(error);
             createResults.push({
               sourceId: item.sourceId,
               sourceNumber: item.sourceNumber,
@@ -521,6 +513,7 @@ export async function POST(request: Request) {
               error: error instanceof Error ? error.message : String(error),
               attemptedPayload: payload,
             });
+            if (rateLimit) break;
           }
           await new Promise((resolve) => setTimeout(resolve, 500));
         }
@@ -529,7 +522,15 @@ export async function POST(request: Request) {
 
     const failedPackages = packageCreateResults.filter((result) => result.ok === false);
     const failedSubmittals = createResults.filter((result) => result.ok === false);
+    const pause = rateLimit ? {
+      rateLimited: true,
+      rateLimitUntil: rateLimit.rateLimitUntil,
+      retryable: false,
+      error: rateLimit.error,
+      details: `Wait until ${rateLimit.rateLimitUntil}, then review the saved create results before continuing. Do not rerun the entire live batch: earlier records may already have been created.`,
+    } : {};
     return NextResponse.json({
+      ...pause,
       success: dryRun ? true : failedPackages.length === 0 && failedSubmittals.length === 0,
       dryRun,
       tokenSource,
@@ -561,7 +562,7 @@ export async function POST(request: Request) {
         failedPackages: failedPackages.length,
         failedSubmittals: failedSubmittals.length,
       },
-      readyForLiveClone: missingMappings.length === 0,
+      readyForLiveClone: !rateLimit && missingMappings.length === 0,
       missingMappings,
       packagePlan,
       submittalPlan: submittalPlan.slice(0, 200),
@@ -573,8 +574,20 @@ export async function POST(request: Request) {
         : failedPackages.length || failedSubmittals.length
           ? "Submittal clone finished with create errors."
           : "Submittal clone batch complete.",
-    });
+    }, { status: rateLimit ? 429 : 200, headers: rateLimit?.headers || { "Cache-Control": "no-store" } });
   } catch (error) {
+    // All reads finish before writes begin. A read-side pause is safe to retry.
+    const rateLimit = cloneRateLimitResponse(error);
+    if (rateLimit) {
+      return NextResponse.json({
+        success: false,
+        error: rateLimit.error,
+        details: `No records were created. Try again after ${rateLimit.rateLimitUntil}.`,
+        rateLimited: true,
+        rateLimitUntil: rateLimit.rateLimitUntil,
+        retryable: true,
+      }, { status: 429, headers: rateLimit.headers });
+    }
     return NextResponse.json(
       { error: "Submittal clone failed.", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }

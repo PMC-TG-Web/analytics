@@ -9,7 +9,7 @@ test('idle/busy sync checks back off and do not constantly rebuild monthly costs
   assert.equal(shouldRefreshBillQueue(120_000, 0, false), true);
 });
 test('successful ingestion is batched while project checks continue', () => {
-  assert.equal(billSourcePollDelay('synced'), 15_000);
+  assert.equal(billSourcePollDelay('synced'), 60_000);
   assert.equal(shouldRefreshBillQueue(15_000, 0, true), false);
   assert.equal(shouldRefreshBillQueue(59_999, 0, true), false);
   assert.equal(shouldRefreshBillQueue(60_000, 0, true), true);

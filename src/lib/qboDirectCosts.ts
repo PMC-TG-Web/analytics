@@ -1,8 +1,9 @@
 import type { PurchasePriceEvidence } from './qboCatalogMapping';
 import type { ProjectPriceEvidence } from './qboBillLineRules';
 import { Prisma } from '@prisma/client';
-import { isShopDrawingCost, isHoursOnlyCost } from './qboDirectCostExclusions.js';
+import { isShopDrawingCost } from './qboDirectCostExclusions.js';
 import type { CatalogPriceEvidence } from './qboCostCatalog';
+import type { projectManagementPrice } from './qboProjectManagementRate.js';
 
 export const DIRECT_COST_VENDOR = 'PMC Procore Direct Costs';
 // Concrete purchase quantities are tracked outside these internal-cost bills.
@@ -67,6 +68,7 @@ export type DirectCostItem = {
   catalogPrice?: CatalogPriceEvidence | null;
   projectPrice?: ProjectPriceEvidence | null;
   poPrice?: PurchasePriceEvidence | null;
+  fixedPrice?: ReturnType<typeof projectManagementPrice>;
 };
 export type DirectCostIssueSource = { message: string; date: string; purchaseOrderId: string | null; catalogLineItemId?: string; target?: 'purchaseOrder' | 'dailyLog' | 'catalog' };
 function issueSource(log: DirectCostSource, item?: DirectCostItem) {
@@ -111,7 +113,6 @@ export function aggregateDirectCosts(logs: DirectCostSource[], items: DirectCost
     const item = matches[0];
     // Shop drawing vendor bills are entered separately, including legacy PO
     // charges labeled Labor or carried under a different cost code.
-    if (isHoursOnlyCost(item.costCode)) continue;
     if (isShopDrawingCost(item.costCode, item.description?.trim() || sourceName)) {
       excluded.shopDrawings++; continue;
     }
@@ -153,6 +154,7 @@ export function aggregateDirectCosts(logs: DirectCostSource[], items: DirectCost
     ...(group.item.poPrice ? { poPrice: group.item.poPrice } : {}),
     ...(group.item.projectPrice ? { projectPrice: group.item.projectPrice } : {}),
     ...(group.item.catalogPrice ? { catalogPrice: group.item.catalogPrice } : {}),
+    ...(group.item.fixedPrice ? { fixedPrice: group.item.fixedPrice } : {}),
     sourceLogs: group.sourceLogs.sort((a, b) => a.id.localeCompare(b.id)),
   }));
   return { lines, issues, issueSources, excluded, laborHours: laborHours.toString(),

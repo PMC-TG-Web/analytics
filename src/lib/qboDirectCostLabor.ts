@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { isHoursOnlyCost } from './qboDirectCostExclusions.js';
+import { projectManagementPrice } from './qboProjectManagementRate.js';
 
 export type LaborTimecard = { procoreId: string | null; date: Date; hours: number | null; totalHoursWorked: number | null; costCodeFullCode: string | null; costCodeName: string | null; updatedAt: Date };
 export type LaborRate = { costCode: string; rate: string | null; lineItemId: string; proposalId?: string; bidBoardId?: string; catalogItemId?: string; catalogId?: string; updatedAt: string };
@@ -7,7 +7,6 @@ export function aggregateDirectCostLabor(timecards: LaborTimecard[], rates: Labo
   const issues: string[] = [], seen = new Set<string>();
   const groups = new Map<string, { description: string; hours: Prisma.Decimal; sourceLogs: { id: string; date: string; quantity: string; updatedAt: string }[] }>();
   for (const t of timecards) {
-    if (isHoursOnlyCost(t.costCodeFullCode)) continue;
     const hours = t.hours ?? t.totalHoursWorked;
     if (!t.procoreId || seen.has(t.procoreId)) { issues.push('A timecard has a missing or duplicate Procore ID.'); continue; }
     seen.add(t.procoreId);
@@ -20,10 +19,11 @@ export function aggregateDirectCostLabor(timecards: LaborTimecard[], rates: Labo
     groups.set(code, group);
   }
   const rows = [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([costCode, group]) => {
-    let sources: LaborRate[] = [], rate: string | null = null, rateCostCode: string | null = null;
+    const fixedPrice = projectManagementPrice({ costCode, costType: 'Labor', uom: 'hr' });
+    let sources: LaborRate[] = [], rate: string | null = fixedPrice?.unitCost ?? null, rateCostCode: string | null = fixedPrice?.costCode ?? null;
     let conflicting = false, lowestTravel = false;
     // Category, then SOG, then travel within the supplied company pricing snapshot.
-    for (const candidate of [...new Set([costCode, '03-300-20-10', '01-300-10-30'])]) {
+    for (const candidate of fixedPrice ? [] : [...new Set([costCode, '03-300-20-10', '01-300-10-30'])]) {
       const candidates = rates.filter(r => r.costCode.replace(/\.L$/i, '') === candidate);
       const valid = candidates.filter(r => {
         try { return r.rate !== null && new Prisma.Decimal(r.rate).isFinite() && new Prisma.Decimal(r.rate).gt(0); }
@@ -46,7 +46,8 @@ export function aggregateDirectCostLabor(timecards: LaborTimecard[], rates: Labo
       description: group.description, costCode, costType: 'Labor', quantity: group.hours.toString(),
       unitCost: rate, uom: 'hr', amount: rate === null ? null : group.hours.mul(rate).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP).toFixed(2),
       rateCostCode,
-      rateSelection: rateCostCode === null ? 'unresolved' : lowestTravel ? (rateCostCode === costCode ? 'Lowest travel rate' : 'Travel fallback (lowest rate)') : rateCostCode === costCode ? 'category' : rateCostCode === '03-300-20-10' ? 'SOG fallback' : 'Travel fallback',
+      ...(fixedPrice ? { fixedPrice } : {}),
+      rateSelection: fixedPrice ? 'Project Management rate' : rateCostCode === null ? 'unresolved' : lowestTravel ? (rateCostCode === costCode ? 'Lowest travel rate' : 'Travel fallback (lowest rate)') : rateCostCode === costCode ? 'category' : rateCostCode === '03-300-20-10' ? 'SOG fallback' : 'Travel fallback',
       rateUpdatedAt: sources.map(s => s.updatedAt).sort().at(-1) || null,
       rateSources: sources.map(s => ({ ...(s.catalogItemId ? { catalogItemId: s.catalogItemId, catalogId: s.catalogId } : { bidBoardId: s.bidBoardId, proposalId: s.proposalId }), lineItemId: s.lineItemId, costCode: s.costCode, rate: s.rate })),
       sourceLogs: group.sourceLogs.sort((a, b) => a.id.localeCompare(b.id)),

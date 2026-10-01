@@ -1,5 +1,5 @@
 import * as projectPolicy from '../src/lib/qboBillProjectPolicy.ts';
-import * as exclusions from '../src/lib/qboDirectCostExclusions.js';
+import * as projectManagement from '../src/lib/qboProjectManagementRate.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -16,7 +16,7 @@ async function load(saved, rules = [], timecards = [], foodDescription = 'Food',
  const logs=items.map((i,index)=>({id:String(index+1),procoreId:String(index+1),lineItemId:i.procoreId,lineItemDescription:i.description,quantityUsed:index?2:85.86,status:'approved',date,updatedAt:date}));
  items.push(...(extra.items || [])); logs.push(...(extra.logs || []));
  const prisma={pmcProject:{findUnique:async()=>({projectName:'Example',projectNumber:'123'})},productivityLog:{findMany:async()=>logs},purchaseOrderLineItemContractDetail:{findMany:async()=>items},$queryRaw:async()=>[],timecardEntry:{findMany:async()=>timecards},qboBillLineRule:{findMany:async()=>rules},qboCostCatalogMapping:{findMany:async()=>[]},qboBillFoodTotal:{findUnique:async()=>saved},qboBillFoodEntry:{findMany:async()=>saved?[{id:'entry',amount:saved.amount,spentOn:'2026-09-22',note:'Lunch',createdBy:'operator',createdAt:date}]:[]},$transaction:async requests=>Promise.all(requests)};
- const imports={ './qboBillProjectPolicy':projectPolicy, './qboDirectCostExclusions.js':exclusions, './qboBillLineRules':{projectPrice:()=>null}, './prisma':{prisma}, './qboDirectCosts':costs,'@prisma/client':{Prisma}, './qboDirectCostLabor':labor, './loadQboDirectCostLaborRates':{loadQboDirectCostLaborRates:async()=>({rates:[{costCode:'03-300-20-10',rate:'50',lineItemId:'5',updatedAt:date.toISOString()}]})},'./loadQboCostCatalog':{loadQboCostCatalog:async()=>({fetchedAt:date.toISOString(),items:[]})},'./qboCostCatalog':{catalogSnapshotIssue:()=>null},'./qboCatalogMapping':{purchasePriceFallback:()=>null,catalogSourceSignature:()=> 'a'.repeat(64),duplicateCatalogSourceIds:()=>new Set(),mappedCatalogPrice:source=>{assert.equal(coding.isFoodCost(source),false);return {unitCost:3.5,evidence:null,issue:null};}},'./qboDirectCostCoding':coding,'./qboFoodTotal':food,'./estimatingCostCodeCrosswalk':{loadEstimatingCostCodeCatalog:()=>new Map()}};
+ const imports={ './qboProjectManagementRate.js':projectManagement, './qboBillProjectPolicy':projectPolicy, './qboBillLineRules':{projectPrice:()=>null}, './prisma':{prisma}, './qboDirectCosts':costs,'@prisma/client':{Prisma}, './qboDirectCostLabor':labor, './loadQboDirectCostLaborRates':{loadQboDirectCostLaborRates:async()=>({rates:[{costCode:'03-300-20-10',rate:'50',lineItemId:'5',updatedAt:date.toISOString()}],issue:extra.catalogIssue})},'./loadQboCostCatalog':{loadQboCostCatalog:async()=>({fetchedAt:date.toISOString(),items:[]})},'./qboCostCatalog':{catalogSnapshotIssue:()=>extra.catalogIssue || null},'./qboCatalogMapping':{purchasePriceFallback:()=>null,catalogSourceSignature:()=> 'a'.repeat(64),duplicateCatalogSourceIds:()=>new Set(),mappedCatalogPrice:source=>{assert.equal(coding.isFoodCost(source),false);return {unitCost:3.5,evidence:null,issue:null};}},'./qboDirectCostCoding':coding,'./qboFoodTotal':food,'./estimatingCostCodeCrosswalk':{loadEstimatingCostCodeCatalog:()=>new Map()}};
  const js=ts.transpileModule(fs.readFileSync('src/lib/loadQboDirectCosts.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
  const m={exports:{}};vm.runInNewContext(js,{exports:m.exports,require:id=>imports[id]});
  return m.exports.loadQboDirectCosts('1','2','2026-09');
@@ -75,4 +75,42 @@ test('same labor code in productivity and timecards is additive, with distinct e
  assert.equal(d.lines.find(l=>l.lineKey==='12').sourceLogs[0].id,'100','IDs from different Procore datasets are distinct evidence');
  extra.logs[0].status='draft';
  const unapproved=await load(null,[],cards,'Food',extra); assert.equal(unapproved.labor.combinedHours,'2'); assert.equal(unapproved.total,'107.00');
+});
+
+test('shared create/update draft includes Project Management from both sources and honors explicit Ignore rules', async () => {
+ const code='01-300-10-20';
+ const cards=[{procoreId:'100',date,hours:8,totalHoursWorked:null,costCodeFullCode:`${code}.L`,costCodeName:'Project Management',updatedAt:date}];
+ const extra={items:[{procoreId:'12',description:'Project Management',costCode:code,costType:'Labor',uom:'hr',updatedAt:date}],logs:[{id:'3',procoreId:'3',lineItemId:'12',lineItemDescription:'Project Management',quantityUsed:3,status:'approved',date,updatedAt:date}]};
+ const draft=await load(null,[],cards,'Food',extra);
+ assert.equal(draft.issues.length,0);
+ assert.equal(draft.total,'612.00');
+ assert.equal(draft.labor.combinedHours,'11');
+ assert.equal(draft.labor.combinedPricedHours,'11');
+ assert.equal(draft.labor.combinedUnpricedHours,'0');
+ assert.equal(draft.lines.find(line=>line.lineKey===`labor:${code}`).amount,'440.00');
+ assert.equal(draft.lines.find(line=>line.lineKey==='12').amount,'165.00');
+ assert.equal(draft.lines.find(line=>line.lineKey==='12').fixedPrice.unitCost,'55');
+ assert.equal(draft.catalogMappingItems.some(item=>item.lineItemId==='12'),false);
+ assert.equal(draft.ruleItems.find(item=>item.lineKey==='12').allowPrice,false);
+ const rules=['12',`labor:${code}`].map(lineKey=>({lineKey,description:'Project Management',ignored:true,unitCost:null,revision:1,reason:'Handled separately'}));
+ const ignored=await load(null,rules,cards,'Food',extra);
+ assert.equal(ignored.total,'7.00');
+ assert.equal(ignored.labor.combinedHours,'0');
+ assert.equal(ignored.lines.some(line=>line.costCode===code),false);
+ assert.equal(ignored.catalogMappingItems.some(item=>item.lineItemId==='12'),false);
+ assert.equal(ignored.issues.length,0);
+ extra.items[0].costCode=`${code}.L`;
+ extra.items[0].uom='ea';
+ // A missing catalog and an older saved PO price cannot replace the explicit rate.
+ const fixedOnly=await load(null,[
+  {lineKey:'11',ignored:true,unitCost:null,revision:1,reason:'Elsewhere'},
+  {lineKey:'12',description:'Project Management',ignored:false,unitCost:'99',revision:1,reason:'Old rate'},
+ ],cards,'Food',{...extra,catalogIssue:'Catalog unavailable'});
+ assert.equal(fixedOnly.issues.length,0);
+ assert.equal(fixedOnly.total,'605.00');
+ assert.equal(fixedOnly.lines.find(line=>line.lineKey==='12').costCode,code);
+ assert.equal(fixedOnly.lines.find(line=>line.lineKey==='12').uom,'hr');
+ assert.equal(fixedOnly.lines.find(line=>line.lineKey==='12').fixedPrice.sourceUom,'ea');
+ assert.equal(fixedOnly.ruleItems.find(item=>item.lineKey==='12').unitCost,null);
+ assert.equal(fixedOnly.labor.combinedPricedHours,'11');
 });

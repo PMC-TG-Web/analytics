@@ -18,8 +18,16 @@ export async function GET(request: NextRequest) {
   if (!/^\d+$/.test(companyId)) return json({ error: 'Company ID is required.' }, 400);
   try {
     if (params.get('view') === 'queue') {
-      const page = params.get('paged') === '1' ? { after: params.get('after') || null } : undefined;
-      return json(await loadQboBillQueue(companyId, params.get('month') || '', page));
+      // Old open tabs must reload before reading this potentially large worklist.
+      // Returning a partial list would let their selection controls omit projects.
+      if (params.get('paged') !== '1') {
+        console.info('Bill worklist: outdated page rejected');
+        return json({ error: 'This page is out of date. Open https://analyticspmc.netlify.app/accounting/direct-cost-bills in a new browser tab, then press Ctrl + Shift + R. Refresh status does not update the page.', code: 'BILL_PAGE_RELOAD_REQUIRED' }, 409);
+      }
+      const started = Date.now();
+      const result = await loadQboBillQueue(companyId, params.get('month') || '', { after: params.get('after') || null });
+      console.info('Bill worklist page loaded', { durationMs: Date.now() - started, rows: result.rows.length, hasMore: !!result.nextCursor });
+      return json(result);
     }
     if (!params.has('projectId')) {
       const projects = await prisma.pmcProject.findMany({ where: { companyId }, select: { procoreProjectId: true, projectName: true, projectNumber: true }, orderBy: { projectName: 'asc' } });

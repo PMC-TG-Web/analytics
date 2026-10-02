@@ -3,18 +3,14 @@ import Link from "next/link";
 import { createContext, useContext, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
-import { hasPageAccess, USER_PERMISSIONS } from "@/lib/permissions";
+import { expandAssignedPermissions, USER_PERMISSIONS } from "@/lib/permissions";
+import { createNavigationPermissionRefresh } from "@/lib/navigationPermissions";
 
 const AUTH_LOGOUT_SIGNAL_KEY = "analytics-auth-logout";
 const AUTH_LOGOUT_SIGNAL_CHANNEL = "analytics-auth-logout";
 const AUTH_LOGOUT_CONTEXT_KEY = "analytics-auth-logout-context";
-const NAV_PERMISSIONS_CACHE_PREFIX = "analytics-nav-permissions:v2:";
-const NAV_PERMISSIONS_CACHE_TTL_MS = 60 * 60 * 1000;
-const PERMISSIONS_FETCH_TIMEOUT_MS = 8000;
-const PERMISSIONS_FETCH_MAX_ATTEMPTS = 2;
 const NAV_KEEPALIVE_INTERVAL_MS = 45 * 1000;
 const NAV_KEEPALIVE_MIN_GAP_MS = 15 * 1000;
-const NAV_KEEPALIVE_TIMEOUT_MS = 4000;
 
 interface NavLink {
   href: string;
@@ -83,223 +79,53 @@ export default function Navigation({
   const [permissionsLoaded, setPermissionsLoaded] = useState(false);
   const [permissionsFailed, setPermissionsFailed] = useState(false);
 
-  // Load permissions from database when user logs in
+  const [permissionSnapshot, setPermissionSnapshot] = useState<{
+    email: string;
+    permissions: string[];
+  } | null>(null);
+
+  // Always read current assignments on mount and apply subsequent background reads.
+  // Session storage and module memory must not suppress permission refreshes.
   useEffect(() => {
-    if (!user?.email) return;
-
-    const normalizedEmail = user.email.toLowerCase();
-    const cacheKey = `${NAV_PERMISSIONS_CACHE_PREFIX}${normalizedEmail}`;
-
-    // If permissions are already resolved in-memory, avoid a redundant network call.
-    if (Array.isArray(USER_PERMISSIONS[normalizedEmail]) && USER_PERMISSIONS[normalizedEmail].length > 0) {
-      setPermissionsLoaded(true);
-      setPermissionsFailed(false);
-      return;
-    }
-
-    const applyPermissions = (email: string, permissions: string[]) => {
-      USER_PERMISSIONS[email] = permissions;
-    };
-
-    const checkCacheAndLoad = () => {
-      try {
-        const rawCached = sessionStorage.getItem(cacheKey);
-        if (rawCached) {
-          const parsed = JSON.parse(rawCached) as {
-            email?: string;
-            permissions?: unknown;
-            cachedAt?: number;
-          };
-          const isFresh =
-            typeof parsed.cachedAt === "number" &&
-            Date.now() - parsed.cachedAt < NAV_PERMISSIONS_CACHE_TTL_MS;
-          const cachedPermissions = Array.isArray(parsed.permissions)
-            ? parsed.permissions.filter((perm): perm is string => typeof perm === "string")
-            : [];
-
-          if (isFresh && parsed.email === normalizedEmail && cachedPermissions.length > 0) {
-            applyPermissions(normalizedEmail, cachedPermissions);
-            setPermissionsLoaded(true);
-            setPermissionsFailed(false);
-            return;
-          }
-        }
-      } catch {
-        // Ignore cache parse/storage issues
-      }
-
-      void loadPermissions();
-    };
-
-    const loadPermissions = async () => {
-      try {
-        console.log('Loading permissions for:', user.email);
-
-        let res: Response | null = null;
-        let lastError: unknown = null;
-
-        for (let attempt = 1; attempt <= PERMISSIONS_FETCH_MAX_ATTEMPTS; attempt += 1) {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), PERMISSIONS_FETCH_TIMEOUT_MS);
-
-          try {
-            res = await fetch('/api/permissions/me', {
-              method: 'GET',
-              credentials: 'include',
-              signal: controller.signal,
-            });
-            clearTimeout(timeoutId);
-            break;
-          } catch (error) {
-            clearTimeout(timeoutId);
-            lastError = error;
-
-            const isAbort = error instanceof Error && error.name === 'AbortError';
-            if (!isAbort || attempt >= PERMISSIONS_FETCH_MAX_ATTEMPTS) {
-              throw error;
-            }
-
-            // Brief backoff before retrying a timed-out request.
-            await new Promise((resolve) => setTimeout(resolve, 300 * attempt));
-          }
-        }
-
-        if (!res) {
-          throw lastError instanceof Error ? lastError : new Error('Permissions request failed');
-        }
-        
-        if (!res.ok) {
-          console.error('Permissions fetch failed:', res.status, res.statusText);
-          setPermissionsFailed(true);
-          setPermissionsLoaded(true);
-          return;
-        }
-
-        const data = await res.json();
-        console.log('Permissions fetched:', data);
-        
-        // Populate USER_PERMISSIONS with the current user's assigned permissions.
-        // Store the assigned permissions and expand them locally. This keeps group
-        // definitions authoritative and prevents stale expanded lists from hiding
-        // newly added administrative pages.
-        const responsePermissions = Array.isArray(data.data?.permissions)
-          ? data.data.permissions
-          : data.data?.expandedPermissions;
-
-        if (data.data?.email && Array.isArray(responsePermissions)) {
-          const nextEmail = data.data.email.toLowerCase();
-          const nextPermissions = responsePermissions.filter((perm: unknown): perm is string => typeof perm === "string");
-
-          // Do not overwrite known permissions with an empty payload.
-          // Empty arrays can occur during transient auth/session propagation.
-          if (nextPermissions.length === 0) {
-            setPermissionsFailed(true);
-            setPermissionsLoaded(true);
-            return;
-          }
-
-          applyPermissions(nextEmail, nextPermissions);
-          // Defer sessionStorage write to avoid blocking main thread
-          if ("requestIdleCallback" in window) {
-            requestIdleCallback(() => {
-              try {
-                sessionStorage.setItem(
-                  `${NAV_PERMISSIONS_CACHE_PREFIX}${nextEmail}`,
-                  JSON.stringify({
-                    email: nextEmail,
-                    permissions: nextPermissions,
-                    cachedAt: Date.now(),
-                  })
-                );
-              } catch {
-                // Ignore storage failures
-              }
-            });
-          } else {
-            setTimeout(() => {
-              try {
-                sessionStorage.setItem(
-                  `${NAV_PERMISSIONS_CACHE_PREFIX}${nextEmail}`,
-                  JSON.stringify({
-                    email: nextEmail,
-                    permissions: nextPermissions,
-                    cachedAt: Date.now(),
-                  })
-                );
-              } catch {
-                // Ignore storage failures
-              }
-            }, 0);
-          }
-          console.log('USER_PERMISSIONS updated:', USER_PERMISSIONS);
-        }
+    if (!user?.email || (isGlobalNavigationManaged && !forceRender)) return;
+    const email = user.email.trim().toLowerCase();
+    let lastRefreshAt = 0;
+    const refresh = createNavigationPermissionRefresh({
+      email,
+      fetchPermissions: (signal) => fetch('/api/permissions/me', {
+        method: 'GET',
+        credentials: 'include',
+        cache: 'no-store',
+        signal,
+      }),
+      onPermissions: (permissions) => {
+        USER_PERMISSIONS[email] = permissions;
+        setPermissionSnapshot({ email, permissions: expandAssignedPermissions(permissions) });
+        setPermissionsLoaded(true);
         setPermissionsFailed(false);
+      },
+      onError: () => {
         setPermissionsLoaded(true);
-      } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') {
-          console.warn(`Permission fetch timed out after ${PERMISSIONS_FETCH_TIMEOUT_MS / 1000}s`);
-        } else {
-          console.error('Failed to load permissions:', error);
-        }
         setPermissionsFailed(true);
-        setPermissionsLoaded(true);
-      }
+      },
+    });
+    const refreshIfVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastRefreshAt < NAV_KEEPALIVE_MIN_GAP_MS) return;
+      lastRefreshAt = Date.now();
+      void refresh.refresh();
     };
-
-    checkCacheAndLoad();
-  }, [user?.email]);
-
-  // Keep auth/permission path warm so first navigation after idle is faster.
-  useEffect(() => {
-    if (!user?.email) return;
-
-    let timer: ReturnType<typeof setInterval> | null = null;
-    let lastPingAt = 0;
-
-    const ping = async () => {
-      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
-
-      const now = Date.now();
-      if (now - lastPingAt < NAV_KEEPALIVE_MIN_GAP_MS) return;
-      lastPingAt = now;
-
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), NAV_KEEPALIVE_TIMEOUT_MS);
-
-      try {
-        await fetch('/api/permissions/me', {
-          method: 'GET',
-          credentials: 'include',
-          cache: 'no-store',
-          signal: controller.signal,
-        });
-      } catch {
-        // Silent on purpose: this is only a best-effort warm ping.
-      } finally {
-        clearTimeout(timeoutId);
-      }
-    };
-
-    const onVisibleOrFocus = () => {
-      void ping();
-    };
-
-    // Warm once immediately so first navigation click is less likely to hit a cold path.
-    void ping();
-
-    timer = setInterval(() => {
-      void ping();
-    }, NAV_KEEPALIVE_INTERVAL_MS);
-
-    window.addEventListener("focus", onVisibleOrFocus);
-    document.addEventListener("visibilitychange", onVisibleOrFocus);
-
+    refreshIfVisible();
+    const timer = setInterval(refreshIfVisible, NAV_KEEPALIVE_INTERVAL_MS);
+    window.addEventListener("focus", refreshIfVisible);
+    document.addEventListener("visibilitychange", refreshIfVisible);
     return () => {
-      if (timer) clearInterval(timer);
-      window.removeEventListener("focus", onVisibleOrFocus);
-      document.removeEventListener("visibilitychange", onVisibleOrFocus);
+      refresh.dispose();
+      clearInterval(timer);
+      window.removeEventListener("focus", refreshIfVisible);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
     };
-  }, [user?.email]);
+  }, [user?.email, isGlobalNavigationManaged, forceRender]);
 
   useEffect(() => {
     const redirectToSignedOutPage = () => {
@@ -339,20 +165,18 @@ export default function Navigation({
     return null;
   }
 
-  const hasResolvedPermissionsForUser = Boolean(
-    user?.email && USER_PERMISSIONS[user.email.toLowerCase()]?.length
-  );
+  const currentPermissions = permissionSnapshot?.email === user?.email?.trim().toLowerCase()
+    ? permissionSnapshot?.permissions
+    : null;
 
   const canAccessLink = (link: NavLink) => {
     if (!user?.email) return false;
-
-    // Keep navigation functional while permission hydration is in flight
-    // or temporarily unavailable; backend route guards still enforce access.
-    if (!permissionsLoaded && !hasResolvedPermissionsForUser) return true;
-    if (permissionsFailed && !hasResolvedPermissionsForUser) return true;
-
-    return hasPageAccess(user.email, link.page)
-      || Boolean(link.fallbackPage && hasPageAccess(user.email, link.fallbackPage));
+    // Backend route guards continue to enforce access during initial hydration.
+    if ((!permissionsLoaded || permissionsFailed) && !currentPermissions) return true;
+    const hasPermission = (permission: string) => currentPermissions?.some(
+      assigned => assigned.toLowerCase() === permission.toLowerCase()
+    );
+    return hasPermission(link.page) || Boolean(link.fallbackPage && hasPermission(link.fallbackPage));
   };
 
   const visibleNavLinks = navLinks.filter(canAccessLink);

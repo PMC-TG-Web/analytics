@@ -102,8 +102,10 @@ The access path is:
 
 1. `src/lib/permissionRoutes.js` maps page and API prefixes to permission keys.
 2. `middleware.ts` determines the required key, including a few route-specific fallbacks.
-3. `src/lib/permissions.ts` loads user assignments from the database and expands permission groups/templates. Environment JSON is a compatibility fallback.
+3. `src/lib/permissions.ts` loads user assignments from the database and expands permission groups/templates. Environment-based assignments are disabled.
 4. A signed permission cookie reduces repeated database checks, but the Auth0 identity remains the session source.
+
+Navigation reads `/api/permissions/me` with `cache: no-store` on mount, on focus/visibility return (with a 15-second minimum gap), and every 45 seconds while visible. Every successful response replaces the rendered assignments, including empty revocations. Browser session-storage and module-memory lists never suppress fresh reads. `src/lib/navigationPermissions.ts` bounds requests, prevents overlapping reads, and discards responses after unmount or identity changes. Validate with `node --test test/navigationPermissions.test.mjs test/permissions.test.mjs`.
 
 When adding a protected page and API, update both route maps and confirm that the intended permission appears in navigation. Special unauthenticated paths are intentionally narrow: Auth0 routes, the public version endpoint, Procore webhook receipt, secret-authenticated worker routes, and limited Procore-session analytics entry.
 

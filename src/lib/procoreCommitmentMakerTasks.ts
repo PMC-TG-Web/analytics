@@ -168,7 +168,7 @@ export function buildCommitmentMakerChangeOrderTaskSpecs(params: {
       title: `Add CO ${params.changeOrder.number || params.changeOrder.packageId} to AIA Billing`,
       description: [
         `[analytics:commitment-maker-change-order:${params.changeOrder.packageId}:aia-billing]`,
-        "Automatically created after Commitment Maker processed this approved change order.",
+        "Automatically created for this approved change order. Billing does not depend on commitment creation.",
         ...common,
         "Action: Add this approved change order to the project's AIA billing.",
       ].join("\n"),
@@ -196,8 +196,11 @@ export async function resolveCommitmentMakerChangeOrderTaskAssignees(params: {
   shellyCompanyUser?: ProjectUserLike | null;
   taskKinds?: CommitmentMakerTaskKind[];
 }): Promise<CommitmentMakerTaskAssignees> {
+  const needsProjectManagers = !params.taskKinds || params.taskKinds.includes("commitment_verification");
   const [roles, projectUsers] = await Promise.all([
-    fetchAll(params.request, `/rest/v1.0/project_roles?project_id=${encodeURIComponent(params.projectId)}`),
+    needsProjectManagers
+      ? fetchAll(params.request, `/rest/v1.0/project_roles?project_id=${encodeURIComponent(params.projectId)}`)
+      : Promise.resolve([]),
     fetchAll(
       params.request,
       `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/users?company_id=${encodeURIComponent(params.companyId)}`,

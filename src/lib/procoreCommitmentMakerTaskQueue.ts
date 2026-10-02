@@ -67,6 +67,21 @@ export async function enqueueCommitmentMakerTasks(params: {
   });
 }
 
+/** Separate jobs let billing proceed even when PM verification cannot complete. */
+export async function enqueueCommitmentMakerApprovalTasks(params: Omit<
+  Parameters<typeof enqueueCommitmentMakerTasks>[0], "taskKinds"
+> & { sourceKind: "potential_change_order" | "change_order_package" }) {
+  const { sourceKind, ...taskParams } = params;
+  const kinds: CommitmentMakerTaskKind[] = sourceKind === "change_order_package"
+    ? ["aia_billing", "commitment_verification"]
+    : ["commitment_verification"];
+  // Callers persist Approved only after all jobs are saved. A partial enqueue
+  // failure is safe to retry using the same source/kind identities.
+  for (const kind of kinds) {
+    await enqueueCommitmentMakerTasks({ ...taskParams, taskKinds: [kind] });
+  }
+}
+
 function taskPayload(value: unknown): TaskPayload | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const payload = value as Record<string, unknown>;

@@ -25,7 +25,7 @@ import {
   commitmentMakerChangeOrderContextFromRecord,
   isApprovedChangeOrderStatus,
 } from "@/lib/procoreCommitmentMakerTasks";
-import { enqueueCommitmentMakerTasks } from "@/lib/procoreCommitmentMakerTaskQueue";
+import { enqueueCommitmentMakerApprovalTasks } from "@/lib/procoreCommitmentMakerTaskQueue";
 import { upsertPotentialChangeOrder } from "@/lib/procorePotentialChangeOrders";
 
 export const dynamic = "force-dynamic";
@@ -130,12 +130,12 @@ async function persistPotentialChangeOrder(params: {
     && !isApprovedChangeOrderStatus(previous?.status)) {
     const changeOrder = commitmentMakerChangeOrderContextFromRecord(params.record);
     if (!changeOrder) return false;
-    await enqueueCommitmentMakerTasks({
+    await enqueueCommitmentMakerApprovalTasks({
       companyId: params.companyId,
       projectId: params.projectId,
       changeOrder,
       userEmail: "procore-change-order-approval-poll@pmcdecor.com",
-      taskKinds: ["commitment_verification"],
+      sourceKind: "potential_change_order",
     });
   }
   await upsertPotentialChangeOrder(params);
@@ -164,12 +164,12 @@ async function persistChangeOrderPackage(params: {
     && !isApprovedChangeOrderStatus(previous?.status)) {
     const changeOrder = commitmentMakerChangeOrderContextFromRecord(params.record);
     if (!changeOrder) return false;
-    await enqueueCommitmentMakerTasks({
+    await enqueueCommitmentMakerApprovalTasks({
       companyId: params.companyId,
       projectId: params.projectId,
       changeOrder,
       userEmail: "procore-change-order-approval-poll@pmcdecor.com",
-      taskKinds: ["commitment_verification"],
+      sourceKind: "change_order_package",
     });
   }
   await upsertChangeOrderPackage(params);

@@ -336,3 +336,31 @@ test("creates Shelly's task and emails Todd instead of assigning an external PM"
   assert.equal(result.tasks[1].skipped, true);
   assert.equal(result.tasks[1].taskId, null);
 });
+
+
+test("approval billing creates Shelly's task without PM roles and reuses it after commitment creation", async () => {
+  const { ensureCommitmentMakerChangeOrderTasks } = loadModule(async () => {
+    throw new Error("Billing must not send a missing-PM alert");
+  });
+  const tasks = [];
+  const request = async ({ path, method, body }) => {
+    if (method === "POST") {
+      const task = { id: 901, ...body.task_item };
+      tasks.push(task);
+      return task;
+    }
+    if (path.startsWith("/rest/v1.0/task_items?")) return tasks;
+    if (path.includes("/users?")) return [{ id: 9549803, login: "shelly@pmcdecor.com" }];
+    throw new Error(`Unexpected request: ${path}`);
+  };
+  const params = { request, companyId: "company", projectId: "project", projectNumber: "2601",
+    projectName: "Test", changeOrder, taskKinds: ["aia_billing"], now: new Date("2026-10-02T14:00:00Z") };
+  const approval = await ensureCommitmentMakerChangeOrderTasks(params);
+  assert.equal(approval.tasks[0].created, true);
+  assert.equal(tasks[0].assigned_id, 9549803);
+  assert.equal(tasks[0].due_date, "2026-10-02");
+  assert.match(tasks[0].description, /Billing does not depend on commitment creation/);
+  const laterCommitment = await ensureCommitmentMakerChangeOrderTasks(params);
+  assert.equal(laterCommitment.tasks[0].created, false);
+  assert.equal(tasks.length, 1);
+});

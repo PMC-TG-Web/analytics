@@ -413,14 +413,16 @@ test("change-order sync queues verification before persisting an approval transi
     new URL("../src/app/api/procore/sync/change-order-packages/route.ts", import.meta.url),
     "utf8",
   );
-  const transitionCheck = route.indexOf("await enqueueVerificationOnApprovalTransition");
+  const transitionCheck = route.indexOf("await enqueueTasksOnApprovalTransition");
   const potentialUpsert = route.indexOf("const persistedId = await upsertPotentialChangeOrder", transitionCheck);
-  const packageTransitionCheck = route.indexOf("await enqueueVerificationOnApprovalTransition", transitionCheck + 1);
+  const packageTransitionCheck = route.indexOf("await enqueueTasksOnApprovalTransition", transitionCheck + 1);
   const packageUpsert = route.indexOf("await upsertChangeOrderPackage", packageTransitionCheck);
 
   assert.ok(transitionCheck > 0 && potentialUpsert > transitionCheck);
   assert.ok(packageTransitionCheck > potentialUpsert && packageUpsert > packageTransitionCheck);
-  assert.match(route, /taskKinds: \['commitment_verification'\]/);
+  assert.match(route, /sourceKind: params.sourceKind/);
+  assert.match(route, /sourceKind: "change_order_package"/);
+  assert.match(route, /sourceKind: "potential_change_order"/);
 });
 
 test("webhook processing handles approved PCO and prime change-order resources", async () => {
@@ -431,7 +433,9 @@ test("webhook processing handles approved PCO and prime change-order resources",
   assert.match(route, /resource\.includes\('potential change order'\)/);
   assert.match(route, /resource\.includes\('prime contract change order'\)/);
   assert.match(route, /return handleChangeOrderEvent\(event\)/);
-  assert.match(route, /taskKinds: \['commitment_verification'\]/);
+  assert.match(route, /sourceKind: params.sourceKind/);
+  assert.match(route, /sourceKind: "change_order_package"/);
+  assert.match(route, /sourceKind: "potential_change_order"/);
   assert.match(route, /isApprovedChangeOrderStatus\(params\.record\.status\)/);
 });
 
@@ -552,14 +556,15 @@ test("approval polling queues verification before persisting newly approved head
     new URL("../src/app/api/cron/change-order-approvals/route.ts", import.meta.url),
     "utf8",
   );
-  const potentialQueue = route.indexOf("await enqueueCommitmentMakerTasks", route.indexOf("persistPotentialChangeOrder"));
+  const potentialQueue = route.indexOf("await enqueueCommitmentMakerApprovalTasks", route.indexOf("persistPotentialChangeOrder"));
   const potentialPersist = route.indexOf("await upsertPotentialChangeOrder", potentialQueue);
-  const packageQueue = route.indexOf("await enqueueCommitmentMakerTasks", route.indexOf("persistChangeOrderPackage"));
+  const packageQueue = route.indexOf("await enqueueCommitmentMakerApprovalTasks", route.indexOf("persistChangeOrderPackage"));
   const packagePersist = route.indexOf("await upsertChangeOrderPackage", packageQueue);
 
   assert.ok(potentialQueue > 0 && potentialPersist > potentialQueue);
   assert.ok(packageQueue > potentialPersist && packagePersist > packageQueue);
-  assert.match(route, /taskKinds: \["commitment_verification"\]/);
+  assert.match(route, /sourceKind: "change_order_package"/);
+  assert.match(route, /sourceKind: "potential_change_order"/);
   assert.doesNotMatch(route, /line_items/);
   assert.match(route, /seedChangeOrderApprovalQueue/);
   assert.match(route, /acquireProcoreWorker/);

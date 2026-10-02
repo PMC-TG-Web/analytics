@@ -30,7 +30,7 @@ import {
   commitmentMakerChangeOrderContextFromRecord,
   isApprovedChangeOrderStatus,
 } from '@/lib/procoreCommitmentMakerTasks';
-import { enqueueCommitmentMakerTasks } from '@/lib/procoreCommitmentMakerTaskQueue';
+import { enqueueCommitmentMakerApprovalTasks } from '@/lib/procoreCommitmentMakerTaskQueue';
 import { deletePmDashboardActionItem, syncPmDashboardActionItem } from '@/lib/pmDashboardSync';
 import type { PmActionItemType } from '@/lib/pmDashboard';
 import { getProcoreBackgroundCooldown } from '@/lib/procoreQuotaControl';
@@ -1355,7 +1355,8 @@ function isPrimeChangeOrderResource(resource: string): boolean {
   return resource.includes('prime contract change order') || resource.includes('change order package');
 }
 
-async function enqueueApprovedChangeOrderVerification(params: {
+async function enqueueApprovedChangeOrderTasks(params: {
+  sourceKind: "potential_change_order" | "change_order_package";
   companyId: string;
   projectId: string;
   record: JsonObject;
@@ -1363,12 +1364,12 @@ async function enqueueApprovedChangeOrderVerification(params: {
   if (!isApprovedChangeOrderStatus(params.record.status)) return;
   const changeOrder = commitmentMakerChangeOrderContextFromRecord(params.record);
   if (!changeOrder) throw new Error('Approved change-order webhook record is missing its ID.');
-  await enqueueCommitmentMakerTasks({
+  await enqueueCommitmentMakerApprovalTasks({
     companyId: params.companyId,
     projectId: params.projectId,
     changeOrder,
     userEmail: 'procore-change-order-webhook@pmcdecor.com',
-    taskKinds: ['commitment_verification'],
+    sourceKind: params.sourceKind,
   });
 }
 
@@ -1399,7 +1400,7 @@ async function handleChangeOrderEvent(event: {
     );
     const record = asRows(response).find((candidate) => text(candidate.id) === resourceId) || null;
     if (!record) throw new Error(`Potential Change Order ${resourceId} returned no record.`);
-    await enqueueApprovedChangeOrderVerification({ companyId, projectId, record });
+    await enqueueApprovedChangeOrderTasks({ companyId, projectId, record, sourceKind: "potential_change_order" });
     await ensurePotentialChangeOrderTables();
     await upsertPotentialChangeOrder({ companyId, projectId, record });
     return;
@@ -1452,7 +1453,7 @@ async function handleChangeOrderEvent(event: {
   if (!packageRecord || !packageContractId) {
     throw new Error(`Prime Contract Change Order ${resourceId} could not be resolved.`);
   }
-  await enqueueApprovedChangeOrderVerification({ companyId, projectId, record: packageRecord });
+  await enqueueApprovedChangeOrderTasks({ companyId, projectId, record: packageRecord, sourceKind: "change_order_package" });
   await ensureChangeOrderPackagesTable();
   await upsertChangeOrderPackage({
     companyId,

@@ -4,14 +4,14 @@ import test from "node:test";
 import ts from "typescript";
 import vm from "node:vm";
 
-function loadModule() {
+function loadModule(prisma = {}) {
   const source = fs.readFileSync("src/lib/procoreCommitmentMakerTaskQueue.ts", "utf8");
   const output = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
   const module = { exports: {} };
   const require = (id) => {
-    if (id === "@/lib/prisma") return { prisma: {} };
+    if (id === "@/lib/prisma") return { prisma };
     if (id === "@/lib/procoreCommitmentMakerTaskRunner") {
       return { runCommitmentMakerChangeOrderTasks: async () => ({}) };
     }
@@ -68,4 +68,57 @@ test("five-minute sync polls change-order approvals before dispatching task jobs
 
   assert.ok(approvalPoll > 0);
   assert.ok(taskDispatch > approvalPoll);
+});
+
+
+test("PCCO approval queues billing independently of verification without a commitment", async () => {
+  const saved = new Map();
+  const { enqueueCommitmentMakerApprovalTasks } = loadModule({
+    procoreSyncProjectState: { upsert: async (args) => {
+      saved.set(args.where.companyId_projectId_dataset.dataset, args.create);
+    } },
+  });
+  const params = { companyId: "company", projectId: "project",
+    changeOrder: { packageId: "42", number: "002", title: "Approved PCCO", amount: 100 },
+    userEmail: "worker@example.invalid", sourceKind: "change_order_package" };
+  await enqueueCommitmentMakerApprovalTasks(params);
+  await enqueueCommitmentMakerApprovalTasks(params);
+  assert.equal(saved.size, 2);
+  for (const kind of ["aia_billing", "commitment_verification"]) {
+    const job = saved.get(`commitment_maker_tasks:42:${kind}`);
+    assert.deepEqual(Array.from(job.lastResult.taskKinds), [kind]);
+    assert.equal(job.lastResult.commitmentChangeOrderId, undefined);
+  }
+});
+
+test("PCO approval retains verification only, avoiding premature PCCO billing", async () => {
+  const saved = [];
+  const { enqueueCommitmentMakerApprovalTasks } = loadModule({
+    procoreSyncProjectState: { upsert: async (args) => saved.push(args.create) },
+  });
+  await enqueueCommitmentMakerApprovalTasks({ companyId: "company", projectId: "project",
+    changeOrder: { packageId: "43" }, userEmail: "worker@example.invalid",
+    sourceKind: "potential_change_order" });
+  assert.equal(saved.length, 1);
+  assert.deepEqual(Array.from(saved[0].lastResult.taskKinds), ["commitment_verification"]);
+});
+
+test("partial approval enqueue failure propagates and safely resumes the same jobs", async () => {
+  const saved = new Map();
+  let failVerification = true;
+  const { enqueueCommitmentMakerApprovalTasks } = loadModule({
+    procoreSyncProjectState: { upsert: async (args) => {
+      const key = args.where.companyId_projectId_dataset.dataset;
+      if (failVerification && key.endsWith(":commitment_verification")) throw new Error("database unavailable");
+      saved.set(key, args.create);
+    } },
+  });
+  const params = { companyId: "company", projectId: "project", changeOrder: { packageId: "42" },
+    userEmail: "worker@example.invalid", sourceKind: "change_order_package" };
+  await assert.rejects(enqueueCommitmentMakerApprovalTasks(params), /database unavailable/);
+  assert.equal(saved.size, 1);
+  assert.ok(saved.has("commitment_maker_tasks:42:aia_billing"));
+  failVerification = false;
+  await enqueueCommitmentMakerApprovalTasks(params);
+  assert.equal(saved.size, 2);
 });

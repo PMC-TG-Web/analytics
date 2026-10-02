@@ -28,7 +28,7 @@ import {
   commitmentMakerChangeOrderContextFromRecord,
   isApprovedChangeOrderStatus,
 } from '@/lib/procoreCommitmentMakerTasks';
-import { enqueueCommitmentMakerTasks } from '@/lib/procoreCommitmentMakerTaskQueue';
+import { enqueueCommitmentMakerApprovalTasks } from '@/lib/procoreCommitmentMakerTaskQueue';
 
 export const dynamic = 'force-dynamic';
 
@@ -68,7 +68,8 @@ function isAccessSkippedError(message: string): boolean {
   );
 }
 
-async function enqueueVerificationOnApprovalTransition(params: {
+async function enqueueTasksOnApprovalTransition(params: {
+  sourceKind: "potential_change_order" | "change_order_package";
   companyId: string;
   projectId: string;
   previousStatus: string | null | undefined;
@@ -78,12 +79,12 @@ async function enqueueVerificationOnApprovalTransition(params: {
   if (!isApprovedChangeOrderStatus(params.record.status)) return;
   const changeOrder = commitmentMakerChangeOrderContextFromRecord(params.record);
   if (!changeOrder) return;
-  await enqueueCommitmentMakerTasks({
+  await enqueueCommitmentMakerApprovalTasks({
     companyId: params.companyId,
     projectId: params.projectId,
     changeOrder,
     userEmail: 'procore-change-order-sync@pmcdecor.com',
-    taskKinds: ['commitment_verification'],
+    sourceKind: params.sourceKind,
   });
 }
 
@@ -405,10 +406,11 @@ async function runSync(request: Request) {
               },
               select: { status: true },
             });
-            await enqueueVerificationOnApprovalTransition({
+            await enqueueTasksOnApprovalTransition({
               companyId,
               projectId,
               previousStatus: previous?.status,
+              sourceKind: "potential_change_order",
               record: potentialItem,
             });
             const persistedId = await upsertPotentialChangeOrder({
@@ -563,10 +565,11 @@ async function runSync(request: Request) {
               },
               select: { status: true },
             });
-            await enqueueVerificationOnApprovalTransition({
+            await enqueueTasksOnApprovalTransition({
               companyId,
               projectId,
               previousStatus: previous?.status,
+              sourceKind: "change_order_package",
               record: packageRecord,
             });
             await upsertChangeOrderPackage({

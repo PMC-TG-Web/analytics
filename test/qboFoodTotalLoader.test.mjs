@@ -26,6 +26,16 @@ test('monthly loader excludes 85.86 Food log quantity and includes entered $85.8
  assert.equal(d.total,'92.86'); assert.equal(d.food.logCount,1); assert.equal(d.lines.length,2);
  assert.equal(d.lines.find(l=>l.sourceType==='manual_food').amount,'85.86'); assert.equal(d.catalogMappingItems.some(i=>i.description==='Food'),false);
 });
+
+test('shared bill draft codes subcontractor screeders as equipment for review and setup',async()=>{
+ const source={procoreId:'12',description:'Somero S-15R (boom screed) (8 hr minimum) - SOG',costCode:'03-300-20-30',costType:'Subcontractors',uom:'ea',updatedAt:date};
+ const d=await load(null,[],[],'Food',{items:[source],logs:[{id:'3',procoreId:'3',lineItemId:'12',lineItemDescription:source.description,quantityUsed:2,status:'approved',date,updatedAt:date}]});
+ const line=d.lines.find(l=>l.lineKey==='12');
+ assert.equal(line.costType,'Equipment'); assert.equal(line.costCode,source.costCode);
+ assert.equal(line.description,source.description); assert.equal(line.quantity,'2');
+ assert.equal(d.ruleItems.find(l=>l.lineKey==='12').costType,'Equipment');
+ assert.equal(d.issues.length,0); assert.equal(source.costType,'Subcontractors');
+});
 test('shared monthly draft omits boom lift rental from bill lines and catalog setup while retaining labor',async()=>{
  const cards=[{procoreId:'100',date,hours:2,totalHoursWorked:null,costCodeFullCode:'03-300-20-10.L',costCodeName:'SOG Labor',updatedAt:date}];
  const extra={items:[{procoreId:'12',description:'Boom lift rental',costCode:'03-300-20-30',costType:'Equipment',uom:'days',updatedAt:date}],logs:[{id:'3',procoreId:'3',lineItemId:'12',lineItemDescription:'Boom lift rental',quantityUsed:7,status:'approved',date,updatedAt:date}]};

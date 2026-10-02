@@ -12,10 +12,13 @@ export function aggregateDirectCostLabor(timecards: LaborTimecard[], rates: Labo
     seen.add(t.procoreId);
     if (hours === null || !Number.isFinite(hours) || hours < 0) { issues.push(`Timecard ${t.procoreId} needs valid nonnegative hours.`); continue; }
     if (!hours) continue;
+    // The bill host accepts eight decimal places and reconciles every source quantity.
+    const quantity = new Prisma.Decimal(String(hours)).toDecimalPlaces(8, Prisma.Decimal.ROUND_HALF_UP);
+    if (quantity.isZero()) { issues.push(`Timecard ${t.procoreId}: hours are below the supported billing precision (8 decimal places).`); continue; }
     const code = (t.costCodeFullCode || '').trim().replace(/\.L$/i, '') || '(unassigned)';
     const group = groups.get(code) || { description: t.costCodeName || code, hours: new Prisma.Decimal(0), sourceLogs: [] };
-    group.hours = group.hours.plus(String(hours));
-    group.sourceLogs.push({ id: t.procoreId, date: t.date.toISOString().slice(0, 10), quantity: String(hours), updatedAt: t.updatedAt.toISOString() });
+    group.hours = group.hours.plus(quantity);
+    group.sourceLogs.push({ id: t.procoreId, date: t.date.toISOString().slice(0, 10), quantity: quantity.toFixed(), updatedAt: t.updatedAt.toISOString() });
     groups.set(code, group);
   }
   const rows = [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([costCode, group]) => {
@@ -43,7 +46,7 @@ export function aggregateDirectCostLabor(timecards: LaborTimecard[], rates: Labo
     if (rate === null) issues.push(`${group.description} (${costCode}): ${group.hours.toString()} hours need ${conflicting ? 'one unambiguous positive hourly rate' : 'a category, SOG, or travel hourly rate'}.`);
     return {
       lineKey: `labor:${costCode}`, sourceType: 'timecard' as const, procoreLineItemId: null,
-      description: group.description, costCode, costType: 'Labor', quantity: group.hours.toString(),
+      description: group.description, costCode, costType: 'Labor', quantity: group.hours.toFixed(),
       unitCost: rate, uom: 'hr', amount: rate === null ? null : group.hours.mul(rate).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP).toFixed(2),
       rateCostCode,
       ...(fixedPrice ? { fixedPrice } : {}),
@@ -53,6 +56,6 @@ export function aggregateDirectCostLabor(timecards: LaborTimecard[], rates: Labo
       sourceLogs: group.sourceLogs.sort((a, b) => a.id.localeCompare(b.id)),
     };
   });
-  const sumHours = (priced: boolean | null) => rows.filter(r => priced === null || (r.unitCost !== null) === priced).reduce((n, r) => n.plus(r.quantity), new Prisma.Decimal(0)).toString();
+  const sumHours = (priced: boolean | null) => rows.filter(r => priced === null || (r.unitCost !== null) === priced).reduce((n, r) => n.plus(r.quantity), new Prisma.Decimal(0)).toFixed();
   return { rows, issues, totalHours: sumHours(null), pricedHours: sumHours(true), unpricedHours: sumHours(false), total: rows.reduce((n, r) => n.plus(r.amount || 0), new Prisma.Decimal(0)).toFixed(2), lines: rows.filter(r => r.unitCost !== null) };
 }

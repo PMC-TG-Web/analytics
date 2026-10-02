@@ -126,7 +126,10 @@ export function aggregateDirectCosts(logs: DirectCostSource[], items: DirectCost
     if (isExcludedConcrete(item, sourceName)) {
       excluded.concrete++; continue;
     }
-    if (hourlyLabor(item)) laborHours = laborHours.plus(String(log.quantityUsed));
+    // Normalize each source before summing so bill-host evidence reconciles exactly.
+    const quantity = new Prisma.Decimal(String(log.quantityUsed)).toDecimalPlaces(8, Prisma.Decimal.ROUND_HALF_UP);
+    if (quantity.isZero()) { addIssue(`${sourceLabel}: quantity is below the supported billing precision (8 decimal places).`, log, item); continue; }
+    if (hourlyLabor(item)) laborHours = laborHours.plus(quantity);
     if (item.pricingIssue) { addIssue(`${item.pricingIssue} ${issueSource(log, item)}.`, log, item); continue; }
     const missingCost = item.unitCost === null || !Number.isFinite(item.unitCost) || item.unitCost <= 0;
     const missingUnit = !item.uom?.trim();
@@ -136,8 +139,8 @@ export function aggregateDirectCosts(logs: DirectCostSource[], items: DirectCost
       addIssue(`${name} needs ${needed}. ${issueSource(log, item)}.`, log, item); continue;
     }
     const group = groups.get(itemId!) || { item, quantity: new Prisma.Decimal(0), sourceLogs: [] };
-    group.quantity = group.quantity.plus(String(log.quantityUsed));
-    group.sourceLogs.push({ id: log.id, date: log.date.toISOString().slice(0, 10), quantity: String(log.quantityUsed), updatedAt: log.updatedAt.toISOString() });
+    group.quantity = group.quantity.plus(quantity);
+    group.sourceLogs.push({ id: log.id, date: log.date.toISOString().slice(0, 10), quantity: quantity.toFixed(), updatedAt: log.updatedAt.toISOString() });
     groups.set(itemId!, group);
   }
   const lines = [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([procoreLineItemId, group]) => ({
@@ -146,7 +149,7 @@ export function aggregateDirectCosts(logs: DirectCostSource[], items: DirectCost
     purchaseOrder: group.item.purchaseOrderContract || null,
     costCode: group.item.costCode || null,
     costType: group.item.costType || null,
-    quantity: group.quantity.toString(),
+    quantity: group.quantity.toFixed(),
     unitCost: String(group.item.unitCost),
     uom: group.item.uom!,
     amount: group.quantity.mul(String(group.item.unitCost)).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP).toFixed(2),
@@ -157,8 +160,8 @@ export function aggregateDirectCosts(logs: DirectCostSource[], items: DirectCost
     ...(group.item.fixedPrice ? { fixedPrice: group.item.fixedPrice } : {}),
     sourceLogs: group.sourceLogs.sort((a, b) => a.id.localeCompare(b.id)),
   }));
-  return { lines, issues, issueSources, excluded, laborHours: laborHours.toString(),
-    pricedLaborHours: lines.filter(hourlyLabor).reduce((sum, line) => sum.plus(line.quantity), new Prisma.Decimal(0)).toString(),
+  return { lines, issues, issueSources, excluded, laborHours: laborHours.toFixed(),
+    pricedLaborHours: lines.filter(hourlyLabor).reduce((sum, line) => sum.plus(line.quantity), new Prisma.Decimal(0)).toFixed(),
     total: lines.reduce((sum, line) => sum.plus(line.amount), new Prisma.Decimal(0)).toFixed(2) };
 }
 

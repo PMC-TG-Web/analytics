@@ -5,6 +5,29 @@ import { aggregateDirectCosts, directCostMonth } from '../src/lib/qboDirectCosts
 const date = new Date('2026-09-10T00:00:00Z');
 const log = (id, quantityUsed, overrides = {}) => ({ id, date, status: 'approved', quantityUsed, lineItemId: '10', lineItemDescription: 'Concrete', lineItemHolderTitle: 'SOG', updatedAt: date, ...overrides });
 const item = { procoreId: '10', description: 'Concrete', unitCost: 153.24, uom: 'cy', updatedAt: date };
+
+test('daily-log quantities and evidence round together before line aggregation', () => {
+  const logs = [log('1', 1 / 3), log('2', 1 / 3)];
+  const result = aggregateDirectCosts(logs, [{ ...item, description: 'Labor', costType: 'Labor', uom: 'hr', unitCost: 70.85 }], new Map());
+  assert.deepEqual(result.issues, []);
+  assert.equal(result.lines[0].quantity, '0.66666666');
+  assert.deepEqual(result.lines[0].sourceLogs.map(log => log.quantity), ['0.33333333', '0.33333333']);
+  assert.equal(result.total, '47.23');
+  assert.equal(result.laborHours, '0.66666666');
+  assert.equal(result.pricedLaborHours, '0.66666666');
+  assert.equal(logs[0].quantityUsed, 1 / 3, 'Source daily logs are not modified');
+});
+
+test('daily-log evidence retains eight-place decimals and blocks quantities that round to zero', () => {
+  const result = aggregateDirectCosts([log('1', 1e-8)], [{ ...item, unitCost: 1000000 }], new Map());
+  assert.equal(result.lines[0].quantity, '0.00000001');
+  assert.equal(result.lines[0].sourceLogs[0].quantity, '0.00000001');
+  assert.equal(result.total, '0.01');
+  const tooSmall = aggregateDirectCosts([log('1', 1e-9)], [item], new Map());
+  assert.equal(tooSmall.lines.length, 0);
+  assert.match(tooSmall.issues[0], /quantity is below the supported billing precision/);
+  assert.equal(tooSmall.issueSources[0].message, tooSmall.issues[0]);
+});
 test('sums used quantities and prices once per line with decimal rounding', () => {
   const result = aggregateDirectCosts([log('1', 4), log('2', 4.5)], [item], new Map());
   assert.equal(result.total, '1302.54');

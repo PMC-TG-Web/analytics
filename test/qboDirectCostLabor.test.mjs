@@ -4,6 +4,35 @@ import { aggregateDirectCostLabor } from '../src/lib/qboDirectCostLabor.ts';
 const date = new Date('2026-09-10');
 const card = (id, hours, code = '03-300-20-10') => ({ procoreId: id, hours, totalHoursWorked: null, date, updatedAt: date, costCodeFullCode: code, costCodeName: 'SOG Labor' });
 const rate = (value = '38') => ({ costCode: '03-300-20-10', rate: value, lineItemId: '101', proposalId: '10', bidBoardId: '20', updatedAt: date.toISOString() });
+
+test('repeating timecard hours reconcile at bill-host precision without changing cents', () => {
+  const travel = '01-300-10-30', wall = '03-300-10-10';
+  const cards = [card('1', 1 / 3, travel), card('2', 1 / 3, travel),
+    ...[1.5, 0.5, 9.166666666666666, 1 / 3, 6.166666666666667, 1, 9.166666666666666, 4.5].map((hours, i) => card(String(i + 3), hours, wall))];
+  const result = aggregateDirectCostLabor(cards, [{ ...rate('70.85'), costCode: travel }, { ...rate('72.37'), costCode: wall }]);
+  assert.deepEqual(result.issues, []);
+  assert.equal(result.totalHours, '33');
+  assert.equal(result.pricedHours, '33');
+  assert.equal(result.total, '2387.19');
+  assert.deepEqual(result.lines.map(line => [line.quantity, line.amount]), [['0.66666666', '47.23'], ['32.33333334', '2339.96']]);
+  const units = value => { const [whole, fraction = ''] = value.split('.'); return BigInt(whole + fraction.padEnd(8, '0')); };
+  for (const line of result.lines) {
+    for (const value of [line.quantity, ...line.sourceLogs.map(log => log.quantity)]) assert.match(value, /^\d{1,12}(\.\d{1,8})?$/);
+    assert.equal(line.sourceLogs.reduce((sum, log) => sum + units(log.quantity), 0n), units(line.quantity));
+  }
+  assert.equal(cards[0].hours, 1 / 3, 'Source timecards are not modified');
+});
+
+test('small positive timecard hours use plain decimals or an actionable precision issue', () => {
+  const result = aggregateDirectCostLabor([card('1', 1e-8)], [rate('1000000')]);
+  assert.equal(result.lines[0].quantity, '0.00000001');
+  assert.equal(result.lines[0].sourceLogs[0].quantity, '0.00000001');
+  assert.equal(result.totalHours, '0.00000001');
+  assert.equal(result.total, '0.01');
+  const tooSmall = aggregateDirectCostLabor([card('1', 1e-9)], [rate()]);
+  assert.equal(tooSmall.lines.length, 0);
+  assert.match(tooSmall.issues[0], /Timecard 1:.*billing precision/);
+});
 test('prices timecards by exact cost code with configured hourly costs', () => {
   const r = aggregateDirectCostLabor([card('1', 130), card('2', 4)], [rate(), { ...rate(), lineItemId: '102' }]);
   assert.equal(r.total, '5092.00'); assert.equal(r.totalHours, '134'); assert.equal(r.unpricedHours, '0');

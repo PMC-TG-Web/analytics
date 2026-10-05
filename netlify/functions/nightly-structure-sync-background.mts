@@ -97,9 +97,10 @@ const handler = async (request: Request) => {
   }));
 
   let structureAttempts = 0;
+  let structureRequests = 0;
   let workerBusyRetries = 0;
   let cooldownWaits = 0;
-  while (structureAttempts < structureCap && Date.now() < deadline) {
+  while (structureAttempts < structureCap && structureRequests < structureCap * 4 && Date.now() < deadline) {
     const response = await fetch(`${baseUrl}/api/cron/nightly-structure`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-sync-secret": secret },
@@ -131,7 +132,8 @@ const handler = async (request: Request) => {
     }
     if (plan.action === "stop") break;
     workerBusyRetries = 0;
-    structureAttempts += 1;
+    structureRequests += 1;
+    if (!result?.pending) structureAttempts += 1;
   }
 
   return Response.json({ success: true, projectLinkSync, bidBoardHeaders, estimateResults, results });

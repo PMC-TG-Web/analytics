@@ -23,6 +23,7 @@ import {
   procoreSyncResponseIsRateLimited,
 } from "@/lib/procoreSyncResponse";
 import { procoreQuotaObservation } from "@/lib/procoreRateLimit";
+import { STRUCTURE_STAGES, STRUCTURE_STAGE_TIMEOUT_MS, structureProgress } from "@/lib/procoreStructureProgress";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -85,6 +86,7 @@ async function runStep(params: {
   projectId: string;
   step: string;
   path: string;
+  timeoutMs?: number;
 }) {
   try {
     const response = await fetch(`${params.origin}${params.path}`, {
@@ -99,7 +101,7 @@ async function runStep(params: {
         persistUnpackedFields: false,
         forceUserOAuth: false,
       }),
-      signal: AbortSignal.timeout(4 * 60_000),
+      signal: AbortSignal.timeout(params.timeoutMs ?? 4 * 60_000),
     });
     const detail = await readDetail(response);
     const rateLimited = procoreSyncResponseIsRateLimited(response.status, detail);
@@ -377,6 +379,7 @@ async function runPostInConnection(request: NextRequest) {
       dataset: DATASET,
       leaseId: worker.leaseId,
       projectId: requestedProjectId || undefined,
+      retryAfterInterruptedClaim: true,
     });
     }
     if (!project) {
@@ -477,48 +480,42 @@ async function runPostInConnection(request: NextRequest) {
     }).catch(() => null);
     logId = log?.id ?? null;
 
-    const stages = [
-      {
-        step: "purchase-order-line-item-details",
-        path: "/api/procore/sync/purchase-order-line-item-details",
-      },
-      {
-        step: "budget-line-items",
-        path: "/api/procore/sync/budget-line-items",
-      },
-      {
-        step: "change-order-packages",
-        path: "/api/procore/sync/change-order-packages",
-      },
-      {
-        step: "commitment-change-order-line-items",
-        path: "/api/procore/sync/commitment-change-order-line-items",
-      },
-    ];
-    const steps: StepResult[] = [];
-    for (const stage of stages) {
-      const result = await runStep({
-        origin: request.nextUrl.origin.replace(/\/$/, ""),
-        secret,
-        projectId: project.projectId,
-        ...stage,
-      });
-      steps.push(result);
-      if (result.status === "error") break;
-    }
+    const progress = structureProgress<StepResult>(project.lastResult);
+    const steps: StepResult[] = [...progress.steps];
+    // One stage per invocation keeps the coordinator below Netlify's observed
+    // 60-second request limit. Persist progress before releasing the lease.
+    const stage = STRUCTURE_STAGES[steps.length];
+    const result = await runStep({
+      origin: request.nextUrl.origin.replace(/\/$/, ""),
+      secret,
+      projectId: project.projectId,
+      timeoutMs: STRUCTURE_STAGE_TIMEOUT_MS,
+      ...stage,
+    });
+    steps.push(result);
 
-    const success = steps.length === stages.length && steps.every((step) => step.status === "ok");
+    const success = steps.length === STRUCTURE_STAGES.length && steps.every((step) => step.status === "ok");
+    const pending = !success && result.status === "ok";
+    const checkpoint = { cycleStartedAt: progress.cycleStartedAt, steps: steps.filter((step) => step.status === "ok") };
     const rateLimit = steps.find((step) => step.rateLimited);
-    const error = success ? null : JSON.stringify(steps.find((step) => step.status === "error")?.detail || "Nightly structural sync failed").slice(0, 4_000);
+    const error = success || pending ? null : JSON.stringify(steps.find((step) => step.status === "error")?.detail || "Nightly structural sync failed").slice(0, 4_000);
     const rateLimitUntil = rateLimit?.rateLimitUntil ? new Date(rateLimit.rateLimitUntil) : null;
-    if (rateLimitUntil) {
+    if (pending) {
+      await prisma.$executeRawUnsafe(
+        `UPDATE procore_sync_project_states SET next_run_at = NOW(),
+          last_result = $5::jsonb, locked_by = NULL, locked_until = NULL, updated_at = NOW()
+         WHERE company_id = $1 AND project_id = $2 AND dataset = $3 AND locked_by = $4`,
+        COMPANY_ID, project.projectId, DATASET, worker.leaseId,
+        JSON.stringify({ selection, steps, structureProgress: checkpoint }),
+      );
+    } else if (rateLimitUntil) {
       if (!rateLimit?.rateLimitInherited) {
         await setProcoreRateLimit({ companyId: COMPANY_ID, until: rateLimitUntil, error });
       }
       await deferProjectSync({
         project,
         until: rateLimitUntil,
-        result: { selection, steps, deferredBy: "procore-rate-limit" },
+        result: { selection, steps, structureProgress: checkpoint, deferredBy: "procore-rate-limit" },
       });
     } else {
       await finishProjectSync({
@@ -526,7 +523,7 @@ async function runPostInConnection(request: NextRequest) {
         success,
         nextRunMinutes: success ? DAILY_REQUEUE_MINUTES : 30,
         error,
-        result: { selection, steps },
+        result: { selection, steps, ...(success ? {} : { structureProgress: checkpoint }) },
       });
     }
 
@@ -536,16 +533,17 @@ async function runPostInConnection(request: NextRequest) {
         where: { id: logId },
         data: {
           finishedAt: new Date(),
-          success: success || Boolean(rateLimitUntil),
+          success: success || pending || Boolean(rateLimitUntil),
           totalMs,
           steps: [selection, ...steps] as object[],
-          error: rateLimitUntil ? null : error,
+          error: pending || rateLimitUntil ? null : error,
         },
       }).catch(() => undefined);
     }
     return NextResponse.json({
-      success: success || Boolean(rateLimitUntil),
+      success: success || pending || Boolean(rateLimitUntil),
       completed: success,
+      pending,
       deferred: Boolean(rateLimitUntil),
       companyId: COMPANY_ID,
       projectId: project.projectId,
@@ -553,7 +551,7 @@ async function runPostInConnection(request: NextRequest) {
       logId: logId?.toString() || null,
       totalMs,
       steps,
-    }, { status: success || rateLimitUntil ? 200 : 207 });
+    }, { status: success || pending || rateLimitUntil ? 200 : 207 });
   } finally {
     if (bidBoardProject) {
       await prisma.$executeRawUnsafe(

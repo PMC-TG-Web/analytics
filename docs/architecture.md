@@ -109,6 +109,8 @@ Navigation reads `/api/permissions/me` with `cache: no-store` on mount, on focus
 
 When adding a protected page and API, update both route maps and confirm that the intended permission appears in navigation. Special unauthenticated paths are intentionally narrow: Auth0 routes, the public version endpoint, Procore webhook receipt, secret-authenticated worker routes, and limited Procore-session analytics entry.
 
+The landing page and exact `GET /api/weather` endpoint require a signed-in session but no separate Home permission. The forecast contains public weather data and is displayed to every landing-page user. Other Home data, including `/api/home-snapshot`, retains its existing permission checks; the weather exception does not apply to adjacent paths or writes. Validate with `node --test test/weatherPermissions.test.mjs test/permissions.test.mjs`.
+
 ### Diagnostics and rate limits
 
 Direct Cost Bills has its own `accounting-direct-cost-bills` permission, labeled **QBO Direct Costs** in employee navigation permissions. It controls the navigation link, `/accounting/direct-cost-bills`, and all `/api/accounting/direct-cost-bills` operations including setup and sync. OWNER/ADMIN groups and the existing admin fallback retain access. QBO P&L remains independently controlled by `accounting-project-profitability`; granting P&L alone does not grant bill access. No individual employee assignments are automatically changed. Validate with `node --test test/permissions.test.mjs`.

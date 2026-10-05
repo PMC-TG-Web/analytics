@@ -255,6 +255,9 @@ async function runSync(request: Request) {
   return withProcoreLiveApiBypassForSyncSecret(request, async () => {
     try {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    // Worker-only scopes bound nightly requests without changing interactive
+    // full-project sync behavior or treating a partial PCO list as authoritative.
+    const syncScope = hasValidProcoreSyncSecret(request) ? readText(body.syncScope) : '';
     const cookieStore = await cookies();
 
     const userAccessToken = readText(
@@ -373,7 +376,7 @@ async function runSync(request: Request) {
       let projectPotentialUpserted = 0;
       let projectPotentialLinesFetched = 0;
       let projectPotentialLinesUpserted = 0;
-      while (true) {
+      while (syncScope !== 'packages') {
         let potentialItems: JsonObject[];
         try {
           potentialItems = await fetchPotentialChangeOrdersPage(
@@ -485,7 +488,7 @@ async function runSync(request: Request) {
           break;
         }
       }
-      if (potentialFetchComplete) {
+      if (syncScope !== 'packages' && potentialFetchComplete) {
         await reconcilePotentialChangeOrders({
           companyId,
           projectId,
@@ -497,6 +500,7 @@ async function runSync(request: Request) {
       totalPotentialChangeOrderLinesFetched += projectPotentialLinesFetched;
       totalPotentialChangeOrderLinesUpserted += projectPotentialLinesUpserted;
       if (projectPotentialFetched > 0) projectsWithPotentialChangeOrders += 1;
+      if (syncScope === 'potential') continue;
 
       // Fetch change order packages (all pages)
       let page = 1;

@@ -100,7 +100,7 @@ const handler = async (request: Request) => {
   let structureRequests = 0;
   let workerBusyRetries = 0;
   let cooldownWaits = 0;
-  while (structureAttempts < structureCap && structureRequests < structureCap * 4 && Date.now() < deadline) {
+  while (structureAttempts < structureCap && structureRequests < structureCap * 5 && Date.now() < deadline) {
     const response = await fetch(`${baseUrl}/api/cron/nightly-structure`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-sync-secret": secret },

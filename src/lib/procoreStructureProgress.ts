@@ -1,7 +1,8 @@
 export const STRUCTURE_STAGES = [
   { step: 'purchase-order-line-item-details', path: '/api/procore/sync/purchase-order-line-item-details' },
   { step: 'budget-line-items', path: '/api/procore/sync/budget-line-items' },
-  { step: 'change-order-packages', path: '/api/procore/sync/change-order-packages' },
+  { step: 'potential-change-orders', path: '/api/procore/sync/change-order-packages', syncScope: 'potential' },
+  { step: 'change-order-packages', path: '/api/procore/sync/change-order-packages', syncScope: 'packages' },
   { step: 'commitment-change-order-line-items', path: '/api/procore/sync/commitment-change-order-line-items' },
 ] as const;
 

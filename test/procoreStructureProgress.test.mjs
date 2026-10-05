@@ -78,7 +78,7 @@ function routeHarness(stageFetch, previous) {
   return { run, calls };
 }
 
-test('route checkpoints exactly one stage and only completes after the fourth', async () => {
+test('route checkpoints exactly one stage and only completes after the final stage', async () => {
   let previous;
   for (let index = 0; index < STRUCTURE_STAGES.length; index++) {
     const requested = [];
@@ -89,12 +89,13 @@ test('route checkpoints exactly one stage and only completes after the fourth', 
     }, previous);
     const result = await h.run();
     assert.deepEqual(requested, [STRUCTURE_STAGES[index].path]);
-    assert.equal(result.completed, index === 3);
-    assert.equal(result.pending, index !== 3);
-    assert.equal(h.calls.finished.length, index === 3 ? 1 : 0);
+    const last = index === STRUCTURE_STAGES.length - 1;
+    assert.equal(result.completed, last);
+    assert.equal(result.pending, !last);
+    assert.equal(h.calls.finished.length, last ? 1 : 0);
     assert.equal(h.calls.released, 1);
     assert.equal(h.calls.claims[0].retryAfterInterruptedClaim, true);
-    if (index < 3) previous = h.calls.checkpoints[0];
+    if (!last) previous = h.calls.checkpoints[0];
     else assert.equal(h.calls.finished[0].result.structureProgress, undefined);
   }
 });
@@ -130,16 +131,71 @@ test('background worker gives pending stages their bounded continuation budget',
           return Response.json({ success: true, skipped: true, reason: 'no_project_due' });
         }
         calls++;
-        return Response.json({ success: true, pending: neverCompletes || calls < 4, completed: !neverCompletes && calls === 4 });
+        return Response.json({ success: true, pending: neverCompletes || calls < STRUCTURE_STAGES.length, completed: !neverCompletes && calls === STRUCTURE_STAGES.length });
       });
       const { default: worker } = await import('../netlify/functions/nightly-structure-sync-background.mts');
       await worker(new Request('https://example.test', { headers: { 'x-sync-secret': 'test-secret' } }));
-      assert.equal(calls, 4, 'continuations neither consume project cap nor run without a bound');
+      assert.equal(calls, STRUCTURE_STAGES.length, 'continuations neither consume project cap nor run without a bound');
       mock.mock.restore();
     }
   } finally {
     for (const [key, value] of Object.entries({ PROCORE_SYNC_SECRET: oldSecret, APP_BASE_URL: oldBase, PROCORE_STRUCTURE_MAX_PROJECTS_PER_TICK: oldCap })) {
       if (value === undefined) delete process.env[key]; else process.env[key] = value;
     }
+  }
+});
+
+test('change-order worker scopes preserve full-list reconciliation and interactive behavior', async () => {
+  for (const [scope, authenticated, expected] of [
+    ['potential', true, ['potential']], ['packages', true, ['packages']],
+    ['packages', false, ['potential', 'packages']], ['', true, ['potential', 'packages']],
+  ]) {
+    const reconciled = [];
+    const fetched = [];
+    const imports = {
+      'next/server': { NextResponse: { json: (body, init) => Response.json(body, init) } },
+      'next/headers': { cookies: async () => ({ get: () => undefined }) },
+      '@/lib/procoreSyncStream': { streamSyncResponse: operation => operation() },
+      '@/lib/procore': {
+        hasValidProcoreSyncSecret: () => authenticated,
+        withProcoreLiveApiBypassForSyncSecret: (_request, operation) => operation(),
+        getClientCredentialsToken: async () => 'test-token',
+        makeRequest: async url => {
+          if (url.includes('/prime_contracts?')) return [{ id: 'prime' }];
+          if (url.includes('/potential_change_orders?')) { fetched.push('potential'); return [{ id: 'pco' }]; }
+          if (url.includes('/potential_change_orders/')) return [];
+          if (url.includes('/change_order_packages?')) { fetched.push('packages'); return [{ id: 'pcco' }]; }
+          return { id: 'pcco', line_items: [] };
+        },
+      },
+      '@/lib/prisma': { prisma: {
+        procorePotentialChangeOrder: { findUnique: async () => null },
+        procoreChangeOrderPackage: { findUnique: async () => null },
+      } },
+      '@/lib/procoreChangeOrderPackages': {
+        ensureChangeOrderPackagesTable: async () => {},
+        upsertChangeOrderPackage: async () => {},
+        reconcileChangeOrderPackageLines: async () => {},
+      },
+      '@/lib/procorePotentialChangeOrders': {
+        ensurePotentialChangeOrderTables: async () => {},
+        upsertPotentialChangeOrder: async () => 'pco',
+        reconcilePotentialChangeOrderLines: async () => {},
+        reconcilePotentialChangeOrders: async args => { reconciled.push(args.changeOrderIds); },
+      },
+    };
+    const module = { exports: {} };
+    const js = ts.transpileModule(fs.readFileSync('src/app/api/procore/sync/change-order-packages/route.ts', 'utf8'), {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    }).outputText;
+    new Function('require', 'module', 'exports', js)(id => imports[id] || {}, module, module.exports);
+    const response = await module.exports.POST(new Request('https://example.test', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ companyId: 'company', projectIds: ['project'], syncScope: scope }),
+    }));
+    const result = await response.json();
+    assert.deepEqual(result.errors, []);
+    assert.deepEqual(fetched, expected);
+    assert.deepEqual(reconciled, expected.includes('potential') ? [['pco']] : [], 'package-only work must not reconcile away untouched PCOs');
   }
 });

@@ -87,6 +87,7 @@ async function runStep(params: {
   step: string;
   path: string;
   timeoutMs?: number;
+  syncScope?: string;
 }) {
   try {
     const response = await fetch(`${params.origin}${params.path}`, {
@@ -100,6 +101,7 @@ async function runStep(params: {
         persist: true,
         persistUnpackedFields: false,
         forceUserOAuth: false,
+        syncScope: params.syncScope,
       }),
       signal: AbortSignal.timeout(params.timeoutMs ?? 4 * 60_000),
     });

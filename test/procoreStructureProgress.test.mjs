@@ -56,7 +56,7 @@ test('resuming and appending a stage does not mutate stored evidence', () => {
   assert.equal(prior.structureProgress.steps.length, 1);
 });
 
-function routeHarness(stageFetch, previous) {
+function routeHarness(stageFetch, previous, noProject = false) {
   const calls = { finished: [], checkpoints: [], released: 0, claims: [] };
   const project = { companyId: 'company', projectId: 'project', dataset: 'nightly_structure', leaseId: 'lease', lastResult: previous };
   const imports = {
@@ -70,7 +70,8 @@ function routeHarness(stageFetch, previous) {
       acquireProcoreWorker: async () => ({ acquired: true, leaseId: 'lease' }),
       releaseProcoreWorker: async () => { calls.released++; },
       seedProjectSyncQueue: async () => {},
-      claimDueProject: async options => { calls.claims.push(options); return project; },
+      claimDueProject: async options => { calls.claims.push(options); return noProject ? null : project; },
+      seedEstimatingSyncQueue: async () => { throw new Error('Structure-only work must not fall back to estimates'); },
       finishProjectSync: async options => { calls.finished.push(options); },
     },
     '@/lib/prisma': { prisma: {
@@ -86,16 +87,70 @@ function routeHarness(stageFetch, previous) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
   new Function('require', 'module', 'exports', 'fetch', js)(id => imports[id] || {}, module, module.exports, stageFetch);
-  const run = async () => {
+  const run = async (body = { projectId: 'project' }) => {
     const request = new Request('https://example.test/api/cron/nightly-structure', {
       method: 'POST', headers: { 'content-type': 'application/json', 'x-sync-secret': 'test-secret' },
-      body: JSON.stringify({ projectId: 'project' }),
+      body: JSON.stringify(body),
     });
     request.nextUrl = new URL(request.url);
     return (await module.exports.POST(request)).json();
   };
   return { run, calls };
 }
+
+test('structure-only catch-up skips unrelated datasets and leaves future work alone', async () => {
+  const h = routeHarness(async () => { throw new Error('No due project must not trigger a sync'); }, null, true);
+  const result = await h.run({ mode: 'structure' });
+  assert.equal(result.reason, 'no_structure_project_due');
+  assert.equal(result.success, true);
+  assert.equal(h.calls.claims.length, 1);
+  assert.equal(h.calls.claims[0].dataset, 'nightly_structure');
+  assert.equal(h.calls.claims[0].projectId, undefined, 'catch-up must honor queue due times');
+  assert.equal(h.calls.released, 1);
+});
+
+test('daytime catch-up is bounded, follows Actuals and estimates, and yields to quota or contention', async t => {
+  const oldSecret = process.env.PROCORE_SYNC_SECRET;
+  const oldBase = process.env.APP_BASE_URL;
+  process.env.PROCORE_SYNC_SECRET = 'test-secret';
+  process.env.APP_BASE_URL = 'https://example.test';
+  t.mock.method(console, 'log', () => {});
+  try {
+    const { default: worker } = await import('../netlify/functions/actuals-sync-background.mts');
+    for (const outcome of [
+      { success: true, pending: true },
+      { success: true, completed: true },
+      { success: true, skipped: true, reason: 'worker_busy' },
+      { success: true, skipped: true, reason: 'no_structure_project_due' },
+      { success: true, deferred: true, rateLimitUntil: new Date(Date.now() + 3600_000).toISOString() },
+      { success: false },
+    ]) {
+      const calls = [];
+      const mock = t.mock.method(globalThis, 'fetch', async (url, init) => {
+        const mode = JSON.parse(init.body).mode;
+        const step = mode || new URL(url).pathname;
+        calls.push(step);
+        if (mode === 'structure') return Response.json(outcome);
+        return Response.json({ success: true, skipped: true, reason: 'no_project_due' });
+      });
+      const request = mode => new Request('https://example.test', {
+        method: 'POST', headers: { 'x-sync-secret': 'test-secret' }, body: JSON.stringify({ mode }),
+      });
+      const result = await (await worker(request(''))).json();
+      assert.equal(result.structureCatchUp.length, outcome.pending || outcome.completed ? 5 : 1);
+      assert.ok(calls.indexOf('/api/cron/actuals') < calls.indexOf('structure'));
+      assert.ok(calls.indexOf('estimates') < calls.indexOf('structure'));
+      if (outcome.deferred) assert.ok(!calls.includes('/api/cron/project-onboarding'));
+      calls.length = 0;
+      await worker(request('reconcile'));
+      assert.ok(!calls.includes('structure'), 'historical Actuals reconciliation must stay separate');
+      mock.mock.restore();
+    }
+  } finally {
+    if (oldSecret === undefined) delete process.env.PROCORE_SYNC_SECRET; else process.env.PROCORE_SYNC_SECRET = oldSecret;
+    if (oldBase === undefined) delete process.env.APP_BASE_URL; else process.env.APP_BASE_URL = oldBase;
+  }
+});
 
 test('route checkpoints exactly one stage and only completes after the final stage', async () => {
   let previous;

@@ -25,6 +25,7 @@ const handler = async (request: Request) => {
   let projectLinkSync: unknown = null;
   const purchaseOrderDiscovery: unknown[] = [];
   const estimateDetails: unknown[] = [];
+  const structureCatchUp: unknown[] = [];
   const estimateCap = Math.min(
     12,
     Math.max(3, Number.parseInt(process.env.PROCORE_ESTIMATE_MAX_PROJECTS_PER_TICK || "6", 10) || 6),
@@ -142,6 +143,30 @@ const handler = async (request: Request) => {
       if (!estimateResponse.ok || estimateResult?.success === false) continue;
     }
 
+    // Resume missed nightly work after Actuals and estimates. Each request runs
+    // one checkpointed stage; keep daytime catch-up bounded to five stages and
+    // yield immediately on contention, quota deferral, or a project failure.
+    for (let stage = 0; stage < 5 && Date.now() < deadline; stage += 1) {
+      const structureResponse = await fetch(`${baseUrl}/api/cron/nightly-structure`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-sync-secret": expected },
+        body: JSON.stringify({ mode: "structure" }),
+        signal: AbortSignal.timeout(55_000),
+      });
+      const structureResult = await structureResponse.json().catch(() => null);
+      structureCatchUp.push({ status: structureResponse.status, result: structureResult });
+      console.log(JSON.stringify({
+        event: "structure-catch-up-background",
+        status: structureResponse.status,
+        success: structureResult?.success,
+        pending: structureResult?.pending,
+        reason: structureResult?.reason,
+      }));
+      const plan = procoreWorkerRetryPlan(structureResult, { deadlineMs: deadline });
+      if (plan.reason === "rate_limit_cooldown") break secondaryWork;
+      if (plan.action !== "proceed" || !structureResponse.ok || !structureResult?.success) break;
+    }
+
     const projectLinkResponse = await fetch(`${baseUrl}/api/cron/project-link-sync`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-sync-secret": expected },
@@ -219,6 +244,7 @@ const handler = async (request: Request) => {
     onboarding,
     purchaseOrderDiscovery,
     estimateDetails,
+    structureCatchUp,
     results,
   });
 };

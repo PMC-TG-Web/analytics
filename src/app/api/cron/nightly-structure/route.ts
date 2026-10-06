@@ -145,6 +145,7 @@ async function runPostInConnection(request: NextRequest) {
   const mode = String(body.mode || "").trim().toLowerCase();
   const requestedProjectId = String(body.projectId || "").trim();
   const estimateOnly = mode === "estimates";
+  const structureOnly = mode === "structure";
   const bidBoardOnly = mode === "bid-board-headers" || mode === "headers";
   const poDiscoveryOnly = mode === "po-discovery" || mode === "purchase-orders";
 
@@ -278,7 +279,7 @@ async function runPostInConnection(request: NextRequest) {
     }
 
     if (!estimateOnly) {
-    if (!requestedProjectId) {
+    if (!requestedProjectId && !structureOnly) {
     await seedSingletonSyncQueue({
       companyId: COMPANY_ID,
       dataset: BID_BOARD_DATASET,
@@ -384,6 +385,9 @@ async function runPostInConnection(request: NextRequest) {
     });
     }
     if (!project) {
+      if (structureOnly) {
+        return NextResponse.json({ success: true, skipped: true, reason: "no_structure_project_due", dataset: DATASET });
+      }
       if (requestedProjectId) {
         return NextResponse.json({
           success: false,

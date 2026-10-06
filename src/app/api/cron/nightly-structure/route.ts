@@ -23,7 +23,7 @@ import {
   procoreSyncResponseIsRateLimited,
 } from "@/lib/procoreSyncResponse";
 import { procoreQuotaObservation } from "@/lib/procoreRateLimit";
-import { STRUCTURE_STAGES, STRUCTURE_STAGE_TIMEOUT_MS, structureProgress } from "@/lib/procoreStructureProgress";
+import { STRUCTURE_STAGES, STRUCTURE_STAGE_TIMEOUT_MS, structureProgress, nextStructureRunMinutes } from "@/lib/procoreStructureProgress";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -34,8 +34,7 @@ const BID_BOARD_DATASET = "nightly_bid_board_headers";
 const PO_DISCOVERY_DATASET = "purchase_order_discovery";
 const BID_BOARD_QUEUE_ID = "__company_bid_board__";
 const COMPANY_ID = (process.env.PROCORE_COMPANY_ID || "598134325805519").trim();
-// The scheduler runs every five minutes. Requeue one tick before 24 hours so a
-// job completed a few seconds after a tick cannot miss the next nightly window.
+// Estimates are also drained during the day; retain their daily tick margin.
 const DAILY_REQUEUE_MINUTES = 24 * 60 - 5;
 const BID_BOARD_SYNC_INTERVAL_MINUTES = Math.min(
   360,
@@ -523,7 +522,7 @@ async function runPostInConnection(request: NextRequest) {
       await finishProjectSync({
         project,
         success,
-        nextRunMinutes: success ? DAILY_REQUEUE_MINUTES : 30,
+        nextRunMinutes: success ? nextStructureRunMinutes() : 30,
         error,
         result: { selection, steps, ...(success ? {} : { structureProgress: checkpoint }) },
       });

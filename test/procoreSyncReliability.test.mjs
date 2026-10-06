@@ -373,7 +373,7 @@ test("Procore not-found detection handles structured and wrapped API errors", ()
   assert.equal(procoreApiErrorIsNotFound(new Error("Procore API error 403: Forbidden")), false);
 });
 
-test("nightly structure supports targeted reruns and a scheduler-tick requeue margin", async () => {
+test("nightly structure supports targeted reruns and requeues within its operating window", async () => {
   const route = await readFile(
     new URL("../src/app/api/cron/nightly-structure/route.ts", import.meta.url),
     "utf8",
@@ -382,6 +382,7 @@ test("nightly structure supports targeted reruns and a scheduler-tick requeue ma
   assert.match(route, /projectId: requestedProjectId \|\| undefined/);
   assert.match(route, /const DAILY_REQUEUE_MINUTES = 24 \* 60 - 5/);
   assert.match(route, /success \? DAILY_REQUEUE_MINUTES : 30/);
+  assert.match(route, /success \? nextStructureRunMinutes\(\) : 30/);
   assert.match(route, /PROCORE_BID_BOARD_SYNC_INTERVAL_MINUTES \|\| "60"/);
   assert.match(route, /x-procore-api-request-count/);
 });

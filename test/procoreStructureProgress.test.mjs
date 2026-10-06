@@ -4,7 +4,26 @@ import fs from 'node:fs';
 import ts from 'typescript';
 import * as progressModule from '../src/lib/procoreStructureProgress.ts';
 import * as responseModule from '../src/lib/procoreSyncResponse.ts';
-const { STRUCTURE_STAGES, structureProgress } = progressModule;
+const { STRUCTURE_STAGES, structureProgress, nextStructureRunMinutes } = progressModule;
+
+test('daily structure requeues into the next Eastern nightly window after daytime recovery', () => {
+  for (const [finished, expected] of [
+    ['2026-10-05T10:39:40.853Z', '2026-10-06T06:00:00.000Z'],
+    ['2026-10-05T11:57:47.100Z', '2026-10-06T06:00:00.000Z'],
+    ['2026-10-06T17:00:00.000Z', '2026-10-07T06:00:00.000Z'],
+    ['2026-10-06T06:00:00.000Z', '2026-10-07T06:00:00.000Z'],
+    ['2026-10-06T05:59:59.000Z', '2026-10-06T06:00:00.000Z'],
+    ['2026-12-31T23:00:00.000Z', '2027-01-01T07:00:00.000Z'],
+    ['2026-03-07T12:00:00.000Z', '2026-03-08T07:00:00.000Z'],
+    ['2026-11-01T05:30:00.000Z', '2026-11-01T07:00:00.000Z'],
+    ['2026-11-01T06:30:00.000Z', '2026-11-01T07:00:00.000Z'],
+  ]) {
+    const now = new Date(finished);
+    const delay = nextStructureRunMinutes(now);
+    assert.ok(delay > 0 && delay <= 25 * 60);
+    assert.equal(new Date(now.getTime() + delay * 60_000).toISOString(), expected);
+  }
+});
 
 const now = new Date('2026-10-05T10:00:00Z');
 const steps = STRUCTURE_STAGES.map(({ step }) => ({ step, status: 'ok' }));
@@ -96,7 +115,10 @@ test('route checkpoints exactly one stage and only completes after the final sta
     assert.equal(h.calls.released, 1);
     assert.equal(h.calls.claims[0].retryAfterInterruptedClaim, true);
     if (!last) previous = h.calls.checkpoints[0];
-    else assert.equal(h.calls.finished[0].result.structureProgress, undefined);
+    else {
+      assert.equal(h.calls.finished[0].result.structureProgress, undefined);
+      assert.ok(Math.abs(h.calls.finished[0].nextRunMinutes - nextStructureRunMinutes()) < 0.1);
+    }
   }
 });
 

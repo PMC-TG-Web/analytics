@@ -32,18 +32,17 @@ export default function KpiWinRateRow({ year }: { year: string }) {
     return () => { controller.abort(); window.removeEventListener('focus', refresh); window.clearInterval(timer); };
   }, [year, retry]);
   function cell(value: WinRateCount | null | undefined, month: number | 'total') {
-    return <td key={month} style={{ padding: '6px 2px', textAlign: 'center', fontSize: 12, borderLeft: month === 'total' ? '2px solid #ddd' : undefined }}>
-      {value ? <button type="button" onClick={() => setDetail(month)} title={`${value.won} won / ${value.bid} jobs bid; ${value.estimating} estimating excluded`} style={{ color: '#15616D', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer' }}>
+    return <td key={month} style={{ padding: month === 'total' ? '6px 6px' : '6px 2px', textAlign: 'center', fontSize: 12, color: value?.rate == null ? '#999' : '#15616D', fontWeight: value?.rate == null ? 400 : 700, borderLeft: month === 'total' ? '2px solid #ddd' : undefined }}>
+      {value ? <button type="button" onClick={() => setDetail(month)} title="View projects" style={{ color: 'inherit', font: 'inherit', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer' }}>
         {value.rate === null ? '—' : `${(value.rate * 100).toFixed(2)}%`}
-        <span style={{ display: 'block', color: '#666', fontWeight: 400, fontSize: 10 }}>{value.won} / {value.bid}</span>
       </button> : '—'}
     </td>;
   }
   const visibleProjects = report?.projects.filter(p => detail === 'total' || (typeof detail === 'number' && Number(p.createdDate.slice(5, 7)) <= detail)) ?? [];
   return <>
-    <tr style={{ borderBottom: '1px solid #eee', background: '#f0f8f7' }}>
-      <th scope="row" style={{ padding: '6px', textAlign: 'left', color: '#15616D', fontSize: 13 }} title="Won ÷ (total projects − Estimating). Saved old-instance history plus current Procore data, with each project counted once. Grouped by Created Date, not historical month-end snapshots.">
-        Win Rate<span style={{ display: 'block', fontSize: 10, fontWeight: 400 }}>Rolling · won / jobs bid</span>
+    <tr style={{ borderBottom: '1px solid #eee', backgroundColor: '#ffffff' }}>
+      <th scope="row" style={{ padding: '6px 6px', textAlign: 'left', color: '#15616D', fontWeight: 700, fontSize: 13 }}>
+        Win Rate
       </th>
       {error ? <td colSpan={13} role="status" style={{ padding: 6, fontSize: 12 }}>{error} <button type="button" onClick={() => setRetry(n => n + 1)} style={{ textDecoration: 'underline' }}>Retry</button></td>
         : !report ? <td colSpan={13} role="status" style={{ padding: 6, fontSize: 12 }}>Loading win rate…</td>

@@ -627,6 +627,8 @@ export function selectCommitmentMakerWbsCandidate<T extends CommitmentMakerWbsCa
   const typed = candidates.filter((candidate) => canonicalCostType(candidate.costType) === requested);
   if (typed.length === 1) return typed[0];
   if (typed.length > 1) return null;
+  // Laser screeding must retain its dedicated budget assignment.
+  if (requested === "LS") return null;
   if (candidates.length === 1) return candidates[0];
   for (const costType of COMMITMENT_MAKER_FALLBACK_COST_TYPES) {
     const fallback = candidates.filter((candidate) => canonicalCostType(candidate.costType) === costType);

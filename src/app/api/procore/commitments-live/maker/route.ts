@@ -1158,6 +1158,11 @@ async function buildPlan(params: {
           plannedLines.push({ ...line, wbsCodeId: null, wbsFlatCode: null });
           continue;
         }
+        if (normalizeCommitmentMakerCostType(line.costType) === "LS") {
+          validationErrors.push(`Group "${group.name}": "${line.description}" requires exactly one ${line.costCode}.LS Budget Code in this project. Add or correct that code in Procore, then preview again.`);
+          plannedLines.push({ ...line, wbsCodeId: null, wbsFlatCode: null });
+          continue;
+        }
         const candidates = wbsIndex.get(normalizeCode(line.costCode)) || [];
         const candidateCodes = [...new Set(candidates.map((candidate) => candidate.flatCode).filter(Boolean))];
         if (candidateCodes.length > 0) {

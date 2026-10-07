@@ -41,6 +41,15 @@ test('CY requires exactly one real M code, overriding source IDs and all fallbac
   assert.match(route, /selectCommitmentMakerWbsCandidate\(candidates, line.costType, line.sourceWbsCodeId, line.uom\)/);
 });
 
+test('laser screeding preserves LS and never falls back to equipment or commitments', () => {
+  const candidate = type => ({ id: type, costCode: '03-300-20-30', costType: type, flatCode: `03-300-20-30.${type}` });
+  for (const types of [[], ['E'], ['C'], ['O'], ['E', 'C', 'O']]) {
+    assert.equal(selectCommitmentMakerWbsCandidate(types.map(candidate), 'LS'), null);
+    assert.equal(selectCommitmentMakerWbsCandidate([...types.map(candidate), candidate('LS')], 'LS')?.id, 'LS');
+  }
+  assert.equal(selectCommitmentMakerWbsCandidate([candidate('LS'), { ...candidate('LS'), id: 'duplicate' }], 'LS'), null);
+});
+
 test('combined CY lines submit the M WBS ID with unchanged descriptions and totals', () => {
   const line = { costCode: '03-300-00-20', costType: 'O', description: '4500 Psi Kinsley Concrete',
     quantity: 48, uom: 'cy', unitCost: 140.98, subtotalOverride: null };

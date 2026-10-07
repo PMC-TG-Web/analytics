@@ -42,7 +42,7 @@ export default function KpiWinRateRow({ year }: { year: string }) {
   return <>
     <tr style={{ borderBottom: '1px solid #eee', backgroundColor: '#ffffff' }}>
       <th scope="row" style={{ padding: '6px 6px', textAlign: 'left', color: '#15616D', fontWeight: 700, fontSize: 13 }}>
-        Win Rate
+        Rolling Win Rate
       </th>
       {error ? <td colSpan={13} role="status" style={{ padding: 6, fontSize: 12 }}>{error} <button type="button" onClick={() => setRetry(n => n + 1)} style={{ textDecoration: 'underline' }}>Retry</button></td>
         : !report ? <td colSpan={13} role="status" style={{ padding: 6, fontSize: 12 }}>Loading win rate…</td>

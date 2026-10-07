@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useState, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
 import { resolveEstimateActualHours } from "@/lib/kpiEstimateHours";
+import KpiWinRateRow from "@/components/KpiWinRateRow";
 import {
   getKpiCardValue,
   getKpiCardValueIndex,
@@ -3367,10 +3368,14 @@ function KPIPageContent({
 
                   const nonGoalRows = firstGoalRowIndex === -1 ? salesCardRows : salesCardRows.slice(0, firstGoalRowIndex);
                   const goalRows = firstGoalRowIndex === -1 ? [] : salesCardRows.slice(firstGoalRowIndex);
+                  const actualSalesIndex = nonGoalRows.findIndex((row) => /actual.*sales|sales.*actual/i.test(row.kpi || ""));
+                  const insertAfter = actualSalesIndex >= 0 ? actualSalesIndex + 1 : nonGoalRows.length;
 
                   return (
                     <>
-                      {renderCardRows("Sales By Month", "#E06C00", nonGoalRows, 0)}
+                      {renderCardRows("Sales By Month", "#E06C00", nonGoalRows.slice(0, insertAfter), 0)}
+                      <KpiWinRateRow year={yearFilter} />
+                      {renderCardRows("Sales By Month", "#E06C00", nonGoalRows.slice(insertAfter), insertAfter)}
                       {renderCardRows("Sales By Month", "#E06C00", goalRows, nonGoalRows.length)}
                     </>
                   );

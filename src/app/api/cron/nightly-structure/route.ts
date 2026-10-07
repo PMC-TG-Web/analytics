@@ -33,6 +33,8 @@ const ESTIMATING_DATASET = "nightly_estimates";
 const BID_BOARD_DATASET = "nightly_bid_board_headers";
 const PO_DISCOVERY_DATASET = "purchase_order_discovery";
 const BID_BOARD_QUEUE_ID = "__company_bid_board__";
+const OLD_BID_BOARD_QUEUE_ID = "__old_company_bid_board__";
+const OLD_COMPANY_ID = "598134325658789";
 const COMPANY_ID = (process.env.PROCORE_COMPANY_ID || "598134325805519").trim();
 // Estimates are also drained during the day; retain their daily tick margin.
 const DAILY_REQUEUE_MINUTES = 24 * 60 - 5;
@@ -87,13 +89,15 @@ async function runStep(params: {
   path: string;
   timeoutMs?: number;
   syncScope?: string;
+  companyId?: string;
+  headersOnly?: boolean;
 }) {
   try {
     const response = await fetch(`${params.origin}${params.path}`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-sync-secret": params.secret },
       body: JSON.stringify({
-        companyId: COMPANY_ID,
+        companyId: params.companyId ?? COMPANY_ID,
         projectIds: [params.projectId],
         perPage: 100,
         concurrency: 1,
@@ -101,6 +105,7 @@ async function runStep(params: {
         persistUnpackedFields: false,
         forceUserOAuth: false,
         syncScope: params.syncScope,
+        headersOnly: params.headersOnly,
       }),
       signal: AbortSignal.timeout(params.timeoutMs ?? 4 * 60_000),
     });
@@ -286,21 +291,29 @@ async function runPostInConnection(request: NextRequest) {
       projectId: BID_BOARD_QUEUE_ID,
       projectName: "Company Bid Board headers",
     });
+    await seedSingletonSyncQueue({
+      companyId: COMPANY_ID,
+      dataset: BID_BOARD_DATASET,
+      projectId: OLD_BID_BOARD_QUEUE_ID,
+      projectName: "Old instance Bid Board headers for KPI win rate",
+    });
     bidBoardProject = await claimDueProject({
       companyId: COMPANY_ID,
       dataset: BID_BOARD_DATASET,
       leaseId: worker.leaseId,
     });
     if (bidBoardProject) {
+      const headerCompanyId = bidBoardProject.projectId === OLD_BID_BOARD_QUEUE_ID ? OLD_COMPANY_ID : COMPANY_ID;
       const selection = {
         step: "select-company-dataset",
         status: "ok",
-        projectId: BID_BOARD_QUEUE_ID,
+        projectId: bidBoardProject.projectId,
+        companyId: headerCompanyId,
         projectName: bidBoardProject.projectName,
         dataset: BID_BOARD_DATASET,
       };
       const log = await prisma.syncLog.create({
-        data: { companyId: COMPANY_ID, triggeredBy: "nightly-bid-board-headers", steps: [selection] },
+        data: { companyId: headerCompanyId, triggeredBy: "nightly-bid-board-headers", steps: [selection] },
         select: { id: true },
       }).catch(() => null);
       logId = log?.id ?? null;
@@ -311,6 +324,8 @@ async function runPostInConnection(request: NextRequest) {
         projectId: BID_BOARD_QUEUE_ID,
         step: "bid-board-projects",
         path: "/api/procore/sync/bid-board-projects",
+        companyId: headerCompanyId,
+        headersOnly: headerCompanyId === OLD_COMPANY_ID,
       });
       const success = step.status === "ok";
       const error = success ? null : JSON.stringify(step.detail || "Bid Board header sync failed").slice(0, 4_000);
@@ -320,7 +335,7 @@ async function runPostInConnection(request: NextRequest) {
       if (rateLimitUntil) {
         if (!step.rateLimitInherited) {
           await setProcoreRateLimit({
-            companyId: COMPANY_ID,
+            companyId: headerCompanyId,
             until: rateLimitUntil,
             error,
           });
@@ -357,7 +372,7 @@ async function runPostInConnection(request: NextRequest) {
         success: success || Boolean(rateLimitUntil),
         completed: success,
         deferred: Boolean(rateLimitUntil),
-        companyId: COMPANY_ID,
+        companyId: headerCompanyId,
         dataset: BID_BOARD_DATASET,
         logId: logId?.toString() || null,
         totalMs,

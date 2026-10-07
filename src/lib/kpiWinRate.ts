@@ -1,0 +1,105 @@
+export const KPI_WIN_RATE_COMPANIES = ['598134325805519', '598134325658789'] as const;
+export const KPI_WIN_RATE_POLICY_KEY = 'kpi-win-rate:project-groups';
+
+export type WinRateBid = {
+  companyId: string;
+  bidBoardId: string;
+  projectName: string;
+  status: string | null;
+  payload: unknown;
+};
+export type WinRateGroupRule = {
+  key: string;
+  names: string[];
+  preferredSource: string;
+  sourceIds?: string[];
+  createdDate: string;
+};
+export type WinRatePolicy = {
+  groups: WinRateGroupRule[];
+  excludedSources: string[];
+};
+export type WinRateProject = {
+  key: string;
+  name: string;
+  createdDate: string;
+  status: string;
+  won: boolean;
+  bid: boolean;
+  sources: { companyId: string; bidBoardId: string; status: string }[];
+};
+export type WinRateCount = { won: number; bid: number; total: number; estimating: number; rate: number | null };
+export type WinRateReport = {
+  months: (WinRateCount | null)[];
+  total: WinRateCount;
+  projects: WinRateProject[];
+  years: number[];
+  missingCreatedDates: number;
+  asOf: string;
+};
+
+// Reporting grouping only: this never changes canonical Procore project IDs.
+// Customer is deliberately absent: several contractors can bid the same job.
+export function winRateName(value: string): string {
+  return value.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ').replace(/\s+-$/, '');
+}
+export function winRateStatus(value: unknown): string {
+  return String(value ?? '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+}
+const wonStatuses = new Set(['ACCEPTED', 'IN_PROGRESS', 'COMPLETE']);
+function count(projects: WinRateProject[]): WinRateCount {
+  const won = projects.filter(p => p.won).length;
+  const bid = projects.filter(p => p.bid).length;
+  return { won, bid, total: projects.length, estimating: projects.length - bid, rate: bid ? won / bid : null };
+}
+
+export function calculateWinRate(
+  bids: WinRateBid[],
+  policy: WinRatePolicy = { groups: [], excludedSources: [] },
+  year: number | null = null,
+  asOf = new Date(),
+): WinRateReport {
+  const byName = new Map(policy.groups.flatMap(g => g.names.map(n => [winRateName(n), g] as const)));
+  const bySource = new Map(policy.groups.flatMap(g => [...new Set([g.preferredSource, ...(g.sourceIds ?? [])])].map(source => [source, g] as const)));
+  const excluded = new Set(policy.excludedSources);
+  const groups = new Map<string, { rule?: WinRateGroupRule; rows: (WinRateBid & { date: string; state: string })[] }>();
+  let missingCreatedDates = 0;
+  for (const row of bids) {
+    if (!KPI_WIN_RATE_COMPANIES.includes(row.companyId as typeof KPI_WIN_RATE_COMPANIES[number]) || row.bidBoardId.includes(':')) continue;
+    const source = `${row.companyId}:${row.bidBoardId}`;
+    if (excluded.has(source)) continue;
+    const p = row.payload && typeof row.payload === 'object' ? row.payload as Record<string, unknown> : {};
+    const state = winRateStatus(p.status ?? row.status);
+    // The workbook uses the active bid list, not archived projects or invitations.
+    if (p.archived || p.deleted || p.is_template || p.sync_missing_from_procore || state === 'INVITATION' || state === 'INVITATIONS') continue;
+    const rule = bySource.get(source) ?? byName.get(winRateName(row.projectName));
+    const date = String(p.created_on ?? '');
+    if (!rule && (!date || !Number.isFinite(Date.parse(date)))) { missingCreatedDates++; continue; }
+    const key = rule?.key ?? (winRateName(row.projectName) || source);
+    const group = groups.get(key) ?? { rule, rows: [] };
+    group.rows.push({ ...row, date, state });
+    groups.set(key, group);
+  }
+  const all: WinRateProject[] = [];
+  for (const [key, { rule, rows }] of groups) {
+    // Preserve the owner's selected Created Date across migration copies.
+    // Unreviewed new groups use their earliest source Created Date.
+    rows.sort((a, b) => a.date.localeCompare(b.date) || a.bidBoardId.localeCompare(b.bidBoardId));
+    const preferred = rows.find(r => `${r.companyId}:${r.bidBoardId}` === rule?.preferredSource) ?? rows[0];
+    const winner = rows.find(r => wonStatuses.has(r.state));
+    const qualifying = winner ?? rows.find(r => r.state !== 'ESTIMATING') ?? preferred;
+    const createdDate = rule?.createdDate ?? preferred.date;
+    if (!Number.isFinite(Date.parse(createdDate))) { missingCreatedDates++; continue; }
+    all.push({ key, name: preferred.projectName, createdDate, status: qualifying.state.replace(/_/g, ' '), won: Boolean(winner), bid: qualifying.state !== 'ESTIMATING', sources: rows.map(r => ({ companyId: r.companyId, bidBoardId: r.bidBoardId, status: r.state.replace(/_/g, ' ') })) });
+  }
+  all.sort((a, b) => a.createdDate.localeCompare(b.createdDate) || a.name.localeCompare(b.name));
+  const projects = all.filter(p => year === null || Number(p.createdDate.slice(0, 4)) === year);
+  const currentYear = asOf.getUTCFullYear();
+  const currentMonth = asOf.getUTCMonth() + 1;
+  const months = Array.from({ length: 12 }, (_, index) => {
+    const month = index + 1;
+    if (year !== null && (year > currentYear || (year === currentYear && month > currentMonth))) return null;
+    return count(projects.filter(p => Number(p.createdDate.slice(5, 7)) <= month));
+  });
+  return { months, total: count(projects), projects, years: [...new Set(all.map(p => Number(p.createdDate.slice(0, 4))))].sort(), missingCreatedDates, asOf: asOf.toISOString() };
+}

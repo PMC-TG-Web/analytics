@@ -1,0 +1,64 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import type { WinRateCount, WinRateReport } from '@/lib/kpiWinRate';
+
+const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+export default function KpiWinRateRow({ year }: { year: string }) {
+  const [report, setReport] = useState<WinRateReport | null>(null);
+  const [error, setError] = useState('');
+  const [retry, setRetry] = useState(0);
+  const [detail, setDetail] = useState<number | 'total' | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    setReport(null); setError(''); setDetail(null);
+    async function load() {
+      try {
+        const response = await fetch(`/api/kpi/win-rate${year ? `?year=${encodeURIComponent(year)}` : ''}`, { cache: 'no-store', credentials: 'include', signal: controller.signal });
+        const body = await response.json();
+        if (!response.ok || !body.success) throw new Error(body.error || 'Could not load win rate.');
+        setReport(body.data);
+      } catch (e) {
+        if (!controller.signal.aborted) setError(e instanceof Error ? e.message : 'Could not load win rate.');
+      }
+    }
+    void load();
+    const refresh = () => { if (document.visibilityState === 'visible') void load(); };
+    window.addEventListener('focus', refresh);
+    const timer = window.setInterval(refresh, 60_000);
+    return () => { controller.abort(); window.removeEventListener('focus', refresh); window.clearInterval(timer); };
+  }, [year, retry]);
+  function cell(value: WinRateCount | null | undefined, month: number | 'total') {
+    return <td key={month} style={{ padding: '6px 2px', textAlign: 'center', fontSize: 12, borderLeft: month === 'total' ? '2px solid #ddd' : undefined }}>
+      {value ? <button type="button" onClick={() => setDetail(month)} title={`${value.won} won / ${value.bid} jobs bid; ${value.estimating} estimating excluded`} style={{ color: '#15616D', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer' }}>
+        {value.rate === null ? '—' : `${(value.rate * 100).toFixed(2)}%`}
+        <span style={{ display: 'block', color: '#666', fontWeight: 400, fontSize: 10 }}>{value.won} / {value.bid}</span>
+      </button> : '—'}
+    </td>;
+  }
+  const visibleProjects = report?.projects.filter(p => detail === 'total' || (typeof detail === 'number' && Number(p.createdDate.slice(5, 7)) <= detail)) ?? [];
+  return <>
+    <tr style={{ borderBottom: '1px solid #eee', background: '#f0f8f7' }}>
+      <th scope="row" style={{ padding: '6px', textAlign: 'left', color: '#15616D', fontSize: 13 }} title="Won ÷ (total projects − Estimating). One project across both Procore instances and contractors; grouped by Created Date. Current statuses, not historical month-end snapshots.">
+        Win Rate<span style={{ display: 'block', fontSize: 10, fontWeight: 400 }}>Rolling · won / jobs bid</span>
+      </th>
+      {error ? <td colSpan={13} role="status" style={{ padding: 6, fontSize: 12 }}>{error} <button type="button" onClick={() => setRetry(n => n + 1)} style={{ textDecoration: 'underline' }}>Retry</button></td>
+        : !report ? <td colSpan={13} role="status" style={{ padding: 6, fontSize: 12 }}>Loading win rate…</td>
+          : <>{report.months.map((value, i) => cell(value, i + 1))}{cell(report.total, 'total')}</>}
+    </tr>
+    {report && report.missingCreatedDates > 0 && <tr><td colSpan={14} style={{ color: '#a33', padding: 6 }}>{report.missingCreatedDates} projects lack a Created Date and are excluded.</td></tr>}
+    {detail !== null && report && <tr><td colSpan={14}>
+      <section aria-label="Win rate project breakdown" style={{ padding: 12, background: '#f8faf9' }}>
+        <button type="button" onClick={() => setDetail(null)} style={{ float: 'right', textDecoration: 'underline' }}>Close breakdown</button>
+        <strong>Win rate · {year || 'All years'}{detail !== 'total' ? ` · Jan–${monthNames[detail - 1]}` : ' · Total'}</strong>
+        <p style={{ margin: '6px 0', fontSize: 12 }}>Accepted, In Progress, and Complete count as won. Estimating is excluded from jobs bid. Projects are grouped by Created Date and counted once across both instances and contractors. Monthly values use current statuses through each month; Total divides total wins by total jobs bid.</p>
+        {!year && <p style={{ fontSize: 12 }}>All years combines January through the selected month from every year.</p>}
+        <div style={{ maxHeight: 360, overflow: 'auto' }}><table style={{ width: '100%', fontSize: 12, textAlign: 'left' }}>
+          <thead><tr><th>Project</th><th>Created</th><th>Status</th><th>Won</th><th>Jobs bid</th><th>Source bids</th></tr></thead>
+          <tbody>{visibleProjects.map(p => <tr key={p.key} style={{ borderBottom: '1px solid #ddd' }}><td style={{ padding: 5 }}>{p.name}</td><td>{p.createdDate.slice(0, 10)}</td><td>{p.status}</td><td>{p.won ? '1' : '0'}</td><td>{p.bid ? '1' : 'Excluded: Estimating'}</td><td title={p.sources.map(s => `${s.companyId} / ${s.bidBoardId}: ${s.status}`).join('\n')}>{p.sources.length}</td></tr>)}</tbody>
+        </table></div>
+      </section>
+    </td></tr>}
+  </>;
+}

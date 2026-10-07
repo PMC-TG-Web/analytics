@@ -471,7 +471,9 @@ export async function POST(request: Request) {
         });
       }))
         .filter((value): value is NonNullable<typeof value> => Boolean(value));
-      const estimateDetailsDue = persisted
+      // The old instance supplies KPI headers only; do not enroll historical
+      // projects in estimate-detail work merely to refresh reporting statuses.
+      const estimateDetailsDue = (body.headersOnly === true ? [] : persisted)
         .filter((project) => project.active && project.estimateDetailsDue)
         .map((project) => project.bidBoardId);
       const estimateDetailsQueued = await queueEstimatingSyncProjects(

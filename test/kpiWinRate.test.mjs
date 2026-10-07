@@ -72,4 +72,7 @@ test('old-instance header refresh never queues historical estimate details', () 
   assert.match(sync, /body.headersOnly === true \? \[\] : persisted/);
   assert.match(cron, /headersOnly: headerCompanyId === OLD_COMPANY_ID/);
   assert.match(cron, /companyId: params.companyId \?\? COMPANY_ID/);
+  assert.match(cron, /connection: headerCompanyId === OLD_COMPANY_ID \? 'shared' : undefined/);
+  assert.match(cron, /'x-procore-connection': params.connection/);
+  assert.match(cron, /withProcoreConnection\('shared', recordHeaderRateLimit\)/);
 });

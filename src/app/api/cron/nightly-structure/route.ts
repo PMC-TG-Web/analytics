@@ -1,5 +1,5 @@
 import { streamSyncResponse } from '@/lib/procoreSyncStream';
-import { withAnalyticsSyncProcoreConnection } from '@/lib/procoreConnection';
+import { withAnalyticsSyncProcoreConnection, withProcoreConnection } from '@/lib/procoreConnection';
 import { NextRequest, NextResponse } from "next/server";
 import { purchaseOrderDiscoveryPolling } from "@/lib/procorePollingPolicy";
 import { prisma } from "@/lib/prisma";
@@ -91,11 +91,15 @@ async function runStep(params: {
   syncScope?: string;
   companyId?: string;
   headersOnly?: boolean;
+  connection?: 'shared';
 }) {
   try {
     const response = await fetch(`${params.origin}${params.path}`, {
       method: "POST",
-      headers: { "content-type": "application/json", "x-sync-secret": params.secret },
+      headers: {
+        "content-type": "application/json", "x-sync-secret": params.secret,
+        ...(params.connection ? { 'x-procore-connection': params.connection } : {}),
+      },
       body: JSON.stringify({
         companyId: params.companyId ?? COMPANY_ID,
         projectIds: [params.projectId],
@@ -326,6 +330,7 @@ async function runPostInConnection(request: NextRequest) {
         path: "/api/procore/sync/bid-board-projects",
         companyId: headerCompanyId,
         headersOnly: headerCompanyId === OLD_COMPANY_ID,
+        connection: headerCompanyId === OLD_COMPANY_ID ? 'shared' : undefined,
       });
       const success = step.status === "ok";
       const error = success ? null : JSON.stringify(step.detail || "Bid Board header sync failed").slice(0, 4_000);
@@ -334,11 +339,16 @@ async function runPostInConnection(request: NextRequest) {
         : null;
       if (rateLimitUntil) {
         if (!step.rateLimitInherited) {
-          await setProcoreRateLimit({
+          const recordHeaderRateLimit = () => setProcoreRateLimit({
             companyId: headerCompanyId,
             until: rateLimitUntil,
             error,
           });
+          if (headerCompanyId === OLD_COMPANY_ID) {
+            await withProcoreConnection('shared', recordHeaderRateLimit);
+          } else {
+            await recordHeaderRateLimit();
+          }
         }
         await deferProjectSync({
           project: bidBoardProject,

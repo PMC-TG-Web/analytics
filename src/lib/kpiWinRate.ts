@@ -1,5 +1,6 @@
 export const KPI_WIN_RATE_COMPANIES = ['598134325805519', '598134325658789'] as const;
 export const KPI_WIN_RATE_POLICY_KEY = 'kpi-win-rate:project-groups';
+export const KPI_WIN_RATE_START_YEAR = 2026;
 export const KPI_WIN_RATE_BASELINE_KEY = 'kpi-win-rate:old-instance-baseline';
 export const KPI_CURRENT_COMPANY = KPI_WIN_RATE_COMPANIES[0];
 export const KPI_OLD_COMPANY = KPI_WIN_RATE_COMPANIES[1];
@@ -155,6 +156,9 @@ export function calculateWinRate(
     const qualifying = winner ?? rows.find(r => r.state !== 'ESTIMATING') ?? preferred;
     const createdDate = rule?.createdDate ?? preferred.date;
     if (!Number.isFinite(Date.parse(createdDate))) { missingCreatedDates++; continue; }
+    // Apply the reporting start after deduplication so a 2025 project copied
+    // into the current instance in 2026 does not become a new 2026 bid.
+    if (Number(createdDate.slice(0, 4)) < KPI_WIN_RATE_START_YEAR) continue;
     all.push({ key, name: preferred.projectName, createdDate, status: qualifying.state.replace(/_/g, ' '), won: Boolean(winner), bid: qualifying.state !== 'ESTIMATING', sources: rows.map(r => ({ companyId: r.companyId, bidBoardId: r.bidBoardId, status: r.state.replace(/_/g, ' ') })) });
   }
   all.sort((a, b) => a.createdDate.localeCompare(b.createdDate) || a.name.localeCompare(b.name));

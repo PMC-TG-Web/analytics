@@ -54,6 +54,7 @@ export default function KpiWinRateRow({ year }: { year: string }) {
       <section aria-label="Win rate project breakdown" style={{ padding: 12, background: '#f8faf9' }}>
         <button type="button" onClick={() => setDetail(null)} style={{ float: 'right', textDecoration: 'underline' }}>Close breakdown</button>
         <strong>Win rate · {year || 'All years'}{detail !== 'total' ? ` · Jan–${monthNames[detail - 1]}` : ' · Total'}</strong>
+        <p style={{ margin: '6px 0', fontSize: 12 }}>Reporting starts January 2026. Projects created before 2026 are excluded, including their migration copies.</p>
         <p style={{ margin: '6px 0', fontSize: 12 }}>Accepted, In Progress, and Complete count as won. Estimating is excluded from jobs bid. Projects are grouped by Created Date and counted once across saved history and current projects, regardless of contractor. Monthly values accumulate through each month; Total divides total wins by total jobs bid.</p>
         {baselineSavedAt && <p style={{ margin: '6px 0', fontSize: 12 }}>Old-instance history saved {new Date(baselineSavedAt).toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'long', day: 'numeric', year: 'numeric' })}. Current-instance statuses update automatically. The old instance is no longer needed.</p>}
         {!year && <p style={{ fontSize: 12 }}>All years combines January through the selected month from every year.</p>}

@@ -19,7 +19,8 @@ test('Created Date grouping preserves workbook-selected cohort, not migration or
   const policy = { groups: [{ key: 'job', names: ['Job', 'Job renamed'], preferredSource: `${old}:1`, createdDate: '2025-10-20T12:00:00Z' }], excludedSources: [] };
   const rows = [bid('1', 'Job', 'BID_SUBMITTED', '2025-10-20T12:00:00Z', old), bid('2', 'Job renamed', 'COMPLETE')];
   assert.equal(run(rows, policy).total.bid, 0);
-  assert.equal(run(rows, policy, 2025).total.won, 1);
+  assert.equal(run(rows, policy, 2025).total.won, 0);
+  assert.equal(run(rows, policy, null).total.bid, 0);
 });
 test('rolling numerator and denominator accumulate; total is a ratio, not an average', () => {
   const rows = [bid('1', 'Won', 'IN_PROGRESS'), bid('2', 'Lost', 'LOST', '2026-02-05T12:00:00Z'), bid('3', 'To do', 'TO_DO', '2026-02-06T12:00:00Z'), bid('4', 'Delayed', 'DELAYED', '2026-02-07T12:00:00Z'), bid('5', 'Estimating', 'ESTIMATING', '2026-02-08T12:00:00Z')];
@@ -57,14 +58,24 @@ test('empty denominators remain unavailable, and missing Created Dates never use
   assert.equal(r.total.rate, null);
   assert.equal(r.missingCreatedDates, 1);
 });
-test('all-years total counts each project once and recalculates the combined rate', () => {
-  const r = run([bid('1', 'Prior', 'COMPLETE', '2025-01-01'), bid('2', 'Now', 'LOST')], undefined, null);
+test('combined reporting starts in 2026 and recalculates the ratio without pre-2026 jobs', () => {
+  const r = calculateWinRate([bid('1', 'Prior', 'COMPLETE', '2025-01-01'), bid('2', 'First year', 'COMPLETE', '2026-01-01'), bid('3', 'Next year', 'LOST', '2027-01-01')], undefined, null, new Date('2027-10-07'));
   assert.equal(r.total.rate, .5);
-  assert.deepEqual(r.years, [2025, 2026]);
+  assert.deepEqual(r.years, [2026, 2027]);
+  assert.equal(r.total.bid, 2);
 });
 test('KPI page and win-rate endpoint share the KPI permission', () => {
   assert.equal(resolvePermissionForPath('/kpi'), 'kpi');
   assert.equal(resolvePermissionForPath('/api/kpi/win-rate'), 'kpi');
+});
+
+test('Sales by Month passes its resolved year to win rate, including when the page filter is All Years', () => {
+  const page = readFileSync(new URL('../src/app/kpi/page.tsx', import.meta.url), 'utf8');
+  assert.match(page, /selectedManagedYear = yearFilter \|\| String\(new Date\(\).getFullYear\(\)\)/);
+  assert.match(page, /getKpiCardYearValues\(row.values, selectedManagedYear\)/);
+  assert.match(page, /<KpiWinRateRow year=\{selectedManagedYear\} \/>/);
+  assert.match(page, /Sales by Month · \{selectedManagedYear\}/);
+  assert.doesNotMatch(page, /<KpiWinRateRow year=\{yearFilter\}/);
 });
 
 test('saved history preserves counts when all old-instance mirror records disappear', () => {

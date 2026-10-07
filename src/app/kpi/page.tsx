@@ -3344,7 +3344,7 @@ function KPIPageContent({
 
         {/* Sales Table */}
         <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4 }}>
-          <h3 style={{ color: "#E06C00", marginBottom: 8, fontSize: 14, fontWeight: 700 }}>Sales by Month</h3>
+          <h3 style={{ color: "#E06C00", marginBottom: 8, fontSize: 14, fontWeight: 700 }}>Sales by Month · {selectedManagedYear}</h3>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", minWidth: baseKpiTableMinWidth, borderCollapse: "collapse", tableLayout: "fixed", fontSize: 13 }}>
               <thead>
@@ -3374,7 +3374,7 @@ function KPIPageContent({
                   return (
                     <>
                       {renderCardRows("Sales By Month", "#E06C00", nonGoalRows.slice(0, insertAfter), 0)}
-                      <KpiWinRateRow year={yearFilter} />
+                      <KpiWinRateRow year={selectedManagedYear} />
                       {renderCardRows("Sales By Month", "#E06C00", nonGoalRows.slice(insertAfter), insertAfter)}
                       {renderCardRows("Sales By Month", "#E06C00", goalRows, nonGoalRows.length)}
                     </>

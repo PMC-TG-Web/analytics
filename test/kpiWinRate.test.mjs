@@ -38,6 +38,16 @@ test('reviewed source IDs stay in the same reporting group after a rename', () =
   assert.equal(r.total.bid, 1);
   assert.equal(r.total.won, 1);
 });
+test('spacing and punctuation variants merge even when the workbook kept both rows', () => {
+  const policy = { groups: [
+    { key: 'one', names: ['Edge Metal Works'], preferredSource: `${old}:1`, createdDate: '2026-01-15' },
+    { key: 'two', names: ['Edge Metalworks'], preferredSource: `${old}:2`, createdDate: '2026-02-10' },
+  ], excludedSources: [] };
+  const r = run([bid('1', 'Edge Metal Works', 'BID_SUBMITTED', undefined, old), bid('2', 'Edge Metalworks', 'ACCEPTED', undefined, old)], policy);
+  assert.equal(r.total.bid, 1);
+  assert.equal(r.total.won, 1);
+  assert.equal(r.projects[0].createdDate, '2026-01-15');
+});
 test('active population excludes archived, templates, invitations, missing records and explicit exclusions', () => {
   const rows = [bid('1', 'A', 'COMPLETE', undefined, old, { archived: true }), bid('2', 'B', 'IN_PROGRESS', undefined, old, { deleted: true }), bid('3', 'C', 'ACCEPTED', undefined, old, { is_template: true }), bid('4', 'D', 'INVITATION'), bid('5', 'E', 'ACCEPTED', undefined, current, { sync_missing_from_procore: true }), bid('6', 'F', 'COMPLETE'), bid('legacy:7', 'G', 'COMPLETE')];
   assert.equal(run(rows, { groups: [], excludedSources: [`${current}:6`] }).total.bid, 0);

@@ -41,7 +41,26 @@ export type WinRateReport = {
 // Reporting grouping only: this never changes canonical Procore project IDs.
 // Customer is deliberately absent: several contractors can bid the same job.
 export function winRateName(value: string): string {
-  return value.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ').replace(/\s+-$/, '');
+  return value.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+}
+export function mergeWinRateGroups(input: WinRateGroupRule[]): WinRateGroupRule[] {
+  let groups: WinRateGroupRule[] = [];
+  const identifiers = (g: WinRateGroupRule) => new Set([
+    ...g.names.map(n => `name:${winRateName(n)}`),
+    ...[g.preferredSource, ...(g.sourceIds ?? [])].map(id => `source:${id}`),
+  ]);
+  for (const row of input) {
+    const keys = identifiers(row);
+    const matches = groups.filter(g => [...identifiers(g)].some(key => keys.has(key)));
+    const joined = [row, ...matches].sort((a, b) => a.createdDate.localeCompare(b.createdDate) || a.key.localeCompare(b.key));
+    const merged = {
+      ...joined[0],
+      names: [...new Set(joined.flatMap(g => g.names))],
+      sourceIds: [...new Set(joined.flatMap(g => [g.preferredSource, ...(g.sourceIds ?? [])]))],
+    };
+    groups = [...groups.filter(g => !matches.includes(g)), merged];
+  }
+  return groups;
 }
 export function winRateStatus(value: unknown): string {
   return String(value ?? '').trim().toUpperCase().replace(/[\s-]+/g, '_');
@@ -59,8 +78,9 @@ export function calculateWinRate(
   year: number | null = null,
   asOf = new Date(),
 ): WinRateReport {
-  const byName = new Map(policy.groups.flatMap(g => g.names.map(n => [winRateName(n), g] as const)));
-  const bySource = new Map(policy.groups.flatMap(g => [...new Set([g.preferredSource, ...(g.sourceIds ?? [])])].map(source => [source, g] as const)));
+  const rules = mergeWinRateGroups(policy.groups);
+  const byName = new Map(rules.flatMap(g => g.names.map(n => [winRateName(n), g] as const)));
+  const bySource = new Map(rules.flatMap(g => [...new Set([g.preferredSource, ...(g.sourceIds ?? [])])].map(source => [source, g] as const)));
   const excluded = new Set(policy.excludedSources);
   const groups = new Map<string, { rule?: WinRateGroupRule; rows: (WinRateBid & { date: string; state: string })[] }>();
   let missingCreatedDates = 0;

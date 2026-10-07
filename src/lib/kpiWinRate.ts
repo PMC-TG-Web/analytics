@@ -1,5 +1,8 @@
 export const KPI_WIN_RATE_COMPANIES = ['598134325805519', '598134325658789'] as const;
 export const KPI_WIN_RATE_POLICY_KEY = 'kpi-win-rate:project-groups';
+export const KPI_WIN_RATE_BASELINE_KEY = 'kpi-win-rate:old-instance-baseline';
+export const KPI_CURRENT_COMPANY = KPI_WIN_RATE_COMPANIES[0];
+export const KPI_OLD_COMPANY = KPI_WIN_RATE_COMPANIES[1];
 
 export type WinRateBid = {
   companyId: string;
@@ -8,6 +11,48 @@ export type WinRateBid = {
   status: string | null;
   payload: unknown;
 };
+export type WinRateBaseline = {
+  version: 1;
+  companyId: typeof KPI_OLD_COMPANY;
+  savedAt: string;
+  bids: WinRateBid[];
+};
+
+// Keep project-level history, not only totals, so migration copies can still be
+// deduplicated and an old bid won in the new instance advances the same project.
+export function createWinRateBaseline(rows: WinRateBid[], savedAt = new Date()): WinRateBaseline {
+  const bids = new Map<string, WinRateBid>();
+  for (const row of rows) {
+    if (row.companyId !== KPI_OLD_COMPANY || row.bidBoardId.includes(':')) continue;
+    const p = row.payload && typeof row.payload === 'object' ? row.payload as Record<string, unknown> : {};
+    bids.set(row.bidBoardId, {
+      companyId: KPI_OLD_COMPANY, bidBoardId: row.bidBoardId,
+      projectName: row.projectName, status: row.status,
+      payload: {
+        created_on: p.created_on ?? null, status: p.status ?? row.status,
+        archived: Boolean(p.archived), deleted: Boolean(p.deleted),
+        is_template: Boolean(p.is_template), sync_missing_from_procore: Boolean(p.sync_missing_from_procore),
+      },
+    });
+  }
+  if (bids.size === 0) throw new Error('Cannot save an empty old-instance baseline.');
+  return { version: 1, companyId: KPI_OLD_COMPANY, savedAt: savedAt.toISOString(), bids: [...bids.values()] };
+}
+
+export function parseWinRateBaseline(value: string): WinRateBaseline {
+  const baseline = JSON.parse(value) as WinRateBaseline;
+  if (baseline?.version !== 1 || baseline.companyId !== KPI_OLD_COMPANY
+    || !Number.isFinite(Date.parse(baseline.savedAt)) || !Array.isArray(baseline.bids) || baseline.bids.length === 0
+    || baseline.bids.some(b => b.companyId !== KPI_OLD_COMPANY || typeof b.bidBoardId !== 'string' || typeof b.projectName !== 'string')) {
+    throw new Error('Invalid saved old-instance baseline.');
+  }
+  return baseline;
+}
+
+export function combineWinRateSources(currentRows: WinRateBid[], baseline: WinRateBaseline): WinRateBid[] {
+  // Never read old-instance live mirrors into this calculation after freezing.
+  return [...baseline.bids, ...currentRows.filter(row => row.companyId === KPI_CURRENT_COMPANY)];
+}
 export type WinRateGroupRule = {
   key: string;
   names: string[];

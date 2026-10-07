@@ -16,6 +16,7 @@ import {
 } from "@/lib/procoreBidBoardChange";
 import { assessBidBoardCoverage } from "@/lib/procoreBidBoardCoverage";
 import { queueEstimatingSyncProjects } from "@/lib/procoreSyncQueue";
+import { KPI_OLD_COMPANY, KPI_WIN_RATE_BASELINE_KEY } from "@/lib/kpiWinRate";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -431,6 +432,14 @@ export async function POST(request: Request) {
       const companyId = text(body.companyId || process.env.PROCORE_COMPANY_ID);
       if (!companyId) {
         return NextResponse.json({ success: false, error: "Missing companyId." }, { status: 400 });
+      }
+
+      // Saved history is independent of the retiring Procore account. A stale
+      // worker or manual header refresh must not reconnect to it after capture.
+      if (companyId === KPI_OLD_COMPANY && await prisma.estimatingConstant.findUnique({
+        where: { name: KPI_WIN_RATE_BASELINE_KEY }, select: { id: true },
+      })) {
+        return NextResponse.json({ success: true, skipped: true, reason: 'old_instance_history_saved', companyId });
       }
 
       const accessToken = await getClientCredentialsToken();

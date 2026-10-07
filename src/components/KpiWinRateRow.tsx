@@ -8,6 +8,7 @@ const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep
 export default function KpiWinRateRow({ year }: { year: string }) {
   const [report, setReport] = useState<WinRateReport | null>(null);
   const [error, setError] = useState('');
+  const [baselineSavedAt, setBaselineSavedAt] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
   const [detail, setDetail] = useState<number | 'total' | null>(null);
   useEffect(() => {
@@ -19,6 +20,7 @@ export default function KpiWinRateRow({ year }: { year: string }) {
         const body = await response.json();
         if (!response.ok || !body.success) throw new Error(body.error || 'Could not load win rate.');
         setReport(body.data);
+        setBaselineSavedAt(body.baselineSavedAt ?? null);
       } catch (e) {
         if (!controller.signal.aborted) setError(e instanceof Error ? e.message : 'Could not load win rate.');
       }
@@ -40,7 +42,7 @@ export default function KpiWinRateRow({ year }: { year: string }) {
   const visibleProjects = report?.projects.filter(p => detail === 'total' || (typeof detail === 'number' && Number(p.createdDate.slice(5, 7)) <= detail)) ?? [];
   return <>
     <tr style={{ borderBottom: '1px solid #eee', background: '#f0f8f7' }}>
-      <th scope="row" style={{ padding: '6px', textAlign: 'left', color: '#15616D', fontSize: 13 }} title="Won ÷ (total projects − Estimating). One project across both Procore instances and contractors; grouped by Created Date. Current statuses, not historical month-end snapshots.">
+      <th scope="row" style={{ padding: '6px', textAlign: 'left', color: '#15616D', fontSize: 13 }} title="Won ÷ (total projects − Estimating). Saved old-instance history plus current Procore data, with each project counted once. Grouped by Created Date, not historical month-end snapshots.">
         Win Rate<span style={{ display: 'block', fontSize: 10, fontWeight: 400 }}>Rolling · won / jobs bid</span>
       </th>
       {error ? <td colSpan={13} role="status" style={{ padding: 6, fontSize: 12 }}>{error} <button type="button" onClick={() => setRetry(n => n + 1)} style={{ textDecoration: 'underline' }}>Retry</button></td>
@@ -52,7 +54,8 @@ export default function KpiWinRateRow({ year }: { year: string }) {
       <section aria-label="Win rate project breakdown" style={{ padding: 12, background: '#f8faf9' }}>
         <button type="button" onClick={() => setDetail(null)} style={{ float: 'right', textDecoration: 'underline' }}>Close breakdown</button>
         <strong>Win rate · {year || 'All years'}{detail !== 'total' ? ` · Jan–${monthNames[detail - 1]}` : ' · Total'}</strong>
-        <p style={{ margin: '6px 0', fontSize: 12 }}>Accepted, In Progress, and Complete count as won. Estimating is excluded from jobs bid. Projects are grouped by Created Date and counted once across both instances and contractors. Monthly values use current statuses through each month; Total divides total wins by total jobs bid.</p>
+        <p style={{ margin: '6px 0', fontSize: 12 }}>Accepted, In Progress, and Complete count as won. Estimating is excluded from jobs bid. Projects are grouped by Created Date and counted once across saved history and current projects, regardless of contractor. Monthly values accumulate through each month; Total divides total wins by total jobs bid.</p>
+        {baselineSavedAt && <p style={{ margin: '6px 0', fontSize: 12 }}>Old-instance history saved {new Date(baselineSavedAt).toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'long', day: 'numeric', year: 'numeric' })}. Current-instance statuses update automatically. The old instance is no longer needed.</p>}
         {!year && <p style={{ fontSize: 12 }}>All years combines January through the selected month from every year.</p>}
         <div style={{ maxHeight: 360, overflow: 'auto' }}><table style={{ width: '100%', fontSize: 12, textAlign: 'left' }}>
           <thead><tr><th>Project</th><th>Created</th><th>Status</th><th>Won</th><th>Jobs bid</th><th>Source bids</th></tr></thead>

@@ -641,6 +641,7 @@ export async function claimDueProject(params: {
   projectId?: string;
   newestFirst?: boolean;
   retryAfterInterruptedClaim?: boolean;
+  excludeProjectIds?: string[];
 }) {
   const rows = await prisma.$queryRawUnsafe<DbProjectRow[]>(
     `
@@ -649,6 +650,7 @@ export async function claimDueProject(params: {
         FROM procore_sync_project_states
         WHERE company_id = $1
           AND dataset = $2
+          AND NOT (project_id = ANY($8::text[]))
           AND ($5::text IS NULL OR project_id = $5)
           AND ($5::text IS NOT NULL OR next_run_at <= NOW())
           AND (locked_until IS NULL OR locked_until <= NOW())
@@ -677,7 +679,8 @@ export async function claimDueProject(params: {
     params.leaseMinutes ?? 8,
     params.projectId || null,
     params.newestFirst === true,
-    params.retryAfterInterruptedClaim === true
+    params.retryAfterInterruptedClaim === true,
+    params.excludeProjectIds ?? []
   );
   const row = rows[0];
   if (!row) return null;

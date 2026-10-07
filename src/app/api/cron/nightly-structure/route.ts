@@ -1,5 +1,5 @@
 import { streamSyncResponse } from '@/lib/procoreSyncStream';
-import { withAnalyticsSyncProcoreConnection, withProcoreConnection } from '@/lib/procoreConnection';
+import { withAnalyticsSyncProcoreConnection } from '@/lib/procoreConnection';
 import { NextRequest, NextResponse } from "next/server";
 import { purchaseOrderDiscoveryPolling } from "@/lib/procorePollingPolicy";
 import { prisma } from "@/lib/prisma";
@@ -33,8 +33,6 @@ const ESTIMATING_DATASET = "nightly_estimates";
 const BID_BOARD_DATASET = "nightly_bid_board_headers";
 const PO_DISCOVERY_DATASET = "purchase_order_discovery";
 const BID_BOARD_QUEUE_ID = "__company_bid_board__";
-const OLD_BID_BOARD_QUEUE_ID = "__old_company_bid_board__";
-const OLD_COMPANY_ID = "598134325658789";
 const COMPANY_ID = (process.env.PROCORE_COMPANY_ID || "598134325805519").trim();
 // Estimates are also drained during the day; retain their daily tick margin.
 const DAILY_REQUEUE_MINUTES = 24 * 60 - 5;
@@ -89,19 +87,13 @@ async function runStep(params: {
   path: string;
   timeoutMs?: number;
   syncScope?: string;
-  companyId?: string;
-  headersOnly?: boolean;
-  connection?: 'shared';
 }) {
   try {
     const response = await fetch(`${params.origin}${params.path}`, {
       method: "POST",
-      headers: {
-        "content-type": "application/json", "x-sync-secret": params.secret,
-        ...(params.connection ? { 'x-procore-connection': params.connection } : {}),
-      },
+      headers: { "content-type": "application/json", "x-sync-secret": params.secret },
       body: JSON.stringify({
-        companyId: params.companyId ?? COMPANY_ID,
+        companyId: COMPANY_ID,
         projectIds: [params.projectId],
         perPage: 100,
         concurrency: 1,
@@ -109,7 +101,6 @@ async function runStep(params: {
         persistUnpackedFields: false,
         forceUserOAuth: false,
         syncScope: params.syncScope,
-        headersOnly: params.headersOnly,
       }),
       signal: AbortSignal.timeout(params.timeoutMs ?? 4 * 60_000),
     });
@@ -295,29 +286,22 @@ async function runPostInConnection(request: NextRequest) {
       projectId: BID_BOARD_QUEUE_ID,
       projectName: "Company Bid Board headers",
     });
-    await seedSingletonSyncQueue({
-      companyId: COMPANY_ID,
-      dataset: BID_BOARD_DATASET,
-      projectId: OLD_BID_BOARD_QUEUE_ID,
-      projectName: "Old instance Bid Board headers for KPI win rate",
-    });
     bidBoardProject = await claimDueProject({
       companyId: COMPANY_ID,
       dataset: BID_BOARD_DATASET,
+      excludeProjectIds: ["__old_company_bid_board__"],
       leaseId: worker.leaseId,
     });
     if (bidBoardProject) {
-      const headerCompanyId = bidBoardProject.projectId === OLD_BID_BOARD_QUEUE_ID ? OLD_COMPANY_ID : COMPANY_ID;
       const selection = {
         step: "select-company-dataset",
         status: "ok",
-        projectId: bidBoardProject.projectId,
-        companyId: headerCompanyId,
+        projectId: BID_BOARD_QUEUE_ID,
         projectName: bidBoardProject.projectName,
         dataset: BID_BOARD_DATASET,
       };
       const log = await prisma.syncLog.create({
-        data: { companyId: headerCompanyId, triggeredBy: "nightly-bid-board-headers", steps: [selection] },
+        data: { companyId: COMPANY_ID, triggeredBy: "nightly-bid-board-headers", steps: [selection] },
         select: { id: true },
       }).catch(() => null);
       logId = log?.id ?? null;
@@ -328,9 +312,6 @@ async function runPostInConnection(request: NextRequest) {
         projectId: BID_BOARD_QUEUE_ID,
         step: "bid-board-projects",
         path: "/api/procore/sync/bid-board-projects",
-        companyId: headerCompanyId,
-        headersOnly: headerCompanyId === OLD_COMPANY_ID,
-        connection: headerCompanyId === OLD_COMPANY_ID ? 'shared' : undefined,
       });
       const success = step.status === "ok";
       const error = success ? null : JSON.stringify(step.detail || "Bid Board header sync failed").slice(0, 4_000);
@@ -339,16 +320,11 @@ async function runPostInConnection(request: NextRequest) {
         : null;
       if (rateLimitUntil) {
         if (!step.rateLimitInherited) {
-          const recordHeaderRateLimit = () => setProcoreRateLimit({
-            companyId: headerCompanyId,
+          await setProcoreRateLimit({
+            companyId: COMPANY_ID,
             until: rateLimitUntil,
             error,
           });
-          if (headerCompanyId === OLD_COMPANY_ID) {
-            await withProcoreConnection('shared', recordHeaderRateLimit);
-          } else {
-            await recordHeaderRateLimit();
-          }
         }
         await deferProjectSync({
           project: bidBoardProject,
@@ -382,7 +358,7 @@ async function runPostInConnection(request: NextRequest) {
         success: success || Boolean(rateLimitUntil),
         completed: success,
         deferred: Boolean(rateLimitUntil),
-        companyId: headerCompanyId,
+        companyId: COMPANY_ID,
         dataset: BID_BOARD_DATASET,
         logId: logId?.toString() || null,
         totalMs,

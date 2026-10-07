@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { calculateWinRate } from '../src/lib/kpiWinRate.ts';
+import { calculateWinRate, createWinRateBaseline, parseWinRateBaseline, combineWinRateSources } from '../src/lib/kpiWinRate.ts';
 import { resolvePermissionForPath } from '../src/lib/permissions.ts';
 
 const current = '598134325805519', old = '598134325658789';
@@ -66,13 +66,47 @@ test('KPI page and win-rate endpoint share the KPI permission', () => {
   assert.equal(resolvePermissionForPath('/kpi'), 'kpi');
   assert.equal(resolvePermissionForPath('/api/kpi/win-rate'), 'kpi');
 });
-test('old-instance header refresh never queues historical estimate details', () => {
+
+test('saved history preserves counts when all old-instance mirror records disappear', () => {
+  const oldRows = [bid('1', 'Old won', 'COMPLETE', undefined, old), bid('2', 'Migrated', 'BID_SUBMITTED', undefined, old)];
+  const currentRows = [bid('3', 'Migrated', 'ACCEPTED'), bid('4', 'New bid', 'BID_SUBMITTED')];
+  const baseline = parseWinRateBaseline(JSON.stringify(createWinRateBaseline(oldRows, now)));
+  const before = run([...oldRows, ...currentRows]);
+  const withoutOldMirror = run(combineWinRateSources(currentRows, baseline));
+  assert.deepEqual(withoutOldMirror, before);
+  assert.equal(withoutOldMirror.total.won, 2);
+  assert.equal(withoutOldMirror.total.bid, 3);
+});
+test('saved old bid advances to a win in the current instance without an extra project', () => {
+  const baseline = createWinRateBaseline([bid('1', 'Migrated', 'BID_SUBMITTED', undefined, old)], now);
+  assert.equal(run(combineWinRateSources([], baseline)).total.won, 0);
+  const after = run(combineWinRateSources([bid('2', 'Migrated', 'IN_PROGRESS')], baseline));
+  assert.equal(after.total.won, 1);
+  assert.equal(after.total.bid, 1);
+});
+test('later old-instance deletions or mirror changes cannot modify saved history', () => {
+  const row = bid('1', 'Historic', 'COMPLETE', undefined, old);
+  const baseline = createWinRateBaseline([row], now);
+  row.payload.status = 'LOST'; row.payload.deleted = true;
+  const r = run(combineWinRateSources([row, bid('2', 'New', 'BID_SUBMITTED')], baseline));
+  assert.equal(r.total.won, 1);
+  assert.equal(r.total.bid, 2);
+  assert.equal(baseline.bids[0].payload.status, 'COMPLETE');
+});
+test('baseline rejects empty or wrong-company data instead of silently dropping history', () => {
+  assert.throws(() => createWinRateBaseline([bid('1', 'Current', 'COMPLETE')]), /empty/);
+  assert.throws(() => parseWinRateBaseline(JSON.stringify({ version: 1, companyId: current, savedAt: now.toISOString(), bids: [] })), /Invalid/);
+});
+test('KPI reads saved history and only current-company mirrors; old polling is retired', () => {
+  const route = readFileSync(new URL('../src/app/api/kpi/win-rate/route.ts', import.meta.url), 'utf8');
   const sync = readFileSync(new URL('../src/app/api/procore/sync/bid-board-projects/route.ts', import.meta.url), 'utf8');
   const cron = readFileSync(new URL('../src/app/api/cron/nightly-structure/route.ts', import.meta.url), 'utf8');
-  assert.match(sync, /body.headersOnly === true \? \[\] : persisted/);
-  assert.match(cron, /headersOnly: headerCompanyId === OLD_COMPANY_ID/);
-  assert.match(cron, /companyId: params.companyId \?\? COMPANY_ID/);
-  assert.match(cron, /connection: headerCompanyId === OLD_COMPANY_ID \? 'shared' : undefined/);
-  assert.match(cron, /'x-procore-connection': params.connection/);
-  assert.match(cron, /withProcoreConnection\('shared', recordHeaderRateLimit\)/);
+  const queue = readFileSync(new URL('../src/lib/procoreSyncQueue.ts', import.meta.url), 'utf8');
+  assert.match(route, /findMany\(\{ where: \{ companyId: KPI_CURRENT_COMPANY \}/);
+  assert.match(route, /combineWinRateSources\(bids, baseline\)/);
+  assert.doesNotMatch(route, /KPI_OLD_COMPANY|fetch\(/);
+  assert.match(cron, /excludeProjectIds: \["__old_company_bid_board__"\]/);
+  assert.doesNotMatch(cron, /OLD_COMPANY_ID|OLD_BID_BOARD_QUEUE_ID/);
+  assert.match(queue, /AND NOT \(project_id = ANY\(\$8::text\[\]\)\)/);
+  assert.ok(sync.indexOf("reason: 'old_instance_history_saved'") < sync.indexOf('const accessToken = await getClientCredentialsToken()'));
 });

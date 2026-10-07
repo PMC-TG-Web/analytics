@@ -14,12 +14,18 @@ type GateRow = {
 };
 export type ProcoreRequestPermit = { leaseId: string; companyId: string; lane: ProcoreRequestLane; connection?: ProcoreConnection };
 
+// These short, database-only transactions cross the Prisma gateway several
+// times. Its default five seconds can expire before the locked read completes.
+const GATE_TRANSACTION_OPTIONS = { maxWait: 5_000, timeout: 15_000 };
+
 export async function acquireProcoreRequestPermit(companyId: string, lane: ProcoreRequestLane) {
   const connection = currentProcoreConnection();
   const table = Prisma.raw(procoreCoordinationTables(connection).gates);
+  // Initialization is idempotent and needs no reservation lock. Keep its
+  // database round trip outside the interactive transaction's timeout.
+  await prisma.$executeRaw`INSERT INTO ${table} (company_id) VALUES (${companyId}) ON CONFLICT DO NOTHING`;
   // Lock only while reserving within this app/company, never during a fetch.
   return prisma.$transaction(async tx => {
-    await tx.$executeRaw`INSERT INTO ${table} (company_id) VALUES (${companyId}) ON CONFLICT DO NOTHING`;
     const [row] = await tx.$queryRaw<GateRow[]>`SELECT *, clock_timestamp() AS now FROM ${table} WHERE company_id = ${companyId} FOR UPDATE`;
     const now = row.now.getTime();
     const decision = reserveProcoreRequest({
@@ -37,7 +43,7 @@ export async function acquireProcoreRequestPermit(companyId: string, lane: Proco
           interactive_until = ${new Date(decision.interactiveUntil)}, windows = ${JSON.stringify(decision.windows)}::jsonb,
           updated_at = NOW() WHERE company_id = ${companyId}`;
     return { permit: { leaseId, companyId, lane, connection } satisfies ProcoreRequestPermit, retryAt: 0 };
-  });
+  }, GATE_TRANSACTION_OPTIONS);
 }
 
 export async function waitForProcoreRequestPermit(companyId: string, lane: ProcoreRequestLane, maxWaitMs = 8_000) {
@@ -109,7 +115,7 @@ export async function completeProcoreRequestPermit(params: {
               ${procoreUsageEndpoint(params.method, params.path)}, ${params.status}, 1)
       ON CONFLICT (company_id, hour, lane, endpoint, status) DO UPDATE
       SET requests = ${usageTable}.requests + 1`;
-  });
+  }, GATE_TRANSACTION_OPTIONS);
 }
 
 export async function procoreApiUsageSummary(companyId: string) {

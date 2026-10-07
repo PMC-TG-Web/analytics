@@ -36,7 +36,7 @@ test('shared gate SQL, lease ownership, cache identity and usage accounting work
       const gate = load('src/lib/procoreRequestGate.ts', {
         '@prisma/client': { Prisma }, '@/lib/procoreConnection': connection,
         'node:crypto': { randomUUID }, '@/lib/prisma': { prisma: { $transaction: operation => operation(tx),
-          $queryRaw: tx.$queryRaw.bind(tx) } },
+          $queryRaw: tx.$queryRaw.bind(tx), $executeRaw: tx.$executeRaw.bind(tx) } },
         '@/lib/procoreRequestBudget': budget, '@/lib/procoreRateLimit': rateLimits,
       });
       await tx.$executeRawUnsafe('CREATE TEMP TABLE procore_pm_request_gates (LIKE procore_request_gates INCLUDING ALL)');

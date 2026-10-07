@@ -170,6 +170,46 @@ test('repeated assembly components may resolve only when all matching codes and 
   }
 });
 
+test('custom and subcontractor categories are equivalent without losing LS coding or assembly ambiguity checks', () => {
+  const screed = component('Boom screed', '03-300-20-30', { cost_type_code: 'LS' });
+  const slabLabor = component('Slab labor', '03-300-20-10', { type: 'LABOR', cost_type_code: 'L' });
+  const siteLabor = component('Site labor', '03-300-30-10', { type: 'LABOR', cost_type_code: 'L' });
+  const catalogs = new Map([['20', [assembly('slab', screed, slabLabor),
+    assembly('site', { ...screed, cost_code: '03-300-30-30' }, siteLabor)]]]);
+  const original = detached('Boom screed');
+  original.cost_item.type = 'SUBCONTRACTOR';
+  const sibling = detached('Slab labor', { id: '2', cost_item: { ...slabLabor, id: '0', catalog_id: '20' } });
+  const [enriched] = logic.enrichPrimaryEstimateBudgetCodes([original, sibling], [], catalogs);
+  assert.deepEqual(logic.primaryEstimateCostAssignment(enriched), { code: '03-300-20-30', type: 'LS' });
+  assert.equal(enriched.cost_item.type, 'SUBCONTRACTOR');
+  assert.equal(enriched.cost_item.unit_cost, original.cost_item.unit_cost);
+  assert.equal(original.cost_item.cost_code, undefined);
+  const parsed = logic.parsePrimaryCommitmentEstimate([enriched], [group]).groups[0].lineItems[0];
+  assert.equal(parsed.costType, 'LS');
+  assert.equal(maker.commitmentMakerLineAmount(parsed), 10);
+  // The equivalence works in either direction; a unique assignment needs no
+  // group hint, while conflicting Site/SOG assignments still require siblings.
+  const custom = detached('Boom screed');
+  const subcontractorCatalog = new Map([['20', [assembly('slab', { ...screed, type: 'SUBCONTRACTOR' })]]]);
+  assert.deepEqual(logic.primaryEstimateCostAssignment(logic.enrichPrimaryEstimateBudgetCodes([custom], [], subcontractorCatalog)[0]),
+    { code: '03-300-20-30', type: 'LS' });
+  assert.deepEqual(logic.primaryEstimateCostAssignment(logic.enrichPrimaryEstimateBudgetCodes([original], [],
+    new Map([['20', [assembly('slab', screed)]]]))[0]), { code: '03-300-20-30', type: 'LS' });
+  for (const lines of [[original], [original, { ...sibling, group_id: 'g2' }],
+    [original, sibling, detached('Site labor', { id: '3', cost_item: { ...siteLabor, id: '0', catalog_id: '20' } })]]) {
+    assert.equal(logic.enrichPrimaryEstimateBudgetCodes(lines, [], catalogs)[0], original);
+  }
+  for (const changes of [{ type: 'LABOR' }, { type: 'EQUIPMENT' }, { catalog_id: '21' },
+    { description: 'Different' }, { manufacturer: 'Different' }, { catalog_number: 'Different' }, { name: 'Different' }]) {
+    const changed = { ...original, cost_item: { ...original.cost_item, ...changes } };
+    assert.equal(logic.enrichPrimaryEstimateBudgetCodes([changed, sibling], [], catalogs)[0], changed);
+  }
+  const duplicate = new Map([['20', [assembly('slab', screed, { ...screed, cost_type_code: 'E' }, slabLabor)]]]);
+  assert.equal(logic.enrichPrimaryEstimateBudgetCodes([original, sibling], [], duplicate)[0], original);
+  const explicit = { ...original, cost_code: '03-300-40-30', cost_code_type: 'LS' };
+  assert.equal(logic.enrichPrimaryEstimateBudgetCodes([explicit, sibling], [], catalogs)[0], explicit);
+});
+
 test('combine commands rebuild only authoritative groups and reject invented scope', () => {
   const a = logic.parsePrimaryCommitmentEstimate([line()], [group]).groups;
   const groups = [...a, { ...a[0], name: 'Walls', lineItems: [{ ...a[0].lineItems[0], unitCost: 5, subtotalOverride: 15 }] }];
@@ -221,7 +261,7 @@ function sourceFixture({ cached = null, prepared = null, failPath = '', malforme
 }
 
 test('warm preview skips live reads; create rereads the primary and all detail', async () => {
-  const snapshot = { bidBoardProjectId: '123', proposal: primary, lines: [line()], groups: [group], fetchedAt: new Date().toISOString(), budgetCodesVersion: 2 };
+  const snapshot = { bidBoardProjectId: '123', proposal: primary, lines: [line()], groups: [group], fetchedAt: new Date().toISOString(), budgetCodesVersion: 3 };
   const fixture = sourceFixture({ cached: { snapshot, fetched_at: new Date() } });
   const options = { companyId: 'co', projectId: 'project', forceLive: false, getToken: async () => 'test' };
   assert.deepEqual(await fixture.source.readPrimaryCommitmentEstimate(options), snapshot);
@@ -232,7 +272,7 @@ test('warm preview skips live reads; create rereads the primary and all detail',
 });
 
 test('prepared source rechecks the live primary before planning and rejects a changed selection', async () => {
-  const prepared = { bidBoardProjectId: '123', proposal: primary, lines: [line()], groups: [group], budgetCodesVersion: 2 };
+  const prepared = { bidBoardProjectId: '123', proposal: primary, lines: [line()], groups: [group], budgetCodesVersion: 3 };
   const options = { companyId: 'co', projectId: 'project', mode: 'create', forceLive: true, preparationId: 'prepared', getToken: async () => 'test' };
   const fixture = sourceFixture({ prepared });
   assert.deepEqual(await fixture.source.readPrimaryCommitmentEstimate(options), prepared);
@@ -240,7 +280,7 @@ test('prepared source rechecks the live primary before planning and rejects a ch
   assert.match(fixture.calls[0], /\/proposals\?/);
   const changed = sourceFixture({ prepared: { ...prepared, proposal: { ...primary, id: 'other' } } });
   await assert.rejects(changed.source.readPrimaryCommitmentEstimate(options), /changed while it was loading/);
-  const old = sourceFixture({ prepared: { ...prepared, budgetCodesVersion: 1 } });
+  const old = sourceFixture({ prepared: { ...prepared, budgetCodesVersion: 2 } });
   await assert.rejects(old.source.readPrimaryCommitmentEstimate(options), /Refresh and preview again/);
   assert.equal(old.writes.length, 0);
 });
@@ -250,7 +290,7 @@ test('catalog reads use exact company/item IDs despite moved catalogs; old snaps
   const fixture = sourceFixture({ lines, cached: { snapshot: { bidBoardProjectId: '123', lines }, fetched_at: new Date() },
     catalogDetail: id => ({ id, catalog_id: '30', cost_code: '03-300-00-20', cost_type_code: 'CON' }) });
   const result = await fixture.source.readPrimaryCommitmentEstimate({ companyId: 'co', projectId: 'project', forceLive: false, getToken: async () => 'test' });
-  assert.equal(result.budgetCodesVersion, 2);
+  assert.equal(result.budgetCodesVersion, 3);
   assert.equal(result.lines.length, 3);
   assert.ok(result.lines.every(line => logic.primaryEstimateCostAssignment(line).code === '03-300-00-20'));
   assert.deepEqual(fixture.calls.filter(path => path.includes('/catalogs/')), [
@@ -266,7 +306,7 @@ test('detached children read their full assembly catalog once; previous coding s
       ? { data: Array.from({ length: 100 }, (_, i) => assembly(String(i + 1), component('Forms', '03-100-10-20'))) }
       : { data: [assembly('101', component('Forms', '03-100-10-20'))] } });
   const result = await fixture.source.readPrimaryCommitmentEstimate({ companyId: 'co', projectId: 'project', forceLive: false, getToken: async () => 'test' });
-  assert.equal(result.budgetCodesVersion, 2);
+  assert.equal(result.budgetCodesVersion, 3);
   assert.ok(result.lines.every(l => logic.primaryEstimateCostAssignment(l).code === '03-100-10-20'));
   assert.deepEqual(fixture.calls.filter(path => path.includes('/catalogs/')), [
     '/rest/v2.0/companies/co/estimating/catalogs/20/items?page=1&per_page=100',

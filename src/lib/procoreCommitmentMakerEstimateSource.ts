@@ -7,7 +7,7 @@ import {
 } from '@/lib/procore/commitmentMakerEstimate';
 
 type RecordValue = Record<string, unknown>;
-const BUDGET_CODES_VERSION = 2;
+const BUDGET_CODES_VERSION = 3;
 export type PrimaryEstimateSnapshot = {
   bidBoardProjectId: string; proposal: RecordValue; lines: RecordValue[]; groups: RecordValue[]; fetchedAt: string;
   budgetCodesVersion?: number;

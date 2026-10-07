@@ -71,7 +71,11 @@ function assemblyItemIdentity(item: RecordValue): string {
   // Estimate units and prices may be overridden. Match original item metadata,
   // never the editable line name, group name, quantity, units or price.
   if (!text(item.name) || !text(item.description) || !text(item.type)) return '';
-  return JSON.stringify([item.name, item.description, item.type, item.manufacturer, item.catalog_number]
+  // Procore may reclassify custom/subcontractor components after an estimate
+  // was copied. This item category is independent of its budget cost type (LS).
+  const type = text(item.type).toUpperCase();
+  const identityType = ['CUSTOM', 'SUBCONTRACTOR'].includes(type) ? 'CUSTOM' : type;
+  return JSON.stringify([item.name, item.description, identityType, item.manufacturer, item.catalog_number]
     .map(value => text(value).toLowerCase().replace(/\s+/g, ' ')));
 }
 

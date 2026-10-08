@@ -132,6 +132,31 @@ export function financialSoldDates(
   return dates;
 }
 
+// Financial WIP's Sold card uses Project > Additional Information > Contract
+// Date. This definition ID belongs to this company; it is not a prime-contract
+// date and must never be reused for another company's custom field.
+export function financialWipSoldDates(
+  projects: Array<{
+    companyId: string; source: string; externalId: string; procoreProjectId: string | null; payload: unknown;
+  }>,
+  companyId: string,
+) {
+  const contractDateField = companyId === "598134325805519" ? "custom_field_598134325926617" : null;
+  const dates = new Map<string, { contractDate: string | null; startDate: string | null }>();
+  const record = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown> : {};
+  for (const row of projects) {
+    if (row.companyId !== companyId || row.source !== "procore_v1_projects") continue;
+    const id = String(row.procoreProjectId || row.externalId || "").trim();
+    const payload = record(row.payload);
+    if (!id || payload.deleted_at) continue;
+    const customFields = record(payload.custom_fields);
+    const contractDate = contractDateField ? record(customFields[contractDateField]).value : null;
+    dates.set(id, { contractDate: financialDate(contractDate), startDate: financialDate(payload.start_date) });
+  }
+  return dates;
+}
+
 export function calculateSoldContractValue(
   projects: Array<SoldYearInput & { contractValue: unknown }>,
   year: number,

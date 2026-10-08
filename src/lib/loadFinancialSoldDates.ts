@@ -1,5 +1,16 @@
 import { prisma } from "@/lib/prisma";
-import { financialSoldDates } from "@/lib/financialWip";
+import { financialSoldDates, financialWipSoldDates } from "@/lib/financialWip";
+
+function loadProjectDateRows(companyId: string) {
+  return prisma.procoreProjectStaging.findMany({
+    where: { companyId, source: "procore_v1_projects" },
+    select: { companyId: true, source: true, externalId: true, procoreProjectId: true, payload: true },
+  });
+}
+
+export async function loadFinancialWipSoldDates(companyId: string) {
+  return financialWipSoldDates(await loadProjectDateRows(companyId), companyId);
+}
 
 export async function loadFinancialSoldDates(companyId: string) {
   const [contracts, projects] = await Promise.all([
@@ -10,10 +21,7 @@ export async function loadFinancialSoldDates(companyId: string) {
         status: true, contract_date: true, payload: true,
       },
     }),
-    prisma.procoreProjectStaging.findMany({
-      where: { companyId, source: "procore_v1_projects" },
-      select: { companyId: true, source: true, externalId: true, procoreProjectId: true, payload: true },
-    }),
+    loadProjectDateRows(companyId),
   ]);
   return financialSoldDates(contracts, projects, companyId);
 }

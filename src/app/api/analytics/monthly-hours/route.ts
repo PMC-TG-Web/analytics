@@ -4,7 +4,7 @@ import { getKpiCardYearValues } from "@/lib/kpiCardMonths";
 import { loadEstimatingDashboardProjects } from "@/lib/estimatingDashboard";
 import { resolveProjectContractValue } from "@/lib/projectProfitabilityContractValue";
 import { financialContractBases } from "@/lib/financialContractBases";
-import { loadFinancialSoldDates } from "@/lib/loadFinancialSoldDates";
+import { loadFinancialWipSoldDates } from "@/lib/loadFinancialSoldDates";
 import {
   calculateFinancialWip,
   calculateQboIncomeReconciliation,
@@ -286,7 +286,7 @@ export async function GET(request: NextRequest) {
           payload: true,
         },
       }),
-      loadFinancialSoldDates(companyId),
+      loadFinancialWipSoldDates(companyId),
     ]);
 
     const originalContractByProjectId = financialContractBases(primeContracts, companyId);

@@ -52,6 +52,8 @@ The important boundary is that interactive analytics reads use PostgreSQL. Proco
 
 ## Runtime and deployment
 
+Tailwind source detection in `src/app/globals.css` is explicitly rooted at `src/`. Keep generated evidence, logs, and outputs outside that scan. Scanning the repository root caused Webpack to watch `outputs/` and rebuild whenever the dev server wrote its own logs, triggering continuous browser renders. Validate source dependencies and generated utilities with `node --test test/tailwindSourceWatch.test.mjs`.
+
 Production delivery (2026-10-02): GitHub `PMC-TG-Web/analytics` branch `main` is the shared source of truth across desktop and laptop. Push completed, validated changes to `origin/main`; Netlify's connected Git build publishes production from that commit. Do not suppress the build with `[skip netlify]` or `[skip ci]`, and do not upload a local production build during normal releases. Verify the published deploy's `commit_ref` equals the released GitHub SHA. The published-source ancestry check above still applies before release. Netlify uses its existing production database configuration for `npm run build`, including migration deployment; review migration changes before pushing a release.
 
 On another computer, preserve any local changes, run `git switch main`, then `git pull --ff-only` before starting work. Push unfinished work to a topic branch if it must be available on both computers; merge validated work into `main` for production. Local environment secrets and generated evidence stay outside Git.

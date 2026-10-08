@@ -1,4 +1,6 @@
-@import "tailwindcss";
+/* Scan application sources only. Scanning the repository also watches generated
+   logs/outputs, so dev-server log writes can trigger another build indefinitely. */
+@import "tailwindcss" source("../");
 
 :root {
   --background: #ffffff;

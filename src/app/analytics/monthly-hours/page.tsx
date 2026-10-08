@@ -337,7 +337,7 @@ export default function MonthlyHoursPage() {
                 </div>
                 <div className="grid gap-px bg-slate-200 sm:grid-cols-2 xl:grid-cols-5">
                   {[
-                    ["Sold this year", money.format(financialWip.summary.soldContractValue), `${financialWip.summary.contractYear} · Project Contract Date → job number → start date · Accepted, in progress & completed · Includes approved COs · ${financialWip.summary.soldContractProjectCount} of ${financialWip.summary.soldProjectCount} valued`],
+                    ["Sold this year", money.format(financialWip.summary.soldContractValue), `${financialWip.summary.contractYear} · Project Contract Date → job number → start date · Awarded, in progress & completed · Includes approved COs · ${financialWip.summary.soldContractProjectCount} of ${financialWip.summary.soldProjectCount} valued`],
                     ["YTD billed", money.format(financialWip.qboIncomeReconciliation?.companyIncome || 0), `Companywide QBO P&L Income · ${dateLabel(financialWip.qboIncomeReconciliation?.periodStart)} through ${dateLabel(financialWip.qboIncomeReconciliation?.periodEnd)}`],
                     ["WIP", money.format(financialWip.summary.unbilledDollars), `Uses ${money.format(financialWip.summary.contractBackedNetBilled)} lifetime billed across ${financialWip.summary.includedProjectCount} contract-backed projects`],
                     ["Average billed YTD / month", money.format(financialWip.summary.averageMonthlyBilled), `${monthLabel(financialWip.summary.averagePeriodStart || undefined)} through ${monthLabel(financialWip.summary.averagePeriodEnd || undefined)}`],
@@ -353,7 +353,7 @@ export default function MonthlyHoursPage() {
                 {financialWip.soldProjects && (
                   <details className="border-t border-slate-200 px-5 py-3">
                     <summary className="cursor-pointer text-sm font-bold text-slate-700">Sold this year: project breakdown ({financialWip.soldProjects.length})</summary>
-                    <p className="mt-2 text-xs text-slate-500">Year follows the Procore project's Additional Information → Contract Date, then the job number, then the Procore project start date. Each fallback applies only when the previous source is missing or invalid. Includes accepted, in-progress, and completed jobs, including jobs awaiting QuickBooks setup. Values use the recorded approved original contract when available, otherwise the estimate, plus approved change orders.</p>
+                    <p className="mt-2 text-xs text-slate-500">Year follows the Procore project's Additional Information → Contract Date, then the job number, then the Procore project start date. Each fallback applies only when the previous source is missing or invalid. Includes awarded, in-progress, and completed jobs, including jobs awaiting QuickBooks setup. Accepted jobs are excluded because they are not yet won. Values use the recorded approved original contract when available, otherwise the estimate, plus approved change orders.</p>
                     <div className="mt-3 overflow-x-auto">
                       <table className="w-full text-left text-sm">
                         <thead className="border-b border-slate-200 text-xs text-slate-500">

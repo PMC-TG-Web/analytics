@@ -195,7 +195,7 @@ type SoldEstimateInput = {
 
 export function calculateEstimatingSoldContracts(projects: SoldEstimateInput[], year: number) {
   const soldStatuses = new Set([
-    "accepted", "awarded", "in progress", "active", "course of construction",
+    "awarded", "in progress", "active", "course of construction",
     "complete", "completed", "post-construction",
   ]);
   const seen = new Set<string>();
@@ -208,7 +208,8 @@ export function calculateEstimatingSoldContracts(projects: SoldEstimateInput[], 
       || soldYear.soldYear !== year) continue;
 
     // The caller supplies one company's current estimating records. Accepted
-    // jobs may only have a Bid Board ID; never join them by name or job number.
+    // jobs are not won yet. Qualifying jobs may only have a Bid Board ID;
+    // never join them by name or job number.
     const procoreId = String(project.procoreProjectId || "").trim();
     const boardId = String(project.bidBoardId || "").trim();
     if (!procoreId && !boardId) continue;

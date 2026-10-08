@@ -141,27 +141,28 @@ test("Financial WIP excludes PMC Operations by its internal job number or exact 
   assert.equal(isInternalFinancialProject({}), false);
 });
 
-test("sold projects include accepted jobs without Procore or QBO setup and completed jobs", () => {
+test("sold projects exclude accepted jobs while retaining in-progress and completed jobs", () => {
   const result = calculateEstimatingSoldContracts([
     estimate(),
     estimate({ bidBoardId: "board-2", procoreProjectId: null, status: "Accepted", sales: 2000, approvedChangeOrderAmount: 0 }),
     estimate({ bidBoardId: "board-3", procoreProjectId: "procore-3", status: "Complete", sales: 3000 }),
+    estimate({ bidBoardId: "board-4", procoreProjectId: "procore-4", status: " ACCEPTED ", contractDate: "2026-10-01", sales: 4000 }),
   ], 2026);
-  assert.equal(result.projectCount, 3);
-  assert.equal(result.contractProjectCount, 3);
-  assert.equal(result.contractValue, 6100);
+  assert.equal(result.projectCount, 2);
+  assert.equal(result.contractProjectCount, 2);
+  assert.equal(result.contractValue, 4100);
   assert.equal(result.projects.reduce((sum, row) => sum + row.contractValue, 0), result.contractValue);
-  assert.ok(result.projects.some(row => row.id === "bid:board-2"));
+  assert.deepEqual(new Set(result.projects.map(row => row.id)), new Set(["procore:procore-1", "procore:procore-3"]));
 });
 
 test("sold projects exclude unsold statuses, archived jobs, and previous-year numbers", () => {
   const result = calculateEstimatingSoldContracts([
-    ...["Bid Submitted", "Estimating", "Lost", "Cancelled", "Unknown", ""].map((status, index) =>
+    ...["Accepted", "Bid Submitted", "Estimating", "Lost", "Cancelled", "Unknown", ""].map((status, index) =>
       estimate({ procoreProjectId: `unsold-${index}`, status })),
     estimate({ procoreProjectId: "archived", projectArchived: true }),
     estimate({ procoreProjectId: "previous", projectNumber: "2508 - SC" }),
     estimate({ procoreProjectId: "no-number", projectNumber: "" }),
-    estimate({ status: " ACCEPTED " }),
+    estimate({ status: " AWARDED " }),
   ], 2026);
   assert.equal(result.projectCount, 1);
   assert.equal(result.contractValue, 1050);
@@ -171,8 +172,8 @@ test("sold projects deduplicate explicit IDs while retaining distinct jobs with 
   const result = calculateEstimatingSoldContracts([
     estimate(),
     estimate({ bidBoardId: "alternate-board" }),
-    estimate({ procoreProjectId: null, bidBoardId: "accepted-board", status: "Accepted" }),
-    estimate({ procoreProjectId: null, bidBoardId: "accepted-board", status: "Accepted" }),
+    estimate({ procoreProjectId: null, bidBoardId: "awarded-board", status: "Awarded" }),
+    estimate({ procoreProjectId: null, bidBoardId: "awarded-board", status: "Awarded" }),
     estimate({ procoreProjectId: "procore-2", bidBoardId: "board-2" }),
   ], 2026);
   assert.equal(result.projectCount, 3);

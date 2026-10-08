@@ -60,3 +60,39 @@ test('embedded sign-in keeps its completion tab and session polling', () => {
     '/auth/complete?returnTo=%2Fkpi%3Fyear%3D2026&fallback=procore-app');
   assert.equal(calls.polling, 1);
 });
+
+test('developer logout returns to the picker and clears the old browser identity; normal logout still reaches Auth0', async () => {
+  const source = ts.createSourceFile('Navigation.tsx', readFileSync(new URL('../src/components/Navigation.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let handler;
+  function visit(node) {
+    if (ts.isJsxElement(node) && node.openingElement.tagName.getText(source) === 'button' && node.children.some(child => child.getText(source).trim() === 'Sign Out')) {
+      handler = node.openingElement.attributes.properties.find(prop => prop.name?.getText(source) === 'onClick')?.initializer?.expression;
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(source);
+  assert.ok(handler);
+  const code = ts.transpileModule(`const handler = ${handler.getText(source)}; handler;`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  for (const developerSession of [true, false]) {
+    const removed = [], navigation = [];
+    const window = { confirm: () => true, location: {
+      pathname: '/', search: '', origin: 'http://localhost:3000',
+      replace: url => navigation.push(url), assign: url => navigation.push(url),
+    } };
+    window.self = window.top = window;
+    const onClick = vm.runInNewContext(code, {
+      window, Date, encodeURIComponent,
+      AUTH_LOGOUT_CONTEXT_KEY: 'logout-context', AUTH_LOGOUT_SIGNAL_KEY: 'logout-signal',
+      localStorage: { setItem() {} }, sessionStorage: { removeItem: key => removed.push(key) },
+      fetch: async url => {
+        assert.equal(url, '/api/auth/logout/local');
+        return { ok: true, json: async () => ({ success: true, developerSession }) };
+      },
+    });
+    await onClick();
+    assert.deepEqual(removed, ['analytics-auth-user']);
+    assert.equal(navigation.length, 1);
+    if (developerSession) assert.equal(navigation[0], '/dev-login');
+    else assert.ok(navigation[0].startsWith('/api/auth/logout?'));
+  }
+});

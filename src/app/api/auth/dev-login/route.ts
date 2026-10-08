@@ -1,7 +1,8 @@
+import { isLocalDeveloperRequest } from '@/lib/developerIdentity';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(request: NextRequest) {
-  const isDev = process.env.NODE_ENV !== 'production';
+  const isDev = isLocalDeveloperRequest(request);
 
   if (!isDev) {
     return NextResponse.json({ error: 'Not available in production' }, { status: 404 });
@@ -15,7 +16,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Valid email is required' }, { status: 400 });
   }
 
-  const safeReturnTo = returnTo.startsWith('/') ? returnTo : '/';
+  const safeReturnTo = returnTo.startsWith('/') && !returnTo.startsWith('//') && !returnTo.includes('\\') ? returnTo : '/';
   const redirectUrl = new URL(safeReturnTo, request.url);
   const response = NextResponse.redirect(redirectUrl);
 
@@ -27,5 +28,7 @@ export async function GET(request: NextRequest) {
     maxAge: 60 * 60 * 12,
   });
 
+  // Refresh permissions for the newly selected identity.
+  response.cookies.set('analytics_permissions', '', { path: '/', maxAge: 0 });
   return response;
 }

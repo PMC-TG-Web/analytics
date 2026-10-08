@@ -25,6 +25,7 @@ export default function LogoutCompletePage() {
   );
 
   useEffect(() => {
+    try { sessionStorage.removeItem('analytics-auth-user'); } catch { /* Storage may be unavailable. */ }
     let resolvedSource: "embedded" | "app" = "app";
     let resolvedReturnTo = "/";
 

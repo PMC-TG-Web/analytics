@@ -6,13 +6,18 @@ import ts from 'typescript';
 import { NextRequest, NextResponse } from 'next/server.js';
 import * as permissionRoutes from '../src/lib/permissionRoutes.js';
 import * as csrf from '../src/lib/csrfProtection.ts';
+import * as developerIdentity from '../src/lib/developerIdentity.ts';
 
-function harness({ signedIn = true, environment = 'production' } = {}) {
+function harness({ signedIn = true, environment = 'production', host = 'localhost:3000' } = {}) {
   const checks = [];
   const imports = {
     'next/server': { NextRequest, NextResponse },
     '@/lib/auth0': { auth0: { getSession: async () => signedIn ? { user: { email: 'limited@example.test' } } : null } },
     '@/lib/permissionRoutes': permissionRoutes,
+    '@/lib/developerIdentity': {
+      getDeveloperEmail: request => developerIdentity.getDeveloperEmail(request, environment),
+      isLocalDeveloperRequest: request => developerIdentity.isLocalDeveloperRequest(request, environment),
+    },
     '@/lib/permissionCookie': { PERMISSION_COOKIE_NAME: 'analytics_permissions', verifyPermissionCookieValue: async () => null },
     '@/lib/procoreUserSession': {},
     '@/lib/csrfProtection': csrf,
@@ -41,7 +46,7 @@ function harness({ signedIn = true, environment = 'production' } = {}) {
   });
   return {
     checks,
-    run: (path, options = {}) => module.exports.middleware(new NextRequest(`http://localhost:3000${path}`, options)),
+    run: (path, options = {}) => module.exports.middleware(new NextRequest(`http://${host}${path}`, options)),
   };
 }
 
@@ -57,14 +62,25 @@ test('signed-in users without Home permission can load the landing page and its 
   }
 });
 
-test('weather still requires a session even with an unverified developer cookie', async () => {
-  for (const environment of ['production', 'development']) {
-    const app = harness({ signedIn: false, environment });
+test('unverified developer cookies cannot authenticate production or non-loopback hosts', async () => {
+  for (const options of [{ environment: 'production' }, { environment: 'development', host: 'example.com' }]) {
+    const app = harness({ signedIn: false, ...options });
     for (const cookie of ['', 'dev_user_email=limited@example.test']) {
       assert.equal((await app.run('/api/weather', { headers: { cookie } })).status, 401);
     }
     assert.equal(app.checks.length, 0);
   }
+});
+
+test('local developer picker works without Auth0 but selected users still need page permissions', async () => {
+  const app = harness({ signedIn: false, environment: 'development' });
+  assert.equal((await app.run('/dev-login')).headers.get('x-middleware-next'), '1');
+  assert.equal((await app.run('/api/weather')).status, 401);
+  const headers = { cookie: 'dev_user_email=limited@example.test' };
+  assert.equal((await app.run('/api/weather', { headers })).headers.get('x-middleware-next'), '1');
+  assert.equal((await app.run('/api/kpi', { headers })).status, 403);
+  assert.deepEqual(app.checks, [['kpi']]);
+  assert.equal((await app.run('/dev-login/admin', { headers })).status, 307);
 });
 
 test('forecast exception cannot authorize home data, adjacent paths, or writes', async () => {

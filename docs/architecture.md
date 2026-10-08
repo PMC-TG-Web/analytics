@@ -92,6 +92,8 @@ On another computer, preserve any local changes, run `git switch main`, then `gi
 
 ### Auth0 session
 
+Local Developer Login uses `developerIdentity.ts` consistently in middleware, `/api/auth/me`, and request-user resolution. It is enabled only by `next dev` on a loopback hostname; production and non-loopback hosts cannot use the developer cookie or picker. The selected identity still passes ordinary database page-permission checks. Local logout expires `dev_user_email`, permission/link cookies, provider sessions and Auth0 cookie chunks with HTTP-compatible deletion on localhost. Developer logout returns directly to the account picker, and logout clears the browser's cached user so the next account is displayed correctly. Validate with `node --test test/localLogoutCookies.test.mjs test/loginNavigation.test.mjs test/permissions.test.mjs`.
+
 The login page starts normal browser sign-in in the current tab so the application returns to the full browser window. Embedded Procore sign-in still opens a separate tab and resumes the iframe through the existing completion signal and session polling. Validate with `node --test test/loginNavigation.test.mjs`.
 
 `src/lib/auth0.ts` configures the Auth0 client. Next.js discovers `src/middleware.ts` beside `src/app`; that entry point re-exports the existing policy from root `middleware.ts` and declares its static matcher. The policy enforces sessions for normal pages and APIs, returns JSON errors to unauthorized API callers, and redirects browser requests to login where appropriate. Session cookies use `SameSite=None` and `Secure` so the application can operate inside an allowed Procore iframe. Verify the generated middleware manifest and unauthenticated page/API responses when deploying.

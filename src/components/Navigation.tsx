@@ -130,6 +130,7 @@ export default function Navigation({
 
   useEffect(() => {
     const redirectToSignedOutPage = () => {
+      try { sessionStorage.removeItem('analytics-auth-user'); } catch { /* Storage may be unavailable. */ }
       window.location.replace('/auth/logout-complete');
     };
 
@@ -247,10 +248,18 @@ export default function Navigation({
             const logoutUrl = `/api/auth/logout?returnTo=${encodeURIComponent(logoutReturnTo)}`;
 
             try {
-              await fetch('/api/auth/logout/local', {
+              const localLogout = await fetch('/api/auth/logout/local', {
                 method: 'POST',
                 credentials: 'include',
               });
+              const result = localLogout.ok ? await localLogout.json() : null;
+              try { sessionStorage.removeItem('analytics-auth-user'); } catch { /* Continue signing out. */ }
+              if (result?.developerSession === true) {
+                // Developer accounts have no Auth0 session to sign out of.
+                try { localStorage.setItem(AUTH_LOGOUT_SIGNAL_KEY, String(Date.now())); } catch { /* Continue. */ }
+                window.location.replace('/dev-login');
+                return;
+              }
             } catch {
               // Ignore local logout failures and continue with Auth0 logout.
             }

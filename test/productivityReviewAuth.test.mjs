@@ -36,6 +36,7 @@ function harness({ auth0Email = null, databaseAllowed = true } = {}) {
   const imports = {
     'next/server': { NextRequest, NextResponse },
     '@/lib/auth0': { auth0 },
+    '@/lib/developerIdentity': load('src/lib/developerIdentity.ts'),
     '@/lib/permissionRoutes': permissionRoutes,
     '@/lib/permissionCookie': permissions,
     '@/lib/procoreUserSession': sessions,

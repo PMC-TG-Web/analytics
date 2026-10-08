@@ -1,3 +1,4 @@
+import { getDeveloperEmail, isLocalDeveloperRequest } from '@/lib/developerIdentity';
 import { NextRequest, NextResponse } from 'next/server';
 import { auth0 } from '@/lib/auth0';
 import { resolvePermissionForPath } from '@/lib/permissionRoutes';
@@ -322,6 +323,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // The account picker is local development tooling, never a production entry.
+  if (pathname === '/dev-login' && request.method === 'GET' && isLocalDeveloperRequest(request)) {
+    return NextResponse.next();
+  }
+
   // Allow auth routes
   if (isAuthApiRoute) {
     const response = await auth0.middleware(request);
@@ -536,7 +542,8 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  const session = await auth0.getSession(request);
+  const developerEmail = getDeveloperEmail(request);
+  const session = developerEmail ? { user: { email: developerEmail } } : await auth0.getSession(request);
   // Review writes need a verified reviewer, even when the page was opened via
   // the read-only Procore link bypass. Keep this exception route/method scoped.
   const acceptsProcoreUserSession =

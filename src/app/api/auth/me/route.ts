@@ -1,9 +1,10 @@
+import { getDeveloperEmail } from '@/lib/developerIdentity';
 import { NextRequest, NextResponse } from 'next/server';
 import { auth0 } from '@/lib/auth0';
 
 export async function GET(request: NextRequest) {
   const isDev = process.env.NODE_ENV !== 'production';
-  const selectedDevEmail = request.cookies.get('dev_user_email')?.value?.trim().toLowerCase();
+  const selectedDevEmail = getDeveloperEmail(request);
   const auth0Domain = (process.env.AUTH0_DOMAIN || '').trim().toLowerCase();
   const auth0Misconfigured =
     !auth0Domain ||

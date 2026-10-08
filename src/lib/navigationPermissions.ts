@@ -5,6 +5,21 @@ type PermissionRefreshOptions = {
   onError: () => void;
 };
 
+export function canAccessNavigationLink(
+  link: { href: string; page: string; fallbackPage?: string },
+  state: { email?: string | null; permissions: readonly string[] | null; loaded: boolean; failed: boolean },
+): boolean {
+  if (!state.email) return false;
+  // Help is available to every signed-in account, regardless of page grants.
+  if (link.href === '/help') return true;
+  // Backend guards enforce access while the initial permissions read is pending.
+  if ((!state.loaded || state.failed) && !state.permissions) return true;
+  const hasPermission = (permission: string) => state.permissions?.some(
+    (assigned) => assigned.toLowerCase() === permission.toLowerCase(),
+  );
+  return Boolean(hasPermission(link.page) || (link.fallbackPage && hasPermission(link.fallbackPage)));
+}
+
 // One active read per navigation instance; late responses after logout are ignored.
 export function createNavigationPermissionRefresh(options: PermissionRefreshOptions) {
   let disposed = false;

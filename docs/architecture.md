@@ -110,6 +110,8 @@ Field Productivity review completion and undo (`POST`/`DELETE /api/analytics/com
 
 ### Permission resolution
 
+The Help navigation link and `/help` directory are available to every signed-in user without a Home or Help permission assignment. The directory still filters guides by the user's underlying page access, and detailed guide routes retain those page permissions. Validate with `node --test test/navigationPermissions.test.mjs test/helpGuides.test.mjs test/permissions.test.mjs`.
+
 The access path is:
 
 1. `src/lib/permissionRoutes.js` maps page and API prefixes to permission keys.

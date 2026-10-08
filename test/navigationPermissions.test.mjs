@@ -1,9 +1,26 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createNavigationPermissionRefresh } from '../src/lib/navigationPermissions.ts';
+import { canAccessNavigationLink, createNavigationPermissionRefresh } from '../src/lib/navigationPermissions.ts';
 
 const email = 'operator@example.test';
 const response = (permissions, responseEmail = email) => Response.json({ data: { email: responseEmail, permissions } });
+
+test('Help remains visible to signed-in users with no Home grant or any page grants', () => {
+  const help = { href: '/help', page: 'help' };
+  for (const permissions of [[], ['crew-dispatch'], ['accounting-project-profitability']]) {
+    assert.equal(canAccessNavigationLink(help, { email, permissions, loaded: true, failed: false }), true);
+  }
+  assert.equal(canAccessNavigationLink(help, { email, permissions: null, loaded: false, failed: true }), true);
+  assert.equal(canAccessNavigationLink(help, { email: null, permissions: ['home'], loaded: true, failed: false }), false);
+});
+
+test('universal Help does not grant other navigation links or guide routes', () => {
+  const state = { email, permissions: [], loaded: true, failed: false };
+  assert.equal(canAccessNavigationLink({ href: '/help/qbo-project-profitability', page: 'accounting-project-profitability' }, state), false);
+  assert.equal(canAccessNavigationLink({ href: '/accounting/project-profitability', page: 'accounting-project-profitability' }, state), false);
+  assert.equal(canAccessNavigationLink({ href: '/kpi', page: 'kpi' }, { ...state, permissions: ['KPI'] }), true);
+  assert.equal(canAccessNavigationLink({ href: '/market-outlook', page: 'market-outlook', fallbackPage: 'analytics' }, { ...state, permissions: ['analytics'] }), true);
+});
 
 test('an already open menu receives new QBO grants and later revocations', async () => {
   let assigned = ['employees'];

@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { expandAssignedPermissions, USER_PERMISSIONS } from "@/lib/permissions";
-import { createNavigationPermissionRefresh } from "@/lib/navigationPermissions";
+import { canAccessNavigationLink, createNavigationPermissionRefresh } from "@/lib/navigationPermissions";
 
 const AUTH_LOGOUT_SIGNAL_KEY = "analytics-auth-logout";
 const AUTH_LOGOUT_SIGNAL_CHANNEL = "analytics-auth-logout";
@@ -48,7 +48,7 @@ const navLinks: NavLink[] = [
   { href: "/onboarding/submissions", label: "Onboarding", page: "onboarding" },
   { href: "/employees/handbook", label: "Handbook", page: "handbook" },
   { href: "/kpi-cards-management", label: "Manage", page: "kpi-cards-management" },
-  { href: "/help", label: "Help", page: "home" },
+  { href: "/help", label: "Help", page: "help" },
 ];
 
 const scheduleLinks: NavLink[] = [
@@ -171,15 +171,12 @@ export default function Navigation({
     ? permissionSnapshot?.permissions
     : null;
 
-  const canAccessLink = (link: NavLink) => {
-    if (!user?.email) return false;
-    // Backend route guards continue to enforce access during initial hydration.
-    if ((!permissionsLoaded || permissionsFailed) && !currentPermissions) return true;
-    const hasPermission = (permission: string) => currentPermissions?.some(
-      assigned => assigned.toLowerCase() === permission.toLowerCase()
-    );
-    return hasPermission(link.page) || Boolean(link.fallbackPage && hasPermission(link.fallbackPage));
-  };
+  const canAccessLink = (link: NavLink) => canAccessNavigationLink(link, {
+    email: user?.email,
+    permissions: currentPermissions,
+    loaded: permissionsLoaded,
+    failed: permissionsFailed,
+  });
 
   const visibleNavLinks = navLinks.filter(canAccessLink);
   const visibleScheduleLinks = scheduleLinks.filter(canAccessLink);

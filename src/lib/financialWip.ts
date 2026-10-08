@@ -178,6 +178,19 @@ export function calculateSoldContractValue(
   };
 }
 
+/** QBO's Sold card uses the current estimating/Bid Board status, not the
+ * execution-project badge. An Accepted bid is not won even if that badge says
+ * In Progress. Keep the remaining snapshot population and valuation intact. */
+export function calculateQboSoldContractValue(
+  projects: Array<SoldYearInput & { contractValue: unknown; bidBoardStatus?: unknown }>,
+  year: number,
+) {
+  return calculateSoldContractValue(
+    projects.filter((project) => String(project.bidBoardStatus || '').trim().toLowerCase() !== 'accepted'),
+    year,
+  );
+}
+
 type SoldEstimateInput = {
   bidBoardId: string;
   procoreProjectId?: string | null;

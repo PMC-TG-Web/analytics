@@ -8,7 +8,7 @@ import { getRequestUserEmail } from '@/lib/requestUser';
 import { loadUserAssignedPermissionsFromDatabase } from '@/lib/permissions';
 import { loadEstimatingDashboardProjects } from '@/lib/estimatingDashboard';
 import { resolveProjectContractValue } from '@/lib/projectProfitabilityContractValue';
-import { calculateSoldContractValue } from '@/lib/financialWip';
+import { calculateQboSoldContractValue } from '@/lib/financialWip';
 import { loadFinancialWipSoldDates } from '@/lib/loadFinancialSoldDates';
 import {
   excludeMarkedQboProjects,
@@ -55,6 +55,7 @@ function finiteBillingNumber(value: unknown): number | null {
 type ProcoreContractAmounts = {
   baseEstimate: number;
   approvedChangeOrders: number;
+  bidBoardStatus: string | null;
 };
 
 async function loadProcoreContractAmounts(projectIds: string[]) {
@@ -70,10 +71,14 @@ async function loadProcoreContractAmounts(projectIds: string[]) {
       values.set(projectId, {
         baseEstimate: Number(project.sales || 0),
         approvedChangeOrders: Number(project.approvedChangeOrderAmount || 0),
+        bidBoardStatus: project.status || null,
       });
     }
   } catch (error) {
     console.error('Failed to load Procore contract values for QBO profitability:', error);
+    // Status is also needed to exclude Accepted bids. Do not publish an
+    // unfiltered Sold count if the current estimating read failed.
+    throw error;
   }
 
   return values;
@@ -532,9 +537,10 @@ export async function GET(request: NextRequest) {
         };
     });
     const soldDates = await loadFinancialWipSoldDates(process.env.PROCORE_COMPANY_ID || '598134325805519');
-    const soldContracts = calculateSoldContractValue(
+    const soldContracts = calculateQboSoldContractValue(
       canonicalProjectRows.map((row) => ({
         procoreProjectNumber: row.procoreProjectNumber,
+        bidBoardStatus: row.procoreProjectId ? procoreContracts.get(row.procoreProjectId)?.bidBoardStatus : null,
         ...soldDates.get(row.procoreProjectId),
         contractValue: resolveFinancialValues(row, canonicalBilling).contract.contractValue,
       })),

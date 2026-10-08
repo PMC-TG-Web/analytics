@@ -22,7 +22,7 @@ export default async function HelpGuidePage({ params }: { params: Promise<{ slug
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-5xl space-y-5">
+      <div className="w-full space-y-5">
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="bg-gradient-to-r from-teal-950 via-teal-900 to-slate-900 px-6 py-6 text-white">
             <div className="mb-2 flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-teal-100">

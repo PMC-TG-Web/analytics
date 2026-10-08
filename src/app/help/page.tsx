@@ -69,7 +69,7 @@ export default function HelpDirectoryPage() {
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-5xl space-y-5">
+      <div className="w-full space-y-5">
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="bg-gradient-to-r from-teal-950 via-teal-900 to-slate-900 px-6 py-6 text-white">
             <div className="mb-2 text-xs font-bold uppercase tracking-[0.2em] text-teal-100">Help</div>
@@ -117,7 +117,7 @@ export default function HelpDirectoryPage() {
         {visibleGroups.map((group) => (
           <section key={group.category} className="space-y-3">
             <h2 className="px-1 text-xs font-black uppercase tracking-[0.2em] text-slate-500">{group.category}</h2>
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
               {group.guides.map((guide) => (
                 <article key={guide.slug} className="flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                   <h3 className="text-lg font-black tracking-tight text-slate-900">{guide.title}</h3>

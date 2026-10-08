@@ -40,6 +40,8 @@ export const PATH_PERMISSION_RULES = [
   { prefix: '/analytics', permission: 'analytics' },
   { prefix: '/accounting/direct-cost-bills', permission: 'accounting-direct-cost-bills' },
   { prefix: '/accounting/project-profitability', permission: 'accounting-project-profitability' },
+  // Help guides use the permission of the page they describe; /help itself is open to any signed-in user.
+  { prefix: '/help/qbo-project-profitability', permission: 'accounting-project-profitability' },
   { prefix: '/', permission: 'home' },
 ];
 

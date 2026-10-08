@@ -286,7 +286,11 @@ Missing direct-cost products can be created separately by `QBO_1/src/ensure-dire
 4. writes an immutable `QboProfitabilitySnapshot` with normalized project rows; and
 5. stores drill-through details when the table is available.
 
-The `/accounting/project-profitability` page and API read the latest stored snapshot, join Procore/estimating context, apply explicit QBO project exclusions, and expose refresh actions only to administrators or the accounting permission. Keep credentials and refresh-pairing material server-side.
+The `/accounting/project-profitability` page and API read the latest stored snapshot, join Procore/estimating context, apply explicit QBO project exclusions, and expose refresh actions only to administrators or the accounting permission. Keep credentials and refresh-pairing material server-side. Its header links to the `/help/qbo-project-profitability` guide; keep that guide in step with the page and the report pipeline when either changes.
+
+## Help guides
+
+`/help` is a directory of plain-language page guides (purpose, data sources, column meanings, how to use, things to know) for any signed-in user; it lists only guides whose target page the user can access, and each guide links to its page. Guide content is data in `src/lib/helpGuides/<page>.ts`, registered in `src/lib/helpGuides/index.ts`, and rendered by `src/components/help/GuideContent.tsx` at `/help/[slug]`. Each `/help/<slug>` route must have a `PATH_PERMISSION_RULES` entry in `permissionRoutes.js` using the described page's permission; `test/helpGuides.test.mjs` enforces that, slug uniqueness, table shape, and inline markup. Validate with `node --test test/helpGuides.test.mjs test/permissions.test.mjs`.
 
 ## Analytics and reporting
 

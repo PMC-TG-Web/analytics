@@ -48,6 +48,7 @@ const navLinks: NavLink[] = [
   { href: "/onboarding/submissions", label: "Onboarding", page: "onboarding" },
   { href: "/employees/handbook", label: "Handbook", page: "handbook" },
   { href: "/kpi-cards-management", label: "Manage", page: "kpi-cards-management" },
+  { href: "/help", label: "Help", page: "home" },
 ];
 
 const scheduleLinks: NavLink[] = [

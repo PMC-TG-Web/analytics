@@ -58,6 +58,8 @@ test('resolvePermissionForPath uses more specific rules before broad feature pre
   assert.equal(resolvePermissionForPath('/analytics/cost-code-sales'), 'analytics-cost-code-sales');
   assert.equal(resolvePermissionForPath('/market-outlook'), 'analytics');
   assert.equal(resolvePermissionForPath('/accounting/project-profitability'), 'accounting-project-profitability');
+  assert.equal(resolvePermissionForPath('/help/qbo-project-profitability'), 'accounting-project-profitability');
+  assert.equal(resolvePermissionForPath('/help'), null);
   assert.equal(resolvePermissionForPath('/api/accounting/project-profitability'), 'accounting-project-profitability');
   assert.equal(resolvePermissionForPath('/accounting/direct-cost-bills'), 'accounting-direct-cost-bills');
   assert.equal(resolvePermissionForPath('/api/accounting/direct-cost-bills'), 'accounting-direct-cost-bills');

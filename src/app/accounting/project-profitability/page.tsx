@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 
 type Snapshot = {
@@ -454,6 +455,9 @@ export default function QboProjectProfitabilityPage() {
                 <p className="mt-2 max-w-3xl text-sm text-teal-50/85">
                   Actual QuickBooks income and project-assigned costs, matched conservatively to Procore projects.
                 </p>
+                <Link href="/help/qbo-project-profitability" className="mt-3 inline-flex items-center gap-1 rounded-lg border border-white/30 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-teal-50 transition hover:bg-white/10">
+                  How this page works →
+                </Link>
               </div>
               {selectedSnapshot && (
                 <div className="rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm backdrop-blur">

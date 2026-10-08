@@ -311,6 +311,46 @@ export async function refreshAccessToken(refreshToken: string): Promise<ProcoreT
   }
 }
 
+// User sign-in credentials use a bounded, non-retried exchange. Refresh tokens rotate;
+// a response lost in transit must not cause the old token to be spent again.
+async function exchangeProcoreSignInToken(parameters: Record<string, string>): Promise<ProcoreTokenResponse> {
+  const response = await fetch(process.env.PROCORE_TOKEN_URL?.trim() || 'https://login.procore.com/oauth/token', {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ ...parameters, client_id: procoreConfig.clientId, client_secret: procoreConfig.clientSecret }),
+    signal: AbortSignal.timeout(10_000), cache: 'no-store',
+  });
+  if (!response.ok) {
+    const error = new Error('Procore sign-in token exchange failed.') as Error & { status: number };
+    error.status = response.status;
+    throw error;
+  }
+  return response.json();
+}
+
+export function getProcoreSignInToken(code: string, redirectUri: string) {
+  return exchangeProcoreSignInToken({ grant_type: 'authorization_code', code, redirect_uri: redirectUri });
+}
+
+export function refreshProcoreSignInToken(refreshToken: string) {
+  return exchangeProcoreSignInToken({ grant_type: 'refresh_token', refresh_token: refreshToken });
+}
+
+export async function getProcoreSignInIdentity(accessToken: string) {
+  // Called only after a user OAuth exchange, never as a page's analytics data source.
+  return runWithProcoreRequestContext('interactive', async () => {
+    const me = await makeRequest('/rest/v1.0/me', accessToken) as Record<string, unknown>;
+    const companyIds: string[] = [];
+    for (let page = 1; page <= 10; page++) {
+      const companies = await makeRequest(`/rest/v1.0/companies?per_page=100&page=${page}`, accessToken);
+      if (!Array.isArray(companies)) throw new Error('Unable to verify Procore company membership.');
+      companyIds.push(...companies.map((company) => String(company.id)));
+      if (companyIds.includes(procoreConfig.companyId) || companies.length < 100) break;
+    }
+    return { id: String(me.id || ''), email: String(me.login || me.email || me.email_address || '').trim().toLowerCase(),
+      name: typeof me.name === 'string' ? me.name : null, companyIds };
+  });
+}
+
 // Make authenticated request to Procore API
 export async function makeRequest(
   endpoint: string,

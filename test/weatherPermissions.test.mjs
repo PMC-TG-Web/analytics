@@ -12,7 +12,9 @@ function harness({ signedIn = true, environment = 'production', host = 'localhos
   const checks = [];
   const imports = {
     'next/server': { NextRequest, NextResponse },
-    '@/lib/auth0': { auth0: { getSession: async () => signedIn ? { user: { email: 'limited@example.test' } } : null } },
+    '@/lib/auth0': { auth0: { getSession: async () => signedIn ? { user: { email: 'limited@example.test' } } : null,
+      middleware: async () => NextResponse.next() } },
+    '@/lib/appSignInPolicy': { procoreSignInEnabled: () => false, emailSignInEnabled: () => true },
     '@/lib/permissionRoutes': permissionRoutes,
     '@/lib/developerIdentity': {
       getDeveloperEmail: request => developerIdentity.getDeveloperEmail(request, environment),

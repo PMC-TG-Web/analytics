@@ -32,10 +32,14 @@ const permissions = load('src/lib/permissionCookie.ts');
 
 function harness({ auth0Email = null, databaseAllowed = true } = {}) {
   const permissionChecks = [];
-  const auth0 = { getSession: async () => auth0Email ? { user: { email: auth0Email } } : null };
+  const auth0 = { getSession: async () => auth0Email ? { user: { email: auth0Email } } : null,
+    middleware: async () => NextResponse.next() };
   const imports = {
     'next/server': { NextRequest, NextResponse },
     '@/lib/auth0': { auth0 },
+    '@/lib/appSignInPolicy': load('src/lib/appSignInPolicy.ts'),
+    '@/lib/appSession': { appSessions: {} },
+    'next/headers': { cookies: async () => ({ has: () => false }) },
     '@/lib/developerIdentity': load('src/lib/developerIdentity.ts'),
     '@/lib/permissionRoutes': permissionRoutes,
     '@/lib/permissionCookie': permissions,

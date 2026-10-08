@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getClientCredentialsToken, procoreConfig } from "@/lib/procore";
+import { APP_SESSION_COOKIE, procoreSignInEnabled } from '@/lib/appSignInPolicy';
+import { appSessions } from '@/lib/appSession';
 
 export async function GET() {
   try {
     const cookieStore = await cookies();
+    const appSession = procoreSignInEnabled() && cookieStore.has(APP_SESSION_COOKIE)
+      ? await appSessions.resolve(cookieStore.get(APP_SESSION_COOKIE)?.value) : null;
     const accessToken = cookieStore.get("procore_access_token")?.value;
     const refreshToken = cookieStore.get("procore_refresh_token")?.value;
     const companyId = String(cookieStore.get("procore_company_id")?.value || "").trim();
@@ -15,7 +19,7 @@ export async function GET() {
     let hasServiceToken = false;
     let serviceTokenError: string | null = null;
 
-    if (!accessToken && procoreConfig.clientId && procoreConfig.clientSecret) {
+    if (!accessToken && !appSession && procoreConfig.clientId && procoreConfig.clientSecret) {
       try {
         await getClientCredentialsToken();
         hasServiceToken = true;
@@ -26,10 +30,11 @@ export async function GET() {
 
     return NextResponse.json({
       success: true,
-      connected: Boolean(accessToken) || hasServiceToken,
+      connected: !appSession?.needsReconnect && (Boolean(accessToken) || hasServiceToken),
+      needsReconnect: appSession?.needsReconnect || false,
       authMode: accessToken ? "user_oauth" : hasServiceToken ? "client_credentials" : "none",
       hasAccessToken: Boolean(accessToken),
-      hasRefreshToken: Boolean(refreshToken),
+      hasRefreshToken: appSession ? !appSession.needsReconnect : Boolean(refreshToken),
       hasServiceToken,
       serviceTokenError,
       companyId: companyId || procoreConfig.companyId || null,

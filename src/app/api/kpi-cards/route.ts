@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHash } from 'node:crypto';
 import { prisma } from '@/lib/prisma';
-import { auth0 } from '@/lib/auth0';
+import { getRequestUserEmail } from '@/lib/requestUser';
 import { logAuditEvent } from '@/lib/auditLog';
 import { getCachedValue, invalidateCacheByPrefix, setCachedValue } from '@/lib/serverReadCache';
 import { KPI_CARD_VALUE_COUNT, normalizeKpiCardValues } from '@/lib/kpiCardMonths';
@@ -251,8 +251,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const session = await auth0.getSession(request);
-    const actorEmail = session?.user?.email?.toString().trim() || 'unknown';
+    const actorEmail = await getRequestUserEmail(request) || 'unknown';
     const body = await request.json();
     const cardName = (body?.cardName || '').toString().trim();
     const incomingRows = normalizeCardRows(body?.rows);

@@ -1,6 +1,6 @@
 import { promises as fs } from 'fs';
 import path from 'path';
-import { auth0 } from '@/lib/auth0';
+import { getRequestUserEmail } from '@/lib/requestUser';
 import type { NextRequest } from 'next/server';
 
 export type AuditAction =
@@ -21,9 +21,9 @@ export async function logAuditEvent(
   }
 ) {
   try {
-    const session = await auth0.getSession(request);
+    const email = await getRequestUserEmail(request);
     const timestamp = new Date().toISOString();
-    const user = session?.user;
+    const user = email ? { email, name: null, sub: null } : null;
     const url = new URL(request.url);
     const forwardedFor = request.headers.get('x-forwarded-for');
     const clientIp = forwardedFor?.split(',')[0]?.trim()

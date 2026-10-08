@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { safeAppReturnTo } from '@/lib/appSignInPolicy';
 
 const AUTH_SIGNAL_KEY = "analytics-auth-complete";
 const AUTH_SIGNAL_CHANNEL = "analytics-auth";
@@ -33,13 +34,15 @@ export default function AuthCompletePage() {
       !returnTo.startsWith("/api/auth") &&
       !returnTo.startsWith("/auth/complete")
     ) {
-      return returnTo;
+      return safeAppReturnTo(returnTo);
     }
 
     return procoreAppUrl;
   };
 
   useEffect(() => {
+    try { sessionStorage.removeItem('analytics-auth-user'); } catch { /* Storage can be blocked. */ }
+    try { window.opener?.postMessage(AUTH_SIGNAL_KEY, window.location.origin); } catch { /* Polling remains available. */ }
     try {
       localStorage.setItem(AUTH_SIGNAL_KEY, String(Date.now()));
     } catch {

@@ -1,6 +1,9 @@
 import { getDeveloperEmail } from '@/lib/developerIdentity';
 import { NextRequest } from 'next/server';
 import { auth0 } from '@/lib/auth0';
+import { cookies } from 'next/headers';
+import { appSessions } from '@/lib/appSession';
+import { APP_SESSION_COOKIE, emailSignInEnabled, procoreSignInEnabled } from '@/lib/appSignInPolicy';
 import {
   PROCORE_USER_SESSION_COOKIE,
   verifyProcoreUserSessionCookieValue,
@@ -18,14 +21,18 @@ export async function getRequestUserEmail(request: NextRequest): Promise<string 
     return selectedDevEmail;
   }
 
-  if (isDev && auth0Misconfigured) {
+  if (isDev && auth0Misconfigured && !procoreSignInEnabled()) {
     return 'dev@example.com';
   }
 
-  const session = await auth0.getSession(request);
+  if (procoreSignInEnabled() && request.cookies.has(APP_SESSION_COOKIE)) {
+    return (await appSessions.resolve(request.cookies.get(APP_SESSION_COOKIE)?.value))?.user.email || null;
+  }
+  const session = emailSignInEnabled() ? await auth0.getSession(request) : null;
   const auth0Email = session?.user?.email?.trim().toLowerCase();
   if (auth0Email) return auth0Email;
 
+  if (procoreSignInEnabled()) return null;
   const procoreSession = await verifyProcoreUserSessionCookieValue(
     request.cookies.get(PROCORE_USER_SESSION_COOKIE)?.value,
   );
@@ -45,8 +52,13 @@ export async function getCurrentUserEmail(): Promise<string | null> {
   const auth0Domain = (process.env.AUTH0_DOMAIN || '').trim().toLowerCase();
   const auth0Misconfigured = !auth0Domain || auth0Domain.includes('your-auth0-domain');
 
-  if (isDev && auth0Misconfigured) return 'dev@example.com';
+  if (isDev && auth0Misconfigured && !procoreSignInEnabled()) return 'dev@example.com';
 
-  const session = await auth0.getSession();
+  if (procoreSignInEnabled()) {
+    const store = await cookies();
+    if (store.has(APP_SESSION_COOKIE)) return (await appSessions.resolve(store.get(APP_SESSION_COOKIE)?.value))?.user.email || null;
+  }
+
+  const session = emailSignInEnabled() ? await auth0.getSession() : null;
   return session?.user?.email?.trim().toLowerCase() || null;
 }

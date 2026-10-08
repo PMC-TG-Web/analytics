@@ -7,7 +7,7 @@ import ts from 'typescript';
 // Exercise the actual handler without starting Auth0 or a browser.
 function renderLogin(framed) {
   const calls = { navigation: [], windows: [], polling: 0 };
-  const source = ts.createSourceFile('page.tsx', readFileSync(new URL('../src/app/login/page.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const source = ts.createSourceFile('page.tsx', readFileSync(new URL('../src/app/login/LegacyLogin.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   let handler;
   function visit(node) {
     if (ts.isVariableDeclaration(node) && node.name.getText(source) === 'startLogin') handler = node.initializer;

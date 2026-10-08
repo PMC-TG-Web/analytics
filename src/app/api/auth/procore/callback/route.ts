@@ -1,5 +1,7 @@
 // OAuth callback handler for Procore
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { procoreSignInEnabled } from '@/lib/appSignInPolicy';
+import { finishProcoreAppLogin } from '@/lib/procoreAppOAuth';
 import { getAccessToken, getProcoreRedirectUri, procoreConfig } from "@/lib/procore";
 import { cookies } from "next/headers";
 import {
@@ -9,6 +11,7 @@ import {
 } from "@/lib/procoreUserSession";
 
 export async function GET(request: Request) {
+  if (procoreSignInEnabled()) return finishProcoreAppLogin(new NextRequest(request));
   const { searchParams } = new URL(request.url);
   const requestUrl = new URL(request.url);
   const code = searchParams.get("code");

@@ -2,6 +2,7 @@ const LOCAL_AUTH_COOKIES = [
   '__session', 'appSession', 'dev_user_email', 'analytics_permissions',
   'procore_access_token', 'procore_refresh_token', 'procore_company_id',
   'procore_scope', 'analytics_procore_user', 'analytics_procore_link_access',
+  'analytics_app_session', 'analytics_procore_oauth',
 ];
 
 export function localLogoutCookies(cookieNames: string[], secure: boolean) {

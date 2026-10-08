@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { defaultCardData } from '@/lib/kpiCardDefaults';
-import { auth0 } from '@/lib/auth0';
+import { getRequestUserEmail } from '@/lib/requestUser';
 import { logAuditEvent } from '@/lib/auditLog';
 
 type KPICardRow = {
@@ -93,8 +93,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const session = await auth0.getSession(request);
-    const actorEmail = session?.user?.email?.toString().trim() || 'unknown';
+    const actorEmail = await getRequestUserEmail(request) || 'unknown';
     const body = await request.json().catch(() => ({}));
     const confirmSeed = body?.confirmSeed === true;
     const confirmPhrase = (body?.confirmPhrase || '').toString().trim();

@@ -1,6 +1,7 @@
 import { getDeveloperEmail, isLocalDeveloperRequest } from '@/lib/developerIdentity';
 import { NextRequest, NextResponse } from 'next/server';
 import { auth0 } from '@/lib/auth0';
+import { APP_SESSION_COOKIE, emailSignInEnabled, procoreSignInEnabled } from '@/lib/appSignInPolicy';
 import { resolvePermissionForPath } from '@/lib/permissionRoutes';
 import {
   getPermissionCookieOptions,
@@ -310,7 +311,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // In dev mode without Auth0 config, bypass all middleware
-  if (isDev && auth0Misconfigured) {
+  if (isDev && auth0Misconfigured && !procoreSignInEnabled()) {
     return NextResponse.next();
   }
 
@@ -330,6 +331,13 @@ export async function middleware(request: NextRequest) {
 
   // Allow auth routes
   if (isAuthApiRoute) {
+    if (!emailSignInEnabled() && (pathname === '/api/auth/login' || pathname === '/api/auth/callback')) {
+      return NextResponse.json({ error: 'Use Procore to sign in.' }, { status: 404 });
+    }
+    if (procoreSignInEnabled() && (
+      pathname.startsWith('/api/auth/procore/') || pathname === '/api/auth/session'
+      || pathname === '/api/auth/me' || pathname === '/api/auth/login' || pathname === '/api/auth/logout' || pathname === '/api/auth/logout/local'
+    )) return NextResponse.next();
     const response = await auth0.middleware(request);
     return response;
   }
@@ -346,6 +354,7 @@ export async function middleware(request: NextRequest) {
       !isProcoreLiveApiEnabled() &&
       !hasValidSyncSecret(request) &&
       !hasProcoreAccessTokenCookie(request)
+      && !(procoreSignInEnabled() && request.cookies.has(APP_SESSION_COOKIE))
     ) {
       return NextResponse.json(
         {
@@ -398,6 +407,7 @@ export async function middleware(request: NextRequest) {
   }
 
   const allowAnalyticsWithoutAuth0ViaProcoreSession =
+    !procoreSignInEnabled() &&
     request.method.toUpperCase() === 'GET' &&
     isAnalyticsMobileBypassPath(pathname) &&
     (hasProcoreAccessTokenCookie(request) || hasAnalyticsProcoreLinkCookie(request));
@@ -435,6 +445,9 @@ export async function middleware(request: NextRequest) {
 
   // Allow login handoff page (used to break out of iframe before Auth0 redirect)
   if (pathname === '/auth/start') {
+    return NextResponse.next();
+  }
+  if (procoreSignInEnabled() && (pathname === '/auth/complete' || pathname === '/auth/logout-complete')) {
     return NextResponse.next();
   }
 
@@ -543,13 +556,43 @@ export async function middleware(request: NextRequest) {
   }
 
   const developerEmail = getDeveloperEmail(request);
-  const session = developerEmail ? { user: { email: developerEmail } } : await auth0.getSession(request);
+  const hasAppSession = procoreSignInEnabled() && request.cookies.has(APP_SESSION_COOKIE) && !developerEmail;
+  let appSession: { user: { email: string } } | null = null;
+  const renewedCookies: string[] = [];
+  if (hasAppSession) {
+    try {
+      const checked = await fetch(new URL('/api/auth/session', request.url), {
+        method: 'POST', headers: { Cookie: request.headers.get('cookie') || '', Origin: request.nextUrl.origin },
+        cache: 'no-store', signal: AbortSignal.timeout(45_000),
+      });
+      if (checked.status !== 401 && !checked.ok) throw new Error('Session verification unavailable');
+      if (checked.ok) {
+        const data = await checked.json();
+        if (typeof data?.user?.email !== 'string') throw new Error('Invalid session response');
+        appSession = { user: data.user };
+        renewedCookies.push(...checked.headers.getSetCookie());
+        const carrier = new NextResponse(null, { headers: checked.headers });
+        for (const cookie of carrier.cookies.getAll()) request.cookies.set(cookie.name, cookie.value);
+      }
+    } catch {
+      return NextResponse.json({ error: 'Sign-in is temporarily unavailable. Please retry.' },
+        { status: 503, headers: { 'Retry-After': '5', 'Cache-Control': 'no-store' } });
+    }
+  }
+  const session = developerEmail ? { user: { email: developerEmail } } : hasAppSession ? appSession : emailSignInEnabled() ? await auth0.getSession(request) : null;
+  const signedInResponse = async () => {
+    // Auth0's middleware must run on ordinary authenticated requests to roll fallback sessions.
+    const response = hasAppSession || developerEmail
+      ? NextResponse.next({ request: { headers: request.headers } }) : await auth0.middleware(request);
+    for (const cookie of renewedCookies) response.headers.append('Set-Cookie', cookie);
+    return response;
+  };
   // Review writes need a verified reviewer, even when the page was opened via
   // the read-only Procore link bypass. Keep this exception route/method scoped.
   const acceptsProcoreUserSession =
-    (isPmDashboardPath(pathname) && request.method.toUpperCase() === 'GET')
+    !procoreSignInEnabled() && ((isPmDashboardPath(pathname) && request.method.toUpperCase() === 'GET')
     || (pathname === '/api/analytics/commitment-productivity/reviews'
-      && ['POST', 'DELETE'].includes(request.method.toUpperCase()));
+      && ['POST', 'DELETE'].includes(request.method.toUpperCase())));
   const procoreUserSession = !session && acceptsProcoreUserSession
     ? await verifyProcoreUserSessionCookieValue(
         request.cookies.get(PROCORE_USER_SESSION_COOKIE)?.value,
@@ -595,6 +638,12 @@ export async function middleware(request: NextRequest) {
   }
 
   if (!session) {
+    if (procoreSignInEnabled()) {
+      if (isApiRoute) return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
+      const loginUrl = new URL('/login', request.url);
+      loginUrl.searchParams.set('returnTo', `${pathname}${request.nextUrl.search}`);
+      return NextResponse.redirect(loginUrl);
+    }
     if (request.method.toUpperCase() === 'GET' && (pathname === '/pm-dashboard' || pathname.startsWith('/pm-dashboard/'))) {
       const procoreLoginUrl = new URL('/api/auth/procore/login', request.url);
       procoreLoginUrl.searchParams.set('returnTo', `${pathname}${request.nextUrl.search}`);
@@ -677,7 +726,7 @@ export async function middleware(request: NextRequest) {
   }
 
   if (isApiRoute && apiRateLimit) {
-    const response = NextResponse.next();
+    const response = await signedInResponse();
     response.headers.set('X-RateLimit-Limit', String(apiRateLimit.limit));
     response.headers.set('X-RateLimit-Remaining', String(apiRateLimit.remaining));
     response.headers.set('X-RateLimit-Reset', String(Math.floor(apiRateLimit.resetAt / 1000)));
@@ -685,8 +734,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // Session and permission checks already passed above.
-  // Avoid invoking auth middleware a second time on every navigation.
-  return applyPermissionCookie(NextResponse.next(), permissionCookieToSet);
+  return applyPermissionCookie(await signedInResponse(), permissionCookieToSet);
 }
 
 export const config = {

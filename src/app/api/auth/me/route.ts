@@ -1,6 +1,8 @@
 import { getDeveloperEmail } from '@/lib/developerIdentity';
 import { NextRequest, NextResponse } from 'next/server';
 import { auth0 } from '@/lib/auth0';
+import { appSessions } from '@/lib/appSession';
+import { APP_SESSION_COOKIE, emailSignInEnabled, procoreSignInEnabled } from '@/lib/appSignInPolicy';
 
 export async function GET(request: NextRequest) {
   const isDev = process.env.NODE_ENV !== 'production';
@@ -21,7 +23,7 @@ export async function GET(request: NextRequest) {
   }
 
   // In dev mode without Auth0 config, return a mock user
-  if (isDev && auth0Misconfigured) {
+  if (isDev && auth0Misconfigured && !procoreSignInEnabled()) {
     return NextResponse.json({
       email: 'dev@example.com',
       name: 'Developer',
@@ -30,7 +32,12 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const session = await auth0.getSession(request);
+    if (procoreSignInEnabled() && request.cookies.has(APP_SESSION_COOKIE)) {
+      const session = await appSessions.resolve(request.cookies.get(APP_SESSION_COOKIE)?.value);
+      return NextResponse.json(session ? { ...session.user, provider: 'procore', needsReconnect: session.needsReconnect } : { error: 'Not authenticated' },
+        { status: session ? 200 : 401, headers: { 'Cache-Control': 'private, no-store' } });
+    }
+    const session = emailSignInEnabled() ? await auth0.getSession(request) : null;
 
     if (!session?.user) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });

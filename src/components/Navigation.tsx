@@ -257,6 +257,10 @@ export default function Navigation({
                 window.location.replace('/dev-login');
                 return;
               }
+              if (result?.procoreSession === true) {
+                window.location.replace('/auth/logout-complete');
+                return;
+              }
             } catch {
               // Ignore local logout failures and continue with Auth0 logout.
             }

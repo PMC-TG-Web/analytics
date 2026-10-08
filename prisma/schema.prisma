@@ -900,6 +900,30 @@ model AuditLog {
   @@index([createdAt])
 }
 
+/// Opaque app login sessions. Provider credentials are encrypted, never returned in JSON.
+model AppLoginSession {
+  tokenHash           String    @id @map("token_hash")
+  email               String
+  procoreUserId       String    @map("procore_user_id")
+  companyId           String    @map("company_id")
+  displayName         String?   @map("display_name")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  lastSeenAt          DateTime  @default(now()) @map("last_seen_at")
+  idleExpiresAt       DateTime  @map("idle_expires_at")
+  absoluteExpiresAt   DateTime  @map("absolute_expires_at")
+  revokedAt           DateTime? @map("revoked_at")
+  accessToken         String    @map("access_token")
+  refreshToken        String?   @map("refresh_token")
+  accessExpiresAt     DateTime  @map("access_expires_at")
+  refreshStartedAt    DateTime? @map("refresh_started_at")
+  credentialsInvalid  Boolean   @default(false) @map("credentials_invalid")
+  scope               String?
+
+  @@index([email])
+  @@index([absoluteExpiresAt])
+  @@map("app_login_sessions")
+}
+
 model User {
   id          String   @id @default(cuid())
   email       String   @unique @db.VarChar(255)

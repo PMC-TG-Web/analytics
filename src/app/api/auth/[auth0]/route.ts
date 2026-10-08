@@ -1,8 +1,12 @@
 import { NextRequest } from 'next/server';
 import { createAuth0Client } from '@/lib/auth0';
+import { APP_SESSION_COOKIE, procoreSignInEnabled, safeAppReturnTo } from '@/lib/appSignInPolicy';
+import { appSessions } from '@/lib/appSession';
+import { localLogoutCookies } from '@/lib/localLogoutCookies';
 
 function isSafeReturnToPath(value: string | null): value is string {
   if (!value) return false;
+  if (safeAppReturnTo(value, '') !== value) return false;
   if (!value.startsWith('/')) return false;
   if (value.startsWith('/api/auth')) return false;
   if (value === '/login' || value.startsWith('/login?')) return false;
@@ -57,12 +61,18 @@ function normalizeAuthRequest(request: NextRequest): NextRequest {
   return request;
 }
 
-export async function GET(request: NextRequest) {
+async function handleAuth0Request(request: NextRequest) {
+  const switchingToEmail = procoreSignInEnabled() && request.nextUrl.pathname === '/api/auth/login';
+  if (switchingToEmail) await appSessions.revoke(request.cookies.get(APP_SESSION_COOKIE)?.value);
   const auth0 = createAuth0Client(request.nextUrl.origin);
-  return auth0.middleware(normalizeAuthRequest(request));
+  const response = await auth0.middleware(normalizeAuthRequest(request));
+  if (switchingToEmail) {
+    for (const cookie of localLogoutCookies(request.cookies.getAll().map((cookie) => cookie.name), request.nextUrl.protocol === 'https:')) response.cookies.set(cookie);
+  }
+  return response;
 }
 
+export async function GET(request: NextRequest) { return handleAuth0Request(request); }
 export async function POST(request: NextRequest) {
-  const auth0 = createAuth0Client(request.nextUrl.origin);
-  return auth0.middleware(normalizeAuthRequest(request));
+  return handleAuth0Request(request);
 }

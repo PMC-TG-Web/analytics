@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import {
-  calculateEstimatingSoldContracts, financialSoldDates, financialWipSoldDates, resolveSoldYear,
+  calculateEstimatingSoldContracts, calculateSoldContractValue, financialSoldDates, financialWipSoldDates, resolveSoldYear,
 } from "../src/lib/financialWip.ts";
 
 const companyId = "598134325805519";
@@ -27,12 +28,33 @@ test("WIP uses the project Contract Date even when prime date, job number and st
   assert.equal(sold.projects[0].soldYearSource, "contract_date");
   assert.equal(sold.projects[0].contractDate, "2026-01-02");
 
-  // Accounting keeps its existing approved prime-contract date source.
-  const accounting = financialSoldDates([{
+  // The legacy prime-contract extractor differs; neither Sold card should use it.
+  const legacyDates = financialSoldDates([{
     company_id: companyId, project_procore_id: "project", project_id: "project",
     status: "Approved", contract_date: "2025-11-20", payload: {},
   }], projects, companyId);
-  assert.equal(accounting.get("project").contractDate, "2025-11-20");
+  assert.equal(legacyDates.get("project").contractDate, "2025-11-20");
+});
+
+test("QBO Sold uses the same project Contract Date loader as Financial WIP", () => {
+  for (const route of ['accounting/project-profitability', 'analytics/monthly-hours']) {
+    const source = readFileSync(new URL(`../src/app/api/${route}/route.ts`, import.meta.url), 'utf8');
+    assert.match(source, /await loadFinancialWipSoldDates\(|loadFinancialWipSoldDates\(companyId\)/);
+    assert.doesNotMatch(source, /\bloadFinancialSoldDates\(/);
+  }
+  const dates = financialWipSoldDates([
+    staging('moved-in', '2026-01-01'),
+    staging('moved-out', '2025-12-31'),
+    staging('number-fallback', null),
+    staging('start-fallback', 'invalid', { payload: { start_date: '2026-02-01' } }),
+  ], companyId);
+  const result = calculateSoldContractValue([
+    { procoreProjectNumber: '2501', contractValue: 100, ...dates.get('moved-in') },
+    { procoreProjectNumber: '2601', contractValue: 500, ...dates.get('moved-out') },
+    { procoreProjectNumber: '2602', contractValue: 200, ...dates.get('number-fallback') },
+    { procoreProjectNumber: 'NO-YEAR', contractValue: 300, ...dates.get('start-fallback') },
+  ], 2026);
+  assert.deepEqual(result, { year: 2026, projectCount: 3, contractProjectCount: 3, contractValue: 600 });
 });
 
 test("missing or invalid project Contract Dates retain job-number and start-date fallbacks", () => {

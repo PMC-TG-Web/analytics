@@ -9,7 +9,7 @@ import { loadUserAssignedPermissionsFromDatabase } from '@/lib/permissions';
 import { loadEstimatingDashboardProjects } from '@/lib/estimatingDashboard';
 import { resolveProjectContractValue } from '@/lib/projectProfitabilityContractValue';
 import { calculateSoldContractValue } from '@/lib/financialWip';
-import { loadFinancialSoldDates } from '@/lib/loadFinancialSoldDates';
+import { loadFinancialWipSoldDates } from '@/lib/loadFinancialSoldDates';
 import {
   excludeMarkedQboProjects,
   loadExcludedQboCustomerIds,
@@ -531,7 +531,7 @@ export async function GET(request: NextRequest) {
           reconciliationDifference: Number(row.reconciliationDifference),
         };
     });
-    const soldDates = await loadFinancialSoldDates(process.env.PROCORE_COMPANY_ID || '598134325805519');
+    const soldDates = await loadFinancialWipSoldDates(process.env.PROCORE_COMPANY_ID || '598134325805519');
     const soldContracts = calculateSoldContractValue(
       canonicalProjectRows.map((row) => ({
         procoreProjectNumber: row.procoreProjectNumber,

@@ -132,7 +132,7 @@ export function financialSoldDates(
   return dates;
 }
 
-// Financial WIP's Sold card uses Project > Additional Information > Contract
+// Financial WIP and QBO P&L Sold cards use Project > Additional Information > Contract
 // Date. This definition ID belongs to this company; it is not a prime-contract
 // date and must never be reused for another company's custom field.
 export function financialWipSoldDates(

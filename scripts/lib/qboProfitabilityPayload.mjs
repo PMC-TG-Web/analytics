@@ -163,6 +163,10 @@ export function normalizeQboProfitabilityPayload(payload) {
     return normalized;
   });
 
+  if (Number(sourceCounts.procoreProjects || 0) > 0 && !rows.some((row) => row.recordType === 'project')) {
+    throw new Error('The refresh contains Procore projects but no project rows. Check the canonical project-status input; the previous snapshot has been retained.');
+  }
+
   return {
     generatedAt,
     startDate,

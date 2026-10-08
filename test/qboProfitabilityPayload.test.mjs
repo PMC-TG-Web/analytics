@@ -53,6 +53,14 @@ test('normalizes a read-only QBO profitability payload', () => {
   assert.equal(normalized.rows[0].qboMinusProcoreDirectCost, 3.75);
 });
 
+test('rejects customer-only output when the refresh read Procore projects', () => {
+  const source = payload({ sourceCounts: { procoreProjects: 71 } });
+  source.rows[0].recordType = 'customer-only';
+  assert.throws(() => normalizeQboProfitabilityPayload(source), /no project rows/);
+  source.rows[0].recordType = 'project';
+  assert.equal(normalizeQboProfitabilityPayload(source).rows.length, 1);
+});
+
 test('rejects a payload that is not explicitly read-only', () => {
   assert.throws(
     () => normalizeQboProfitabilityPayload(payload({ readOnly: false })),

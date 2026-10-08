@@ -10,6 +10,8 @@ import { loadEstimatingDashboardProjects } from '@/lib/estimatingDashboard';
 import { resolveProjectContractValue } from '@/lib/projectProfitabilityContractValue';
 import { calculateQboSoldContractValue } from '@/lib/financialWip';
 import { loadFinancialWipSoldDates } from '@/lib/loadFinancialSoldDates';
+import { isIncompleteQboSnapshot } from '@/lib/qboProfitabilitySnapshot';
+import { withQboProcoreStatusFile } from '@/lib/qboProfitabilityRefresh';
 import {
   excludeMarkedQboProjects,
   loadExcludedQboCustomerIds,
@@ -191,11 +193,11 @@ function resolveNodeExecutables() {
   return [...new Set(candidates)];
 }
 
-async function runProcess(executable: string, cwd: string, scriptPath: string) {
+async function runProcess(executable: string, cwd: string, scriptPath: string, environment: Record<string, string>) {
   return await new Promise<SpawnResult>((resolve, reject) => {
     const child = spawn(executable, [scriptPath], {
       cwd,
-      env: process.env,
+      env: { ...process.env, ...environment },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
@@ -237,13 +239,13 @@ async function runProcess(executable: string, cwd: string, scriptPath: string) {
   });
 }
 
-async function runNodeCommand(cwd: string, scriptPath: string) {
+async function runNodeCommand(cwd: string, scriptPath: string, environment: Record<string, string> = {}) {
   const executables = resolveNodeExecutables();
   let lastError: unknown = null;
 
   for (const executable of executables) {
     try {
-      const result = await runProcess(executable, cwd, scriptPath);
+      const result = await runProcess(executable, cwd, scriptPath, environment);
       return { stdout: result.stdout, stderr: result.stderr };
     } catch (error) {
       lastError = error;
@@ -400,7 +402,7 @@ export async function GET(request: NextRequest) {
       return noStoreJson({ error: 'Invalid snapshot ID' }, 400);
     }
 
-    const snapshots = await prisma.qboProfitabilitySnapshot.findMany({
+    const recentSnapshots = await prisma.qboProfitabilitySnapshot.findMany({
       orderBy: { importedAt: 'desc' },
       take: 24,
       select: {
@@ -416,6 +418,26 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    const projectCounts = await prisma.qboProjectProfitabilityRow.groupBy({
+      by: ['snapshotId'],
+      where: { snapshotId: { in: recentSnapshots.map((snapshot) => snapshot.id) }, recordType: 'project' },
+      _count: { _all: true },
+    });
+    const countBySnapshot = new Map(projectCounts.map((row) => [row.snapshotId, row._count._all]));
+    const snapshots = recentSnapshots.filter((snapshot) => !isIncompleteQboSnapshot(
+      snapshot.sourceCounts, countBySnapshot.get(snapshot.id) || 0,
+    ));
+    const skippedLatest = recentSnapshots[0]?.id !== snapshots[0]?.id;
+    const warning = skippedLatest
+      ? 'The latest refresh contained no project records and was skipped. Showing the previous saved report; its import time is shown above.'
+      : undefined;
+    if (recentSnapshots.length && !snapshots.length) {
+      return noStoreJson({ error: 'No usable project snapshot is available. The latest refresh contained no project records.' }, 503);
+    }
+    if (requestedSnapshotId && recentSnapshots.some((snapshot) => snapshot.id === requestedSnapshotId)
+      && !snapshots.some((snapshot) => snapshot.id === requestedSnapshotId)) {
+      return noStoreJson({ error: 'This refresh contained no project records. Reload to use the previous saved report.' }, 409);
+    }
     const selected = requestedSnapshotId
       ? snapshots.find((snapshot) => snapshot.id === requestedSnapshotId)
       : snapshots[0];
@@ -550,6 +572,7 @@ export async function GET(request: NextRequest) {
     return noStoreJson({
       success: true,
       selectedSnapshotId: selected?.id || null,
+      warning,
       excludedProjectCount: allRows.length - rows.length,
       soldContracts: {
         ...soldContracts,
@@ -592,7 +615,12 @@ export async function POST(request: NextRequest) {
     ]);
 
     if (hasQboReportScript && hasImportScript) {
-      const qboResult = await runNodeCommand(qboIntegrationRoot, qboReportScriptPath);
+      const projects = await prisma.pmcProject.findMany({
+        where: { companyId: process.env.PROCORE_COMPANY_ID?.trim() || '598134325805519' },
+        select: { procoreProjectId: true, bidBoardStatus: true, status: true },
+      });
+      const qboResult = await withQboProcoreStatusFile(projects, (environment) =>
+        runNodeCommand(qboIntegrationRoot, qboReportScriptPath, environment));
       const importResult = await runNodeCommand(analyticsRoot, importScriptPath);
 
       const latestSnapshot = await prisma.qboProfitabilitySnapshot.findFirst({

@@ -159,7 +159,7 @@ function LoginContent() {
     }, 1000);
   };
 
-  const openLoginPopup = () => {
+  const startLogin = () => {
     setError(null);
     setStatus("Waiting for login...");
 
@@ -174,19 +174,11 @@ function LoginContent() {
       return;
     }
 
-    const popup = window.open(
-      loginUrl,
-      "analytics_auth",
-      "popup=yes,width=520,height=760,left=200,top=80"
-    );
-
-    if (!popup) {
-      setError("Popup blocked. Please allow popups and try again.");
-      setStatus("Popup was blocked.");
-      return;
-    }
-
-    startAuthPolling(popup);
+    // A normal browser tab can authenticate directly. Opening a popup here
+    // can strand the app in the small login window if the parent reloads.
+    // OAuth is an API redirect to an external identity provider, not an RSC page.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.assign(loginUrl);
   };
 
   return (
@@ -223,13 +215,13 @@ function LoginContent() {
           ) : (
             <>
           <button
-            onClick={openLoginPopup}
+            onClick={startLogin}
             className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200"
           >
             Login with Email
           </button>
           <button
-            onClick={openLoginPopup}
+            onClick={startLogin}
             className="w-full bg-slate-600 hover:bg-slate-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200"
           >
             Login with Procore

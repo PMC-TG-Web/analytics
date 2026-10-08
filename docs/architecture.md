@@ -92,6 +92,8 @@ On another computer, preserve any local changes, run `git switch main`, then `gi
 
 ### Auth0 session
 
+The login page starts normal browser sign-in in the current tab so the application returns to the full browser window. Embedded Procore sign-in still opens a separate tab and resumes the iframe through the existing completion signal and session polling. Validate with `node --test test/loginNavigation.test.mjs`.
+
 `src/lib/auth0.ts` configures the Auth0 client. Next.js discovers `src/middleware.ts` beside `src/app`; that entry point re-exports the existing policy from root `middleware.ts` and declares its static matcher. The policy enforces sessions for normal pages and APIs, returns JSON errors to unauthorized API callers, and redirects browser requests to login where appropriate. Session cookies use `SameSite=None` and `Secure` so the application can operate inside an allowed Procore iframe. Verify the generated middleware manifest and unauthenticated page/API responses when deploying.
 
 Both middleware matchers exclude the eight exact Netlify `/api/background/` worker paths. These are platform functions, not Next.js routes; allowing `NextResponse.next()` inside middleware does not keep the adapter from routing them into the Next.js handler. Each excluded function requires `x-sync-secret` before performing work. Cron routes remain matched and retain their own secret checks. Keep the authenticated-worker exemption from the browser heavy-route IP limiter. Validate routing, adjacent-path protection, and missing/invalid-secret rejection with `node --test test/procoreWorkerRouting.test.mjs test/permissions.test.mjs test/procoreSyncReliability.test.mjs`.

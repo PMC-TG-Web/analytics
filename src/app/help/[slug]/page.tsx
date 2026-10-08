@@ -47,6 +47,9 @@ export default async function HelpGuidePage({ params }: { params: Promise<{ slug
           </nav>
         </section>
 
+        <aside className="rounded-xl border border-teal-200 bg-teal-50 px-6 py-4 text-sm leading-6 text-teal-950">
+          <span className="font-bold">Start here: </span>{guide.quickStart}
+        </aside>
         <GuideContent sections={guide.sections} />
 
         <div className="flex flex-wrap justify-between gap-3 px-1 pb-6 text-sm font-semibold text-teal-800">

@@ -66,7 +66,7 @@ function resolvePermissionsForRequest(request: NextRequest): string[] {
   // The landing page is available to every signed-in user. Its public forecast
   // widget needs the same policy, including accounts without a Home grant.
   // This only skips page permissions; session and API protections still run.
-  if (pathname === '/' || (pathname === '/api/weather' && method === 'GET')) {
+  if (pathname === '/' || pathname === '/help/home' || (pathname === '/api/weather' && method === 'GET')) {
     return [];
   }
 

@@ -1,0 +1,68 @@
+import { defineGuide } from './defineGuide.ts';
+
+export const operationsGuides = [
+  defineGuide('home', {
+    purpose: 'Start your day with personal updates, schedule assignments, company information, and quick links. The information shown depends on your account and available employee/role information.',
+    steps: [{ title: 'Check the window', body: 'Read the dates on My Personal Update before interpreting upcoming assignments, absences, or pours.' }, { title: 'Open your work', body: 'Use schedule assignments and Quick Access to reach the page relevant to today’s task.' }, { title: 'Record requests accurately', body: 'When using Call Off or Time Off, check the date, type, hours, and notes before submitting.' }],
+    data: ['Personal information comes from your signed-in identity and stored employee, schedule, absence, and company records.', 'Weather and company communication provide context; personal and leadership snapshots can show different sections.'],
+    terms: [['My assignments', 'Work connected to your identity within the displayed window.'], ['Crew members off', 'Recorded absence information relevant to the snapshot.'], ['Position unavailable', 'The account has not resolved to the expected employee/position information.']],
+    example: 'An assignment outside the next-seven-days window may not appear in the personal snapshot. Open the relevant schedule to inspect later dates.',
+    checks: ['Verify that the displayed account is yours and that the date window includes the work.', 'If employee or position information is missing, have the employee record and email association reviewed. A missing assignment is not proof there is no scheduled work.'],
+  }),
+  defineGuide('my-work', {
+    purpose: 'See your next five workdays of assigned RFIs, tasks, meetings, and connected Outlook events, plus overdue items that need attention.',
+    steps: [{ title: 'Start with overdue work', body: 'Review Clear these first, then the dated daily columns.' }, { title: 'Focus on a project', body: 'Choose a project or All my projects. Read each item’s type, status, and due time.' }, { title: 'Follow through', body: 'Open the available Procore or Outlook link to act in the source system. Use Open Changes for change-management work.' }],
+    data: ['Synchronized Procore assignments are matched to your signed-in identity. Connected Outlook calendar events are included when available.', 'The page displays its latest sync and calendar connection context. It is a personal work view, not a list of every company task.'],
+    terms: [['RFI / Task', 'Assigned work with a due date; overdue items can remain visible until their source status changes.'], ['Meeting / Outlook', 'Timed events. Past events are not treated as overdue tasks.'], ['Five workdays', 'The workday window shown on the page; read the dates rather than assuming the next five calendar days.']],
+    example: 'Yesterday’s unfinished task can remain overdue, while yesterday’s meeting simply passes. They should not be interpreted as the same kind of outstanding work.',
+    checks: ['Check the account, project filter, assignment, and latest sync if an item is missing.', 'Missing Outlook events can reflect connection or synchronization status. Correct task status in the source system and allow it to synchronize.'],
+  }),
+  defineGuide('wip-schedule', {
+    purpose: 'Allocate project labor to months so the business can compare planned workload with available project hours.',
+    steps: [{ title: 'Find the project', body: 'Filter year, customer, or project name. Read Total Hours and Total Scheduled.' }, { title: 'Allocate months', body: 'Use Add Month when needed and edit the relevant monthly allocations using the table controls.' }, { title: 'Check the total', body: 'Review Scheduled Hours by Month and the row’s Total Scheduled after changes.' }],
+    data: ['Stored project budget information provides available hours. Saved monthly scheduling records provide allocations.', 'Scheduling and project timelines have compatibility links, so check other schedule views when reviewing a major adjustment.'],
+    terms: [['Total Hours', 'Project labor hours used as the planning reference.'], ['Total Scheduled', 'Hours assigned across the schedule.'], ['Status', 'Displayed project state such as In Progress, Complete, or Delayed.']],
+    example: 'A 600-hour project allocated as 200 hours in each of three months has 600 Total Scheduled. Moving 50 hours should preserve the intended project total unless the plan itself changes.',
+    checks: ['Check year filters and hidden months before concluding hours are missing.', 'Scheduled hours are not actual time worked. Use labor data to assess consumption and Project Gantt for scope timing.'],
+  }),
+  defineGuide('project-gantt', {
+    purpose: 'Plan project scopes across a visual timeline and inspect their dates and labor. This is the detailed project scheduling view.',
+    steps: [{ title: 'Select the project', body: 'Inspect the scopes already present before adding or adjusting work.' }, { title: 'Choose the scale', body: 'Use Day, Week, or Month View and the zoom controls to see the appropriate level of detail.' }, { title: 'Adjust the plan', body: 'Use the scope and timeline controls to edit work. Check resulting dates and hours; Manage Scopes is available for scope setup.' }],
+    data: ['Saved project schedules and scopes supply the timeline. Project scope and concrete information provide planning context.', 'Changes are scheduling edits, not entries of actual labor or billing.'],
+    terms: [['Scope', 'A defined portion of project work with its own planning information.'], ['Timeline bar', 'The scheduled span of work, not proof it was performed.'], ['Hours adjustment', 'A change to planned labor that should be reviewed with the scope and date range.']],
+    example: 'Extending a scope across more days changes its plan. It does not create timecards proving that labor occurred on those days.',
+    checks: ['Check the selected project, scale, and visible date range when a bar seems absent.', 'After moving or changing a scope, review related short- and long-term schedules for the intended outcome.'],
+  }),
+  defineGuide('long-term', {
+    purpose: 'Coordinate future work across projects and managers. Use this view to plan ahead before refining daily field assignments.',
+    steps: [{ title: 'Locate the work', body: 'Review the displayed dates, project, scope, and Project Manager information.' }, { title: 'Review existing assignments', body: 'Check work already scheduled and the available holiday and absence context.' }, { title: 'Place or move work', body: 'Use assignment controls to adjust the plan, then confirm the resulting placement and totals.' }],
+    data: ['Stored project scopes, Gantt work, short-term schedule records, and project-manager assignments supply the plan.', 'Holiday and time-off records provide availability context. These depend on recorded information being current.'],
+    terms: [['Project Manager', 'The manager associated with the planned work.'], ['Scope assignment', 'A portion of work placed on the planning calendar.'], ['Total Sum', 'The total for the displayed planning values; read the active view before comparing other schedules.']],
+    example: 'A scope planned for next month can be moved to a later slot after a start-date change. Review the near-term schedule before promising a crew for the new date.',
+    checks: ['Check the date range, scope, and manager assignment if work seems missing.', 'Future placement expresses intent, not confirmed field completion or actual labor usage.'],
+  }),
+  defineGuide('short-term', {
+    purpose: 'Arrange near-term project work and inspect daily capacity before dispatching crews.',
+    steps: [{ title: 'Review dates and capacity', body: 'Start with the displayed working period and existing work.' }, { title: 'Create the assignment', body: 'Choose the project and scope using the entry controls. Use Custom Scope only when the intended work is not represented by an existing scope.' }, { title: 'Check the result', body: 'Review the new placement and Capacity after creating or moving work; confirm the dispatch plan separately.' }],
+    data: ['Saved short-term assignments and project scopes populate the schedule. Holidays provide calendar context.', 'The plan is shared with related scheduling and dispatch workflows.'],
+    terms: [['Scope', 'The specific work being scheduled, more precise than the project name alone.'], ['Capacity', 'The displayed planning load/capacity measure, not employee timecard actuals.'], ['Custom Scope', 'A manually described portion of work; use a clear name so others can recognize it.']],
+    example: 'Scheduling two large scopes on the same day may raise a capacity concern even though both belong to valid projects. Review staffing before finalizing the assignments.',
+    checks: ['Check dates and existing scope assignments before creating another entry for apparently missing work.', 'Use Crew Dispatch to review daily people and absences; do not assume a scheduled scope guarantees a full crew.'],
+  }),
+  defineGuide('crew-dispatch', {
+    purpose: 'Coordinate the daily crew plan using scheduled work, employee availability, and concrete orders.',
+    steps: [{ title: 'Check the dispatch date', body: 'Review scheduled jobs and current crew assignments for the intended day.' }, { title: 'Review availability', body: 'Check recorded time off and call offs before placing employees. Crew templates provide a starting point.' }, { title: 'Update the day’s plan', body: 'Use the board’s assignment controls. Record a Call Off or Time Off with the correct employee, date, category, and notes when needed.' }],
+    data: ['Employee records, crew templates, short-term schedules, holidays, time off, and concrete orders supply the board.', 'Absence actions save operational records; review the employee and dates before submission.'],
+    terms: [['Crew', 'People arranged for the day; the standard template may need adjustment for absences.'], ['Call Off', 'A recorded absence for an employee and date.'], ['Time Off / Daily Hours', 'An absence range and the hours recorded for each day.']],
+    example: 'If a regular crew member is off today, the standard crew template alone is not a usable dispatch plan. Check the absence and adjust the day’s assignment.',
+    checks: ['Check selected date, active employee record, and recorded absence dates for missing people.', 'Dispatch assignments are plans, not approved timecards. Confirm actual labor through the timekeeping workflow.'],
+  }),
+  defineGuide('concrete-orders', {
+    purpose: 'Review concrete-order information in the context of scheduled project work so the planned pour and order can be checked together.',
+    steps: [{ title: 'Locate the pour', body: 'Find the project and date in the schedule.' }, { title: 'Review order details', body: 'Inspect the available quantities, timing, and order notes against the intended work.' }, { title: 'Resolve discrepancies', body: 'Use the available order controls or coordinate with the person managing the order, then confirm the schedule reflects the intended plan.' }],
+    data: ['Saved concrete orders and short-term schedule entries provide the page’s information.', 'An order record reflects what has been entered; it does not independently verify supplier confirmation or delivered quantity.'],
+    terms: [['Project', 'The job receiving the concrete; verify the correct phase or scope.'], ['Orders', 'Recorded order information associated with the scheduled work.'], ['Order date versus work date', 'Both need to agree with the intended pour and field preparation.']],
+    example: 'A pour moved from Thursday to Friday needs the order timing checked as well. Moving work on a schedule should not be assumed to notify the supplier.',
+    checks: ['If an order is missing, check its project, date, and the schedule context.', 'Confirm delivery arrangements through the normal ordering process; a visible schedule entry is not a delivery receipt.'],
+  }),
+];

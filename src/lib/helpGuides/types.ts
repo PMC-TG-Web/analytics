@@ -27,7 +27,7 @@ export type GuideSection = {
   blocks: GuideBlock[];
 };
 
-export type HelpGuide = {
+export type HelpGuideSummary = {
   /** URL segment under /help. */
   slug: string;
   /** Guide title, e.g. "QBO P&L". */
@@ -36,6 +36,8 @@ export type HelpGuide = {
   category: string;
   /** One or two sentences for the directory card. */
   summary: string;
+  /** One practical first action, shown before opening the full guide. */
+  quickStart: string;
   /** Path of the page the guide describes. */
   pagePath: string;
   /** Navigation label of that page. */
@@ -44,6 +46,9 @@ export type HelpGuide = {
   pagePermission: string;
   /** Group permission that also grants access, mirroring Navigation fallbackPage. */
   fallbackPermission?: string;
+};
+
+export type HelpGuide = HelpGuideSummary & {
   /** ISO date of the last content review, shown on the guide. */
   updated: string;
   sections: GuideSection[];

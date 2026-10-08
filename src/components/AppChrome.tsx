@@ -3,6 +3,8 @@
 import { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import Navigation, { GlobalNavigationContext } from "@/components/Navigation";
+import Link from "next/link";
+import { getHelpGuideSummaryForPath, helpGuidePath } from "@/lib/helpGuides/catalog";
 
 const NAV_HIDDEN_PREFIXES = [
   "/login",
@@ -19,6 +21,7 @@ function shouldShowGlobalNav(pathname: string): boolean {
 
 export default function AppChrome({ children }: { children: ReactNode }) {
   const pathname = usePathname() || "/";
+  const guide = getHelpGuideSummaryForPath(pathname);
   const showGlobalNav = shouldShowGlobalNav(pathname);
   const hideNavOnMobile = pathname === "/analytics" || pathname.startsWith("/analytics/");
   const contentClassName = !showGlobalNav
@@ -38,7 +41,12 @@ export default function AppChrome({ children }: { children: ReactNode }) {
           <Navigation forceRender />
         </header>
       )}
-      <div className={contentClassName}>{children}</div>
+      <div className={contentClassName}>
+        {guide && <nav aria-label="Page help" className="flex justify-end border-b border-slate-200 bg-white px-4 py-2 text-sm print:hidden">
+          <Link href={helpGuidePath(guide)} className="rounded px-2 py-1 font-semibold text-teal-800 hover:bg-teal-50 hover:underline">Help with this page<span className="sr-only">: {guide.pageLabel}</span> →</Link>
+        </nav>}
+        {children}
+      </div>
     </GlobalNavigationContext.Provider>
   );
 }

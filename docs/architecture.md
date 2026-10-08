@@ -294,7 +294,9 @@ The `/accounting/project-profitability` page and API read the latest stored snap
 
 ## Help guides
 
-`/help` is a directory of plain-language page guides (purpose, data sources, column meanings, how to use, things to know) for any signed-in user; it lists only guides whose target page the user can access, and each guide links to its page. Guide content is data in `src/lib/helpGuides/<page>.ts`, registered in `src/lib/helpGuides/index.ts`, and rendered by `src/components/help/GuideContent.tsx` at `/help/[slug]`. Each `/help/<slug>` route must have a `PATH_PERMISSION_RULES` entry in `permissionRoutes.js` using the described page's permission; `test/helpGuides.test.mjs` enforces that, slug uniqueness, table shape, and inline markup. Validate with `node --test test/helpGuides.test.mjs test/permissions.test.mjs`.
+`/help` is the signed-in getting-started directory for all main navigation pages and key subworkflows. Its searchable, category-filtered cards give a basic purpose and first action, linking to the working page and `/help/[slug]`. `src/lib/helpGuides/catalog.ts` holds lightweight metadata used by the directory and the contextual "Help with this page" link in `AppChrome`; full guide text stays out of the shared navigation bundle. The directory waits for the current user's permissions and offers retry on failure instead of showing inaccessible guides.
+
+Detailed content is grouped by domain in `src/lib/helpGuides/`, registered in `index.ts`, and built with `defineGuide.ts`: purpose, first-visit steps, data sources, interpretation, illustrative example, and troubleshooting. `GuideContent.tsx` renders it. Update the catalog, content, and matching `PATH_PERMISSION_RULES` entry together when documenting a page. Each guide uses its described page's permission and group fallback; Home and its guide follow the existing signed-in-only Home policy. Tests enforce navigation coverage, real target pages, metadata/content consistency, permission parity, exact contextual-link matching, section structure, and inline markup. Validate with `node --test test/helpGuides.test.mjs test/permissions.test.mjs`.
 
 ## Analytics and reporting
 

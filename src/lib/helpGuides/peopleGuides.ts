@@ -1,0 +1,60 @@
+import { defineGuide } from './defineGuide.ts';
+
+export const peopleGuides = [
+  defineGuide('crew-management', {
+    purpose: 'Maintain the normal crew associated with each foreman so scheduling and dispatch have a useful starting point.',
+    steps: [{ title: 'Find the foreman', body: 'Locate the correct foreman’s crew card.' }, { title: 'Choose the members', body: 'Select the right-hand person and laborers. Remove a laborer from an old crew before assigning them to another.' }, { title: 'Save the crew', body: 'Use the crew’s save action and confirm the saved assignment.' }],
+    data: ['Active employee records and job titles determine available foremen, right-hand people, and laborers.', 'Saved crew templates supply standard assignments; daily dispatch can differ because of actual availability.'],
+    terms: [['Right Hand Man', 'The designated supporting crew role selected from eligible employees.'], ['Laborers', 'Crew members drawn from the active laborer list.'], ['Crew template', 'The usual crew configuration, not proof of who worked a specific day.']],
+    example: 'A laborer moving permanently between foremen needs a template update. A one-day absence is better reviewed in the daily dispatch/absence workflow.',
+    checks: ['Check active status and job title if an employee is absent from the picker.', 'Resolve duplicate laborer assignments before saving; the same person cannot be counted in two standard crews.'],
+  }),
+  defineGuide('employees', {
+    purpose: 'Maintain employee identity and employment details, page access, time off, and certifications. Accurate employee records support personal views and scheduling.',
+    steps: [{ title: 'Find the employee', body: 'Use Active, Inactive, or All and verify name and email before editing.' }, { title: 'Review the relevant details', body: 'Edit employment/contact fields, or use Certs and Time Off for those records.' }, { title: 'Check access before saving', body: 'Review Navigation Permissions and any job-title template. Use Manage Access Templates for shared access defaults.' }],
+    data: ['Saved employee records supply profile, status, rate, and employment information.', 'Permission assignments/templates control application access. Time-off and certification histories are separate records linked to the employee.'],
+    terms: [['Active / Inactive', 'Employment availability state used by employee pickers and related workflows.'], ['Hourly Rate', 'The saved employee rate; interpret it according to the workflow using it, not automatically as a billed customer rate.'], ['Navigation Permissions', 'Which application areas the account can access. Signing in alone does not grant every page.'], ['Template', 'A shared set of access choices associated with a job title.']],
+    example: 'A person who can sign in but cannot open a page may have a missing page permission. Check their email association and assignments instead of creating another employee record.',
+    checks: ['For missing employees in other pickers, check active status, job title, and email.', 'Review the target carefully before deleting or changing shared access templates. Saving a contact change is different from changing someone’s access.'],
+  }),
+  defineGuide('certifications', {
+    purpose: 'Track which certifications employees hold and when recorded credentials expire.',
+    steps: [{ title: 'Find the credential', body: 'Locate the employee and certification type.' }, { title: 'Compare the dates', body: 'Check the expiration against the actual credential and inspect the displayed status.' }, { title: 'Record an update', body: 'Use Add New Entry with the correct employee, type, expiration, and notes when recording a credential.' }],
+    data: ['The employee list comes from employee records. Certification entries and expiration dates are saved in the application.', 'Displayed status depends on entered dates; the page does not independently verify the issuing organization.'],
+    terms: [['Certification type', 'The credential or training being tracked.'], ['Expiration', 'The recorded end of validity.'], ['Status', 'A date-based indication for review, dependent on accurate entry.']],
+    example: 'A renewed certificate can still appear expired if only the old expiration is recorded. Compare the new document and update the record.',
+    checks: ['Verify employee, type, and expiration before adding another similar entry.', 'A missing entry does not prove someone lacks training; review the actual credential with the responsible person.'],
+  }),
+  defineGuide('equipment', {
+    purpose: 'Maintain equipment inventory and plan asset assignments to projects and optional stages.',
+    steps: [{ title: 'Find the asset', body: 'Review Inventory and confirm name, type, and serial number.' }, { title: 'Check its schedule', body: 'Inspect Active Schedule before choosing new assignment dates.' }, { title: 'Assign the asset', body: 'Choose project, optional stage, start/end dates, and notes; save and verify the resulting assignment.' }],
+    data: ['Equipment records supply asset identity and daily rates. Equipment assignments link assets to projects and dates.', 'The schedule expresses planned use; it is not a meter reading or an invoice.'],
+    terms: [['Daily Rate', 'The saved daily planning/charge reference for the asset.'], ['Stage (optional)', 'A specific stage within the project; General Project Use covers a broader assignment.'], ['Start / End Date', 'The intended assignment interval, which should be checked for overlap.']],
+    example: 'An excavator already assigned through Wednesday should be checked before booking it on another job Tuesday. The inventory count alone does not show availability.',
+    checks: ['Verify asset identity and date overlap when equipment appears unavailable.', 'Changing a daily rate does not establish actual incurred equipment cost; use the relevant accounting records for that question.'],
+  }),
+  defineGuide('holidays', {
+    purpose: 'Maintain the company’s holiday calendar and paid-holiday designations for planning and reference.',
+    steps: [{ title: 'Read policy notes', body: 'Check PMC Holiday Policy Notes and the existing holiday list.' }, { title: 'Add or edit the holiday', body: 'Enter the name, observed date, paid designation, and description.' }, { title: 'Verify the calendar', body: 'Save and confirm the intended date and year appear correctly.' }],
+    data: ['Saved company holiday entries supply this page and calendar context in scheduling.', 'The paid flag is a recorded designation; it does not itself calculate or issue payroll.'],
+    terms: [['Date', 'The recorded observed holiday date.'], ['Paid Holiday', 'Whether the holiday is designated paid in this calendar.'], ['Description', 'Context about the observance or company arrangement.']],
+    example: 'If a holiday is observed Monday instead of Sunday, enter the observed work-calendar date so planners see the intended day.',
+    checks: ['Check year, observed date, and duplicate entries if schedule availability looks wrong.', 'Refer payroll eligibility questions to the current company policy rather than inferring them from the calendar alone.'],
+  }),
+  defineGuide('onboarding', {
+    purpose: 'Review personnel submissions and track payroll processing and handbook compliance.',
+    steps: [{ title: 'Choose the view', body: 'Select Payroll for personnel submissions or Handbook for acknowledgment compliance.' }, { title: 'Review the person', body: 'Verify employee name and email, then inspect the relevant submission or signed date.' }, { title: 'Maintain processing state', body: 'Use the available status controls after the corresponding processing step has actually been completed.' }],
+    data: ['Submitted personnel information and saved processing statuses supply the payroll view.', 'Handbook compliance uses saved signoff information linked to the employee identity.'],
+    terms: [['Pending / Processed / Completed', 'Workflow states for handling a submission; the label reflects the saved processing state.'], ['Signed Date', 'Recorded handbook acknowledgment date.'], ['Compliance report', 'A view of recorded acknowledgments, not a substitute for reviewing the employee’s actual submission.']],
+    example: 'A pending payroll submission may be fully filled in but still await administrative processing. Change its status after the handling step, not just because it was opened.',
+    checks: ['Check email association and submission history if an acknowledgment is missing.', 'Verify the specific submission before deletion or status changes; similar names can belong to different records.'],
+  }),
+  defineGuide('handbook', {
+    purpose: 'Read company policies and complete the available employee acknowledgment after reviewing the handbook.',
+    steps: [{ title: 'Open the document', body: 'Use Quick Links or the document viewer to reach the relevant material.' }, { title: 'Read at a usable size', body: 'Use Prev, Next, and zoom controls to move through pages and inspect the text.' }, { title: 'Review signoff instructions', body: 'Check the acknowledgment wording and your identity before completing the available signoff.' }],
+    data: ['The page presents the company handbook document and related links.', 'Acknowledgment information is saved separately and appears in the personnel compliance workflow.'],
+    terms: [['Notice', 'Context or instructions associated with the displayed handbook.'], ['Viewer page', 'Your position in the document, not a measure of completion or acknowledgment.'], ['Signoff', 'A recorded acknowledgment tied to the employee identity.']],
+    example: 'Reaching the final document page does not necessarily record a signature. Follow the displayed acknowledgment step and check its confirmation.',
+    checks: ['If the viewer is blank, retry loading and check the available document links.', 'If the wrong identity appears or a prior signoff is missing, have the employee association checked before submitting again.'],
+  }),
+];

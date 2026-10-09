@@ -1,6 +1,6 @@
-# Procore sign-in preparation
+# Procore sign-in rollout
 
-Status: prepared on `codex/procore-primary-signin`; **not launched**. The owner requested preparation only. Do not merge to `main`, push a deploy-triggering branch, apply migrations, change hosted environment variables, or update the Procore app manifest until the owner requests launch.
+Status (2026-10-09): the owner authorized launch after removal of the three unmatched accounts. Release through GitHub `main` and Netlify's normal integration. Procore becomes the primary sign-in option; retain `AUTH0_EMAIL_LOGIN_ENABLED=true` temporarily until a real user verifies the OAuth/browser flow. Browser automation was unavailable during rollout, so HTTP checks and automated tests do not establish that final user verification. The earlier preparation-only restriction is superseded by the owner's launch instruction.
 
 ## Intended experience
 
@@ -19,9 +19,9 @@ Standalone browsers authenticate in the current tab. An embedded page opens the 
 - The new mode disables the legacy analytics link/query-parameter authentication bypass. Signed, project-specific Commitment Maker links and secret-authenticated workers retain their existing scope. In fallback mode, normal Auth0-authenticated traffic now runs the SDK middleware to renew rolling sessions.
 - Legacy `/auth/start`, protected-page sign-in and KPI links reach the shared login page in Procore mode. A session marked `needsReconnect` stays on that page so the Procore button remains usable. Browser storage denial does not crash sign-in/navigation, and an unsuccessful server logout reports a retry instead of falsely announcing success. Refresh exchanges include the configured callback URL.
 
-## Configuration for later activation
+## Production activation configuration
 
-Prepare these on a separately authorized test environment first:
+The rollout supplies the new encryption secret and activation settings in Netlify's production context. Existing Procore/Auth0 credentials remain in place. The normal Netlify build applies the additive session-table migration; no unrelated pending migrations or failed migrations were found during the release check.
 
 | Variable | Requirement |
 | --- | --- |
@@ -34,7 +34,7 @@ Prepare these on a separately authorized test environment first:
 | `AUTH0_EMAIL_LOGIN_ENABLED` | Defaults enabled; set `false` only after confirming email-only users have a replacement |
 | Existing Auth0 variables | Retain while the email fallback is enabled |
 
-The existing Procore app registration may already have the correct callback and embedded URL. Verify it instead of creating duplicate registrations. The callback refuses a different-origin configuration, preventing a local/test login from accidentally landing in production. Keep app-session encryption secrets stable for the life of existing sessions; secret rotation requires a planned session reset.
+The production callback is explicitly `https://analyticspmc.netlify.app/api/auth/procore/callback`. Verify the existing Procore app registration instead of creating duplicate registrations. The callback refuses a different-origin configuration, preventing a local/test login from accidentally landing in production. Keep app-session encryption secrets stable for the life of existing sessions; secret rotation requires a planned session reset.
 
 ## Validation and remaining launch checks
 

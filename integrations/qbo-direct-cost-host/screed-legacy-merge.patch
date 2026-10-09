@@ -1,0 +1,129 @@
+--- a/src/qbo-managed-bill.js
++++ b/src/qbo-managed-bill.js
+@@ -36,9 +36,14 @@
+  const before=old.ItemBasedExpenseLineDetail?.ItemRef;
+  const live=current?.ItemBasedExpenseLineDetail?.ItemRef;
+  const target=proposed?.ItemBasedExpenseLineDetail?.ItemRef;
+- return !!before?.name && /\.(?:M|E|L|O)$/.test(before.name)
+-  && productName === before.name.replace(/\.[A-Z]+$/, '.LS')
+-  && live?.value === target?.value && live?.name === productName;
++ const targetParts=/^(.*)-(03-300-20-30)\.LS$/.exec(productName || '');
++ const beforeParts=/^(.*)-(03-300-(?:20-10|20-30|00-12))\.(?:M|E|L|O|C|S)$/.exec(before?.name || '');
++ if (!targetParts || !beforeParts || targetParts[1]!==beforeParts[1] || !target?.value) return false;
++ // The explicit receipt binding proves line ownership. Recognize the legacy
++ // equipment counterpart of this exact mapped LS product, as well as a
++ // completed LS correction; unrelated product substitutions still fail.
++ return (live?.value===target.value && live?.name===productName)
++  || (!!live?.value && live.name===productName.replace(/\.LS$/, '.E'));
+ }
+ function matchingOffsetClassCorrection(old, current, state, bill) {
+  if (!old.AccountBasedExpenseLineDetail || !current?.AccountBasedExpenseLineDetail
+@@ -139,17 +144,30 @@
+   const savedByKey=new Map((saved.source || []).map(source=>[source.lineKey,source]));
+   const keysById=new Map();
+   for(const [key,id] of Object.entries(state.bindings || {}))keysById.set(String(id),[...(keysById.get(String(id)) || []),key]);
+-  preservedManagedIds=new Set([...keysById].filter(([,keys])=>keys.length && keys.every(key=>!activeSourceKeys.has(key) && manualOnlyEquipmentSource(savedByKey.get(key)))).map(([id])=>id));
++  preservedManagedIds=new Set([...keysById].filter(([id,keys])=>keys.length && keys.every(key=>{
++   const source=savedByKey.get(key);
++   // Older successful attempts omitted source names; their receipt-bound
++   // managed line supplies the saved description without guessing ownership.
++   const named=source && !normalizedEquipmentName(source) ? {...source,description:state.lines.find(line=>String(line.Id)===id)?.Description} : source;
++   return !activeSourceKeys.has(key) && manualOnlyEquipmentSource(named);
++  })).map(([id])=>id));
+  }
+  const reviewed=receipt.reconciliationPending && String(current.SyncToken)===String(receipt.syncToken);
+  const currentById=new Map((current.Line || []).map(l=>[String(l.Id),l]));
+  const screeders=new Set(prepared.screedingLineKeys || []), keyById=new Map(Object.entries(state.bindings).map(([k,v])=>[String(v),k]));
+  for(const old of state.lines) {
++  // Excluded manual equipment no longer belongs to the automatic bill. Keep
++  // its live state, including an intentional deletion, without recreating it.
++  if(preservedManagedIds.has(String(old.Id)))continue;
+   const found=currentById.get(String(old.Id)),key=keyById.get(String(old.Id));
+   const proposed=prepared.payload.Line.filter(line=>line.ItemBasedExpenseLineDetail)[prepared.source.findIndex(source=>source.lineKey===key)];
+   const correctedProduct=screeders.has(key) && completedScreedProductCorrection(old,found,proposed,prepared.source.find(source=>source.lineKey===key)?.qboItemName);
+-  const skip=new Set(old.AccountBasedExpenseLineDetail?['Amount',...(matchingOffsetClassCorrection(old,found,state,current)?['ClassRef']:[])]:['Amount','UnitPrice','ClassRef',...(screeders.has(key)?['Description']:[]),...(correctedProduct?['ItemRef']:[])]);
+-  if(!reviewed && (!found || !match(old,found,skip)))throw new Error('A managed bill line was deleted or changed beyond its permitted price/class fields; reconciliation is required.');
++  const skip=new Set(old.AccountBasedExpenseLineDetail?['Amount',...(matchingOffsetClassCorrection(old,found,state,current)?['ClassRef']:[])]:['Amount','UnitPrice','ClassRef','Description',...(correctedProduct?['ItemRef']:[])]);
++  if(!reviewed && (!found || !match(old,found,skip))) {
++   const label=old.Description || `line ${old.Id}`;
++   const changed=found ? Object.keys(old).filter(field=>!['Id','LineNum','name'].includes(field) && !skip.has(field) && !match(old[field],found[field],skip)).map(field=>field==='ItemBasedExpenseLineDetail' ? Object.keys(old[field]).filter(key=>!skip.has(key) && !match(old[field][key],found[field]?.[key],skip)).join(', ') : field).join(', ') : 'deleted';
++   throw new Error(`QBO bill line "${label}" was ${found ? `changed (${changed})` : 'deleted'}; reconciliation is required.`);
++  }
+  }
+  const prices={};
+  for(const source of prepared.source || []) {
+@@ -168,7 +186,9 @@
+   if(screeders.has(key) || manual) {
+    const proposed=prepared.payload.Line.filter(item=>item.ItemBasedExpenseLineDetail)[(prepared.source || []).findIndex(source=>source.lineKey===key)];
+    const productChanged=screeders.has(key) && String(detail.ItemRef?.value || '')!==String(proposed?.ItemBasedExpenseLineDetail?.ItemRef?.value || '');
+-   prices[key]={unitCost:detail.UnitPrice,description:line.Description,...(!productChanged?{classRef:detail.ClassRef||null}:{}),manual};
++   const manualClass=(detail.ClassRef?.value||null)!==(old.ItemBasedExpenseLineDetail.ClassRef?.value||null)
++    || (receipt.qboPrices?.[key]?.manual && Object.hasOwn(receipt.qboPrices[key],'classRef'));
++   prices[key]={unitCost:detail.UnitPrice,description:line.Description,...(!productChanged || manualClass?{classRef:detail.ClassRef||null}:{}),manual};
+   }
+  }
+  const offsetState=retainOffsetAdjustments(prepared,state,current,preservedManagedIds);
+@@ -178,7 +198,10 @@
+  const additions=(current.Line || []).filter(l=>!managedIds.has(String(l.Id)));
+  if(additions.some(l=>!l.Id || !['ItemBasedExpenseLineDetail','AccountBasedExpenseLineDetail'].includes(l.DetailType)))throw new Error('An added line needs reconciliation before it can be preserved.');
+  const items=updated.payload.Line.filter(l=>l.ItemBasedExpenseLineDetail);
+- for(let i=0;i<items.length;i++){const id=state.bindings[prepared.source?.[i]?.lineKey];if(id && currentById.has(String(id)))items[i].Id=String(id);}
++ for(let i=0;i<items.length;i++){
++  const id=state.bindings[prepared.source?.[i]?.lineKey],live=currentById.get(String(id));
++  if(id && live){items[i].Id=String(id);if(Object.hasOwn(live,'Description'))items[i].Description=live.Description;else delete items[i].Description;}
++ }
+  for(const line of updated.payload.Line.filter(l=>l.AccountBasedExpenseLineDetail)) {
+   const d=line.AccountBasedExpenseLineDetail;
+   const matches=current.Line.filter(old=>managedIds.has(String(old.Id)) && old.AccountBasedExpenseLineDetail?.AccountRef?.value===d.AccountRef.value && old.AccountBasedExpenseLineDetail.ClassRef?.value===d.ClassRef?.value);
+--- a/test/qbo-managed-bill.test.js
++++ b/test/qbo-managed-bill.test.js
+@@ -209,3 +209,49 @@
+   f=>f.current.Line[1].AccountBasedExpenseLineDetail.ClassRef.value='unrelated'
+  ]) {const f=correctedScreedFixture();change(f);await assert.rejects(mergeQboBill(f),/reconciliation/);}
+ });
++
++test('bound item description corrections persist without freezing ordinary source prices',async()=>{
++ const f=fixture();f.prepared.screedingLineKeys=[];
++ f.current.Line[0].Description='Corrected concrete color';
++ f.prepared.payload.Line[0].ItemBasedExpenseLineDetail.UnitPrice=1300;
++ f.prepared.payload.Line[0].Amount=1300;f.prepared.payload.Line[1].Amount=-1300;
++ const merged=await mergeQboBill(f);
++ assert.equal(merged.payload.Line[0].Description,'Corrected concrete color');
++ assert.equal(merged.payload.Line[0].Amount,1300);
++ assert.deepEqual(merged.qboPrices,{});
++ assert.equal(merged.total,0);
++ f.current.Line[0].ItemBasedExpenseLineDetail.CustomerRef.value='different';
++ await assert.rejects(mergeQboBill(f),/Corrected|Screeder.*CustomerRef/);
++});
++
++test('deleted manual-only Telebelts stay deleted and do not block the retained automatic lines',async()=>{
++ const dir=await mkdtemp(path.join(os.tmpdir(),'qbo-deleted-telebelt-'));
++ try {
++  const f=fixture(),telebelt=item('3',1500);telebelt.Description='Telebelt';
++  f.receipt.managedLines.push(telebelt);f.receipt.managedLines[1].Amount=-2700;
++  f.receipt.sourceBindings.telebelt='3';f.receipt.sourceKeys.push('telebelt');
++  await writeFile(path.join(dir,'attempt.json'),JSON.stringify({...f.prepared,source:[...f.prepared.source,{lineKey:'telebelt',costType:'Equipment'}]}));
++  const merged=await mergeQboBill({...f,claim:dir});
++  assert.equal(merged.payload.Line.length,2);assert.equal(merged.total,0);
++  assert.deepEqual(merged.preservedLines,[]);
++  // An included automatic source is never treated as a manual deletion.
++  f.prepared.source.push({lineKey:'telebelt',description:'Telebelt'});
++  await assert.rejects(mergeQboBill({...f,claim:dir}),/Telebelt.*deleted/);
++ } finally {await rm(dir,{recursive:true,force:true});}
++});
++
++test('a bound screed corrected from labor to equipment migrates to LS with its manual class and price',async()=>{
++ const f=correctedScreedFixture();
++ f.receipt.managedLines[0].ItemBasedExpenseLineDetail.ItemRef={value:'labor',name:'2509 - MCH-03-300-20-10.L'};
++ f.current.Line[0].ItemBasedExpenseLineDetail.ItemRef={value:'equipment',name:'2509 - MCH-03-300-20-30.E'};
++ const merged=await mergeQboBill(f);
++ assert.equal(merged.payload.Line[0].ItemBasedExpenseLineDetail.ItemRef.value,'50');
++ assert.equal(merged.payload.Line[0].ItemBasedExpenseLineDetail.ClassRef.value,'940');
++ assert.equal(merged.payload.Line[0].Amount,1280);assert.equal(merged.total,0);
++ for(const mutate of [
++  copy=>copy.current.Line[0].ItemBasedExpenseLineDetail.ItemRef.name='2500 - OTHER-03-300-20-30.E',
++  copy=>copy.current.Line[0].ItemBasedExpenseLineDetail.ItemRef.name='2509 - MCH-03-300-40-30.E',
++  copy=>copy.current.Line[0].ItemBasedExpenseLineDetail.Qty=2,
++  copy=>copy.prepared.screedingLineKeys=[]
++ ]) {const copy=structuredClone(f);mutate(copy);await assert.rejects(mergeQboBill(copy),/reconciliation/);}
++});

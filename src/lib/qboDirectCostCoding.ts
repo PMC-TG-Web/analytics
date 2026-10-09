@@ -11,7 +11,9 @@ function normalizedEquipmentName(description: string | null) {
 }
 
 export function isManagedScreed(description: string | null) {
-  return /^(?:somero[ -]+)?(?:power[ -]*rake|s[ -]*(?:15r?|840|940)|srs[ -]*4?)(?: \(boom screed\))?(?: \(\d+(?:\.\d+)? hr minimum\))?$/.test(normalizedEquipmentName(description));
+  const name = normalizedEquipmentName(description);
+  return /^(?:somero[ -]+)?(?:power[ -]*rake|s[ -]*(?:15r?|840|940)|srs[ -]*4?)(?: \(boom screed\))?(?: \(\d+(?:\.\d+)? hr minimum\))?$/.test(name)
+    || /^(?:somero[ -]+)?srs[ -]*4? laser screed(?: \(\d+(?:\.\d+)? hr minimum\))?$/.test(name);
 }
 
 function isLaserScreedingType(costType: string | null | undefined) {

@@ -16,7 +16,7 @@ test('Food override leaves other purchases and labor unchanged', () => {
 });
 
 test('Somero screeds enter the QBO equipment flow only from an exact Procore .LS assignment', () => {
- for (const description of ['Somero Power Rake (8 hr minimum) - SOG', 'Somero S-840 (8 hr minimum)', 'Somero S-15R (boom screed) (8 hr minimum)', 'SRS4']) {
+ for (const description of ['Somero Power Rake (8 hr minimum) - SOG', 'Somero S-840 (8 hr minimum)', 'Somero S-15R (boom screed) (8 hr minimum)', 'SRS4', 'SRS4 laser screed']) {
   const original = { description, costCode: '03-300-20-30', costType: 'Labor Laser Screeding', wbsCode: '03-300-20-30.LS', uom: 'ea' };
   const result = applyDirectCostCoding(original);
   assert.equal(result.costType, 'Equipment'); assert.equal(result.costCode, original.costCode);

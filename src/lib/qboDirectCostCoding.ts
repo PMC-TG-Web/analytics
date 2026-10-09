@@ -4,21 +4,30 @@ export function isFoodCost(source: { description: string | null; costCode?: stri
   const foodCode = (source.costCode || '').trim().replace(/\.[A-Z]+$/i, '') === '01-300-10-80';
   return (foodCode || /^(food|food cost|breakfast|lunch|dinner|meals?)$/.test(name)) && !/^(labor|l)$/i.test(source.costType?.trim() || '');
 }
-export function applyDirectCostCoding<T extends { description: string | null; costCode?: string | null; costType?: string | null; uom?: string | null }>(source: T): T {
-  const equipmentName = (source.description || '').normalize('NFKC').trim().toLowerCase()
+function normalizedEquipmentName(description: string | null) {
+  return (description || '').normalize('NFKC').trim().toLowerCase()
     .replace(/^co\s*\d+\s*[-\u2013\u2014]\s*/, '').replace(/\s+/g, ' ')
     .replace(/\s*[-\u2013\u2014]\s*(sog|site|wall|walls|foundation|foundations|slab on grade|slab on deck)$/, '');
-  // Approved equipment charges use Direct Costs -, even when a legacy PO calls
-  // them Labor. Hourly labor and other equipment identities are not reclassified.
-  if (/^(ea|each)$/i.test(source.uom?.trim() || '')
-    && /^somero (power rake|s-840) \(8 hr minimum\)$/.test(equipmentName)) return { ...source, costType: 'Materials' };
-  // Named machine rentals can arrive under Subcontractors. Classify them before
-  // product setup validates cost types; the host still resolves the configured
-  // Screeding subclass and .E product from the unchanged description/code.
-  // Match machine descriptions only, not operator labor, repairs or mixed models.
-  if (/^(subcontractors?|s)$/i.test(source.costType?.trim() || '')
-    && /^(?:somero[ -]+)?(?:power[ -]*rake|s[ -]*(?:15r?|840|940)|srs[ -]*4?)(?: \(boom screed\))?(?: \(\d+(?:\.\d+)? hr minimum\))?$/.test(equipmentName)) {
-    return { ...source, costType: 'Equipment' };
+}
+
+export function isManagedScreed(description: string | null) {
+  return /^(?:somero[ -]+)?(?:power[ -]*rake|s[ -]*(?:15r?|840|940)|srs[ -]*4?)(?: \(boom screed\))?(?: \(\d+(?:\.\d+)? hr minimum\))?$/.test(normalizedEquipmentName(description));
+}
+
+function isLaserScreedingType(costType: string | null | undefined) {
+  return /^(?:ls|labor laser screeding)$/i.test(costType?.trim() || '');
+}
+
+export function applyDirectCostCoding<T extends { description: string | null; costCode?: string | null; costType?: string | null; wbsCode?: string | null; uom?: string | null }>(source: T): T & { sourceCostType?: string; sourceWbsCode?: string; directCostCodingIssue?: string } {
+  if (isManagedScreed(source.description)) {
+    const sourceCostType = source.costType?.trim() || '';
+    const sourceWbsCode = source.wbsCode?.trim() || '';
+    if (!isLaserScreedingType(sourceCostType) || !/\.LS$/i.test(sourceWbsCode)) {
+      return { ...source, directCostCodingIssue: `${source.description || 'Screed'} must use the Labor Laser Screeding (.LS) budget code in Procore; current assignment is ${sourceWbsCode || sourceCostType || 'missing'}. Update the PO line and refresh this review.` };
+    }
+    // QBO keeps its established equipment product and Screeding subclass while
+    // the source evidence proves Procore supplied the dedicated .LS assignment.
+    return { ...source, costType: 'Equipment', sourceCostType, sourceWbsCode };
   }
   if (!isFoodCost(source)) return source;
   // Materials selects the established .M product suffix and Direct Costs - offset.

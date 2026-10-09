@@ -27,7 +27,7 @@ export async function loadQboDirectCosts(companyId: string, projectId: string, m
     prisma.productivityLog.findMany({ where: { procoreCompanyId: companyId, procoreProjectId: projectId, procoreDeletedAt: null, date: { gte: start, lt: end } },
       select: { id: true, procoreId: true, date: true, status: true, quantityUsed: true, lineItemId: true, lineItemDescription: true, lineItemHolderTitle: true, lineItemHolderNumber: true, lineItemHolderId: true, lineItemHolderType: true, updatedAt: true } }),
     prisma.purchaseOrderLineItemContractDetail.findMany({ where: { procoreCompanyId: companyId, procoreProjectId: projectId },
-      select: { procoreId: true, description: true, uom: true, unitCost: true, updatedAt: true, costCode: true, costType: true, customFields: true, procorePurchaseOrderContractId: true, purchaseOrderContract: { select: { number: true, title: true } } } }),
+      select: { procoreId: true, description: true, uom: true, unitCost: true, updatedAt: true, costCode: true, costType: true, wbsCode: true, customFields: true, procorePurchaseOrderContractId: true, purchaseOrderContract: { select: { number: true, title: true } } } }),
     prisma.$queryRaw<{ source_line_item_id: string; target_line_item_id: string }[]>`SELECT source_line_item_id, target_line_item_id FROM analytics_po_line_aliases WHERE company_id=${companyId} AND procore_project_id=${projectId}`,
     prisma.timecardEntry.findMany({ where: { procoreCompanyId: companyId, procoreProjectId: projectId, procoreDeletedAt: null, date: { gte: start, lt: end } }, select: { procoreId: true, date: true, hours: true, totalHoursWorked: true, costCodeFullCode: true, costCodeName: true, updatedAt: true } }),
     loadQboDirectCostLaborRates(companyId, projectId, catalog),

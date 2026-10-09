@@ -62,6 +62,8 @@ export type DirectCostItem = {
   procoreId: string | null; description: string | null; unitCost: number | null;
   uom: string | null; updatedAt: Date;
   costCode?: string | null; costType?: string | null;
+  wbsCode?: string | null; sourceCostType?: string; sourceWbsCode?: string;
+  directCostCodingIssue?: string;
   purchaseOrderContract?: { number: string | null; title: string | null } | null;
   procorePurchaseOrderContractId?: string | null;
   pricingIssue?: string | null;
@@ -126,6 +128,9 @@ export function aggregateDirectCosts(logs: DirectCostSource[], items: DirectCost
     if (isExcludedConcrete(item, sourceName)) {
       excluded.concrete++; continue;
     }
+    if (item.directCostCodingIssue) {
+      addIssue(`${item.directCostCodingIssue} ${issueSource(log, item)}.`, log, item); continue;
+    }
     // Normalize each source before summing so bill-host evidence reconciles exactly.
     const quantity = new Prisma.Decimal(String(log.quantityUsed)).toDecimalPlaces(8, Prisma.Decimal.ROUND_HALF_UP);
     if (quantity.isZero()) { addIssue(`${sourceLabel}: quantity is below the supported billing precision (8 decimal places).`, log, item); continue; }
@@ -149,6 +154,8 @@ export function aggregateDirectCosts(logs: DirectCostSource[], items: DirectCost
     purchaseOrder: group.item.purchaseOrderContract || null,
     costCode: group.item.costCode || null,
     costType: group.item.costType || null,
+    ...(group.item.sourceCostType ? { sourceCostType: group.item.sourceCostType } : {}),
+    ...(group.item.sourceWbsCode ? { sourceWbsCode: group.item.sourceWbsCode } : {}),
     quantity: group.quantity.toFixed(),
     unitCost: String(group.item.unitCost),
     uom: group.item.uom!,

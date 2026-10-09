@@ -15,15 +15,13 @@ test('Food override leaves other purchases and labor unchanged', () => {
  for (const original of [{ description: 'Food delivery equipment', costCode: '03-150-10-85', costType: 'Materials' }, { description: 'Food', costCode: '01-300-10-30', costType: 'Labor' }]) assert.equal(applyDirectCostCoding(original), original);
 });
 
-test('approved Somero per-each charges use Direct Costs while retaining the source code', () => {
- for (const name of ['Somero Power Rake (8 hr minimum)', 'Somero S-840 (8 hr minimum)']) {
-  const original = { description: name + ' - SOG', costCode: '03-300-00-12', costType: 'Labor', uom: 'ea' };
+test('Somero screeds enter the QBO equipment flow only from an exact Procore .LS assignment', () => {
+ for (const description of ['Somero Power Rake (8 hr minimum) - SOG', 'Somero S-840 (8 hr minimum)', 'Somero S-15R (boom screed) (8 hr minimum)', 'SRS4']) {
+  const original = { description, costCode: '03-300-20-30', costType: 'Labor Laser Screeding', wbsCode: '03-300-20-30.LS', uom: 'ea' };
   const result = applyDirectCostCoding(original);
-  assert.equal(result.costType, 'Materials'); assert.equal(result.costCode, original.costCode); assert.equal(original.costType, 'Labor');
-  for (const uom of ['hr', 'day', '']) { const labor = {...original,uom}; assert.equal(applyDirectCostCoding(labor),labor); }
- }
- for (const description of ['Somero operator labor', 'Somero S-840 (4 hr minimum)', 'Somero SRS4 (8 hr minimum)']) {
-  const original = { description, costType: 'Labor', uom: 'ea' }; assert.equal(applyDirectCostCoding(original), original);
+  assert.equal(result.costType, 'Equipment'); assert.equal(result.costCode, original.costCode);
+  assert.equal(result.sourceCostType, 'Labor Laser Screeding'); assert.equal(result.sourceWbsCode, original.wbsCode);
+  assert.equal(result.directCostCodingIssue, undefined); assert.equal(original.costType, 'Labor Laser Screeding');
  }
 });
 test('food code and meal descriptions use the food ledger rather than catalog prices', () => {
@@ -35,13 +33,14 @@ test('food code and meal descriptions use the food ledger rather than catalog pr
  assert.equal(isFoodCost({description:'Breakfast room equipment',costCode:'03-150-10-85',costType:'Materials'}),false);
 });
 
-test('named subcontractor screeders enter the equipment flow before product setup', () => {
+test('legacy screed cost types are rejected with an exact Procore correction', () => {
  for (const description of ['Somero S-15R (boom screed) (8 hr minimum) - SOG', 'S-15', 'S15R', 'CO6 - Somero SRS4 (boom screed) - Site', 'Somero S-940 (8 hr minimum)', 'Power Rake', 'S-840', 'SRS']) {
-  for (const costType of ['Subcontractors', 'Subcontractor', ' S ']) {
-   const original = { procoreId: '123', description, costCode: '03-300-20-30', costType, uom: 'ea' };
+  for (const [costType, suffix] of [['Subcontractors', 'S'], ['Equipment', 'E'], ['Other', 'O'], ['Commitments', 'C'], ['Labor', 'L']]) {
+   const original = { procoreId: '123', description, costCode: '03-300-20-30', costType, wbsCode: `03-300-20-30.${suffix}`, uom: 'ea' };
    const result = applyDirectCostCoding(original);
-   assert.equal(result.costType, 'Equipment', description);
-   assert.deepEqual(result, { ...original, costType: 'Equipment' });
+   assert.equal(result.costType, costType, description);
+   assert.match(result.directCostCodingIssue, /must use the Labor Laser Screeding \(\.LS\) budget code in Procore/);
+   assert.match(result.directCostCodingIssue, new RegExp(`\\.${suffix}\\b`));
    assert.equal(original.costType, costType);
   }
  }
@@ -50,10 +49,6 @@ test('named subcontractor screeders enter the equipment flow before product setu
 test('screeder coding preserves labor, profiler, unrelated subcontractors and ambiguous descriptions', () => {
  for (const description of ['Somero 3D Profiler (with or without screed)', 'Concrete finishing', 'S15 / SRS4', 'Somero S-15R operator labor', 'S-15 repairs', 'S-15 parts', 'Laser screeder']) {
   const original = { description, costType: 'Subcontractors', costCode: '03-300-20-30', uom: 'ea' };
-  assert.equal(applyDirectCostCoding(original), original);
- }
- for (const costType of ['Labor', 'L', 'Materials', 'Equipment', 'Other', null]) {
-  const original = { description: 'Somero S-15R (boom screed) (8 hr minimum) - SOG', costType, uom: 'hr' };
   assert.equal(applyDirectCostCoding(original), original);
  }
 });

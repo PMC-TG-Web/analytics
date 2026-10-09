@@ -6,7 +6,7 @@ import { applyDirectCostCoding } from '../src/lib/qboDirectCostCoding.ts';
 
 // Opt-in compatibility check against the installed host; pure planning/building
 // only. No service connection, credentials, saved mappings or QBO writes.
-test('subcontractor screeders retain their machine class through host setup and bill preparation', { skip: process.env.QBO_BILL_HOST_TEST !== '1' }, async () => {
+test('.LS screeders retain their machine class through host setup and bill preparation', { skip: process.env.QBO_BILL_HOST_TEST !== '1' }, async () => {
  const host = path.resolve(process.env.QBO_BILL_HOST_ROOT || '../QBO_1');
  const module = name => import(pathToFileURL(path.join(host, 'src', name)).href);
  const { planProjectProducts } = await module('direct-cost-project-setup.js');
@@ -16,7 +16,7 @@ test('subcontractor screeders retain their machine class through host setup and 
  const screeding = { equipmentProducts:true,includeLegacySomeroMaterials:true,classes };
  const defaults = { material:{suffix:'M',templateId:'20'},labor:{suffix:'L',templateId:'21'},screeding };
  for (const [description,key] of [['Somero S-15R (boom screed) (8 hr minimum) - SOG','s15'],['S-15','s15'],['CO6 - Somero SRS4 (boom screed) - Site','srs'],['Somero S-940 (8 hr minimum)','s940'],['Somero S-840 (8 hr minimum)','s940'],['Somero Power Rake (8 hr minimum)','powerRake']]) {
-  const line=applyDirectCostCoding({procoreLineItemId:'100',lineKey:'100',sourceType:'productivity',description,costCode:'03-300-20-30',costType:'Subcontractors',uom:'ea',quantity:'2',unitCost:'100',amount:'200.00',sourceLogs:[{id:'200',date:'2026-03-02',quantity:'2'}]});
+  const line=applyDirectCostCoding({procoreLineItemId:'100',lineKey:'100',sourceType:'productivity',description,costCode:'03-300-20-30',costType:'Labor Laser Screeding',wbsCode:'03-300-20-30.LS',uom:'ea',quantity:'2',unitCost:'100',amount:'200.00',sourceLogs:[{id:'200',date:'2026-03-02',quantity:'2'}]});
   const draft={schemaVersion:1,scope:'productivity_logs',vendorName:'PMC Procore Direct Costs',companyId:'1',projectId:'2',projectNumber:'TEST',month:'2026-03',issues:[],lines:[line],total:'200.00'};
   const [product]=planProjectProducts(draft,defaults);
   assert.equal(product.name,'TEST-03-300-20-30.E');

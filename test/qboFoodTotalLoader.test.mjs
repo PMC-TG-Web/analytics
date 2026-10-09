@@ -27,14 +27,23 @@ test('monthly loader excludes 85.86 Food log quantity and includes entered $85.8
  assert.equal(d.lines.find(l=>l.sourceType==='manual_food').amount,'85.86'); assert.equal(d.catalogMappingItems.some(i=>i.description==='Food'),false);
 });
 
-test('shared bill draft codes subcontractor screeders as equipment for review and setup',async()=>{
- const source={procoreId:'12',description:'Somero S-15R (boom screed) (8 hr minimum) - SOG',costCode:'03-300-20-30',costType:'Subcontractors',uom:'ea',updatedAt:date};
+test('shared bill draft accepts .LS screeders as equipment and preserves their Procore source assignment',async()=>{
+ const source={procoreId:'12',description:'Somero S-15R (boom screed) (8 hr minimum) - SOG',costCode:'03-300-20-30',costType:'Labor Laser Screeding',wbsCode:'03-300-20-30.LS',uom:'ea',updatedAt:date};
  const d=await load(null,[],[],'Food',{items:[source],logs:[{id:'3',procoreId:'3',lineItemId:'12',lineItemDescription:source.description,quantityUsed:2,status:'approved',date,updatedAt:date}]});
  const line=d.lines.find(l=>l.lineKey==='12');
  assert.equal(line.costType,'Equipment'); assert.equal(line.costCode,source.costCode);
+ assert.equal(line.sourceCostType,'Labor Laser Screeding'); assert.equal(line.sourceWbsCode,source.wbsCode);
  assert.equal(line.description,source.description); assert.equal(line.quantity,'2');
  assert.equal(d.ruleItems.find(l=>l.lineKey==='12').costType,'Equipment');
- assert.equal(d.issues.length,0); assert.equal(source.costType,'Subcontractors');
+ assert.equal(d.issues.length,0); assert.equal(source.costType,'Labor Laser Screeding');
+});
+test('shared bill draft blocks active screeds that are not assigned to .LS in Procore',async()=>{
+ const source={procoreId:'12',description:'Somero S-15R (boom screed) (8 hr minimum) - SOG',costCode:'03-300-20-30',costType:'Equipment',wbsCode:'03-300-20-30.E',uom:'ea',updatedAt:date};
+ const d=await load(null,[],[],'Food',{items:[source],logs:[{id:'3',procoreId:'3',lineItemId:'12',lineItemDescription:source.description,quantityUsed:2,status:'approved',date,updatedAt:date}]});
+ assert.equal(d.lines.some(l=>l.lineKey==='12'),false);
+ assert.equal(d.catalogMappingItems.some(i=>i.lineItemId==='12'),false);
+ assert.ok(d.issues.some(issue=>/must use the Labor Laser Screeding \(\.LS\) budget code in Procore/.test(issue)));
+ assert.equal(d.issueSources.find(issue=>/Labor Laser Screeding/.test(issue.message)).target,'purchaseOrder');
 });
 test('shared monthly draft omits boom lift rental from bill lines and catalog setup while retaining labor',async()=>{
  const cards=[{procoreId:'100',date,hours:2,totalHoursWorked:null,costCodeFullCode:'03-300-20-10.L',costCodeName:'SOG Labor',updatedAt:date}];

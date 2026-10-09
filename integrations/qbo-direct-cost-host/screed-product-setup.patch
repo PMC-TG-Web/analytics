@@ -1,0 +1,105 @@
+--- a/src/direct-cost-products.js
++++ b/src/direct-cost-products.js
+@@ -2,11 +2,15 @@
+ import { mkdir, open, readFile } from 'node:fs/promises';
+ import path from 'node:path';
+ 
+-export function buildDirectCostProduct({ name, description, template, projectNumber }) {
++function validateProductDetails({ name, description, projectNumber }) {
+   if (typeof projectNumber !== 'string' || !projectNumber.trim() || /[:\r\n\t]/.test(projectNumber)) throw new Error('A valid Procore project number is required.');
+   const prefix = `${projectNumber.trim()}-`;
+   if (typeof name !== 'string' || !name.startsWith(prefix) || !/^\d{2}-\d{3}-\d{2}-\d{2}\.[A-Z0-9]+$/.test(name.slice(prefix.length)) || name.length > 100) throw new Error('Use the Procore project number followed by the cost code and suffix.');
+   if (typeof description !== 'string' || !description.trim() || description.length > 4000) throw new Error('A product description is required (maximum 4000 characters).');
++}
++
++export function buildDirectCostProduct({ name, description, template, projectNumber }) {
++  validateProductDetails({ name, description, projectNumber });
+   if (!template || template.Active === false || !['Service', 'NonInventory'].includes(template.Type)) throw new Error('Choose an active service/noninventory template.');
+   for (const field of ['IncomeAccountRef', 'ExpenseAccountRef']) if (!/^\d+$/.test(template[field]?.value || '')) throw new Error(`Template needs ${field}.`);
+   // Copy accounting/tax setup only. Never copy identity, inventory, prices,
+@@ -24,22 +28,20 @@
+   return item;
+ }
+ 
+-export async function ensureDirectCostProduct({ reader, environment, realmId, name, description, projectNumber, templateId, directory, apply = false, createProduct, reuseExistingAccounts = false }) {
++export async function ensureDirectCostProduct({ reader, environment, realmId, name, description, projectNumber, templateId, directory, apply = false, createProduct, reuseExistingAccounts = false, allowInactiveTemplate = false }) {
+   if (!['sandbox', 'production'].includes(environment) || !/^\d+$/.test(realmId || '') || String(reader.realmId) !== realmId || !reader.baseUrl.includes(environment === 'sandbox' ? 'sandbox-quickbooks.' : '//quickbooks.')) throw new Error('QBO product target does not match the connected company/environment.');
++  validateProductDetails({ name, description, projectNumber });
+   if (!/^\d+$/.test(templateId || '')) throw new Error('An explicit template item ID is required.');
+-  const template = (await reader.request(`/item/${templateId}`))?.Item;
+-  const payload = buildDirectCostProduct({ name, description, template, projectNumber });
+-  for (const field of ['IncomeAccountRef', 'ExpenseAccountRef']) {
+-    const account = (await reader.getAccount(payload[field].value))?.Account;
+-    if (!account || account.Active === false || String(account.Id) !== payload[field].value) throw new Error(`Template ${field} is unavailable.`);
+-  }
+   // Include inactive products so we never silently replace/reactivate one.
+   const queryName = name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+   const matches = (await reader.query(`select * from Item where Name = '${queryName}' and Active IN (true, false)`))?.QueryResponse?.Item || [];
+   if (matches.length > 1) throw new Error('Multiple exact product matches; resolve the ambiguity.');
+   if (matches.length === 1) {
+     const item = matches[0];
+-    if (!reuseExistingAccounts) return { status: 'existing', item: verifyProduct(item, payload) };
++    if (!reuseExistingAccounts) {
++      const payload = await productPayload();
++      return { status: 'existing', item: verifyProduct(item, payload) };
++    }
+     // Existing project products retain their established accounts and taxes.
+     // Template equality is required for creations, not for valid purchase items.
+     if (!/^\d+$/.test(String(item?.Id || '')) || item.Name !== name || item.Active === false || !['Service', 'NonInventory'].includes(item.Type)) throw new Error(`QBO product ${name} must be an active service/noninventory product with this exact name.`);
+@@ -49,6 +51,20 @@
+     if (!account || String(account.Id) !== expenseId || account.Active === false || !['Expense', 'Cost of Goods Sold'].includes(account.AccountType)) throw new Error(`QBO product ${name} needs an active expense or cost-of-goods-sold account.`);
+     return { status: 'existing', item };
+   }
++  async function productPayload() {
++    const source = (await reader.request(`/item/${templateId}`))?.Item;
++    // A retired legacy screed is only an accounting template for a NEW LS item.
++    // Never reactivate or rename it. Verify its accounts before copying them.
++    const template = allowInactiveTemplate && /\.LS$/.test(name) && String(source?.Id) === templateId
++      ? { ...source, Active: true } : source;
++    const payload = buildDirectCostProduct({ name, description, template, projectNumber });
++    for (const field of ['IncomeAccountRef', 'ExpenseAccountRef']) {
++      const account = (await reader.getAccount(payload[field].value))?.Account;
++      if (!account || account.Active === false || String(account.Id) !== payload[field].value) throw new Error(`Template ${field} is unavailable.`);
++    }
++    return payload;
++  }
++  const payload = await productPayload();
+   const identity = crypto.createHash('sha256').update(JSON.stringify([environment, realmId, name])).digest('hex');
+   const prepared = { environment, realmId, projectNumber, payload, requestId: `pci-${identity.slice(0, 40)}` };
+   if (!apply) return { status: 'preview', prepared };
+--- a/src/direct-cost-project-setup.js
++++ b/src/direct-cost-project-setup.js
+@@ -96,7 +96,7 @@
+   const next = products.find(p => !mapping.items[p.key] || needsRefresh(p) || (p.needsCategoryConfirmation && mapping.items[p.key].offsetCategory !== 'material'));
+   if (next) {
+     const previousMapping = mapping.items[next.key] ? { ...mapping.items[next.key] } : null;
+-    const result = await ensureDirectCostProduct({ reader, environment, realmId, projectNumber: draft.projectNumber.trim(), name: next.name, description: next.description, templateId: next.screedingEquipment && previousMapping ? previousMapping.itemId : next.templateId, directory: path.join(directory, 'products'), apply: true, reuseExistingAccounts: true, createProduct: prepared => productWriter.createProduct(prepared) });
++    const result = await ensureDirectCostProduct({ reader, environment, realmId, projectNumber: draft.projectNumber.trim(), name: next.name, description: next.description, templateId: next.screedingEquipment && previousMapping ? previousMapping.itemId : next.templateId, directory: path.join(directory, 'products'), apply: true, reuseExistingAccounts: true, allowInactiveTemplate: !!(next.screedingEquipment && previousMapping), createProduct: prepared => productWriter.createProduct(prepared) });
+     mapping.items[next.key] = { ...(previousMapping || {}), itemId: String(result.item.Id), itemName: result.item.Name, uom: next.uom, classId: defaults.classId, className: 'Flatwork', ...(next.needsCategoryConfirmation ? { offsetCategory: 'material' } : {}) };
+     const file = path.join(directory, existing ? names[indices[0]] : `${companyId}-${projectId}-mapping.json`);
+     const temp = `${file}.${randomUUID()}.tmp`;
+--- a/test/direct-cost-products.test.js
++++ b/test/direct-cost-products.test.js
+@@ -61,3 +61,22 @@
+   existing.Type = 'Service'; reader.getAccount = async id => ({ Account: { Id: id, Active: true, AccountType: 'Bank' } });
+   await assert.rejects(ensureDirectCostProduct(args), /expense or cost-of-goods/);
+ });
++
++test('LS migration can copy a retired legacy template without modifying it', async () => {
++  const retired={...template,Name:'legacy (deleted)',Active:false};
++  const reader={realmId:'7',baseUrl:'https://quickbooks.api.intuit.com',request:async()=>({Item:retired}),getAccount:async id=>({Account:{Id:id,Active:true}}),query:async()=>({QueryResponse:{Item:[]}})};
++  const args={reader,realmId:'7',environment:'production',projectNumber:'2508 - SC',name:'2508 - SC-03-300-20-30.LS',description:'Somero SRS4',templateId:'1',reuseExistingAccounts:true,allowInactiveTemplate:true};
++  const result=await ensureDirectCostProduct(args);
++  assert.equal(result.status,'preview');assert.equal(result.prepared.payload.Active,true);
++  assert.deepEqual(result.prepared.payload.ExpenseAccountRef,retired.ExpenseAccountRef);
++  assert.equal(retired.Active,false);
++  await assert.rejects(ensureDirectCostProduct({...args,allowInactiveTemplate:false}),/active service/);
++  reader.getAccount=async id=>({Account:{Id:id,Active:false}});
++  await assert.rejects(ensureDirectCostProduct(args),/unavailable/);
++});
++test('an exact active product can be reused even when the old template is retired or unavailable', async () => {
++  const existing={...payload(),Id:'9'};
++  const reader={realmId:'7',baseUrl:'https://quickbooks.api.intuit.com',request:async()=>assert.fail('Existing product must not need its retired template'),getAccount:async id=>({Account:{Id:id,Active:true,AccountType:'Cost of Goods Sold'}}),query:async()=>({QueryResponse:{Item:[existing]}})};
++  const result=await ensureDirectCostProduct({reader,realmId:'7',environment:'production',projectNumber:'2508 - SC',name,description:'Foundation',templateId:'1',reuseExistingAccounts:true});
++  assert.equal(result.status,'existing');assert.equal(result.item.Id,'9');
++});

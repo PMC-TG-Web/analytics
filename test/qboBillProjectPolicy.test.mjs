@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import * as policy from '../src/lib/qboBillProjectPolicy.ts';
+import * as productSetup from '../src/lib/qboBillProductSetup.js';
 import * as batch from '../src/lib/qboBillBatch.ts';
 
 const companyId = '598134325805519';
@@ -11,7 +12,7 @@ const projectId = '598134326626273';
 function moduleFromFile(file, imports) {
   const js = ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const m = { exports: {} };
-  vm.runInNewContext(js, { exports: m.exports, require: id => imports[id], Date, Error });
+  vm.runInNewContext(js, { exports: m.exports, require: id => id === './qboBillProductSetup.js' ? productSetup : imports[id], Date, Error });
   return m.exports;
 }
 test('PMC Operations exclusion follows its canonical company/project IDs across renames', () => {
@@ -91,4 +92,19 @@ test('queue pagination limits draft work and status reads to four canonical proj
   assert.equal(drafted.length, 9); assert.equal(reviewed.length, 9, 'Active projects need only one status read');
   assert.deepEqual(timeouts, [8000, 8000, 8000]);
   await assert.rejects(queue.loadQboBillQueue(companyId, '2026-06', { after: '999' }), /project list changed/);
+});
+
+test('queue offers updates for automatic product setup while retaining real blockers', async () => {
+ const mappingIssue='QBO product mapping for Somero SRS4 (boom screed) needs the .LS suffix. Run Set up products to refresh the assignment.';
+ const projects=['1','2','3'].map(procoreProjectId=>({procoreProjectId,projectName:procoreProjectId}));
+ const queue=moduleFromFile('src/lib/loadQboBillQueue.ts', {
+  './prisma':{prisma:{pmcProject:{findMany:async()=>projects},productivityLog:{findMany:async()=>projects},timecardEntry:{findMany:async()=>[]},qboBillFoodTotal:{findMany:async()=>[]}}},
+  './qboBillProjectPolicy':policy,'./qboDirectCosts':{directCostMonth:()=>({start:new Date(),end:new Date()})},
+  './loadQboCostCatalog':{loadQboCostCatalog:async()=>null},'./qboBillBridge':{hasQboBillBridge:()=>false},
+  './loadQboDirectCosts':{loadQboDirectCosts:async(_c,id)=>({lines:[{lineKey:'screed'}],issues:id==='2'?['Procore screed assignment is invalid']:[],total:'100',labor:{combinedHours:'0'}})},
+  './loadQboBillReview':{loadQboBillReview:async(_c,id)=>({billId:'10',connected:true,action:id==='3'?'reconcile':'update',products:{screed:'old.E'},issues:[mappingIssue]})}
+ });
+ const {rows}=await queue.loadQboBillQueue(companyId,'2026-06');
+ const automatic=rows.find(r=>r.projectId==='1');assert.equal(automatic.status,'update');assert.equal(automatic.setupRequired,true);assert.equal(automatic.reasons.length,0);
+ for(const id of ['2','3']){const row=rows.find(r=>r.projectId===id);assert.equal(row.status,'blocked');assert.notEqual(row.setupRequired,true);assert.ok(row.reasons.length);}
 });

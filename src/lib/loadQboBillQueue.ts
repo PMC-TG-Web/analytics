@@ -1,4 +1,5 @@
 import type { DirectCostIssueSource } from './qboDirectCosts';
+import { billProductSetupNeeded } from './qboBillProductSetup.js';
 import { prisma } from './prisma';
 import { directCostMonth } from './qboDirectCosts';
 import { loadQboDirectCosts } from './loadQboDirectCosts';
@@ -8,7 +9,7 @@ import { hasQboBillBridge, requestQboBillBridge } from './qboBillBridge';
 import { eligibleBillProjects } from './qboBillProjectPolicy';
 
 export type BillQueueStatus = 'create' | 'update' | 'current' | 'blocked' | 'unavailable' | 'no_activity';
-export type BillQueueRow = { projectId: string; projectName: string; projectNumber: string | null; status: BillQueueStatus; billNumber: string | null; gross: string | null; previousGross: number | null; laborHours: string | null; itemCount: number; lastPosted: string | null; reasons: string[]; issueSources?: DirectCostIssueSource[] };
+export type BillQueueRow = { projectId: string; projectName: string; projectNumber: string | null; status: BillQueueStatus; billNumber: string | null; gross: string | null; previousGross: number | null; laborHours: string | null; itemCount: number; lastPosted: string | null; reasons: string[]; issueSources?: DirectCostIssueSource[]; setupRequired?: boolean };
 export async function loadQboBillQueue(companyId: string, month: string, page?: { after: string | null }) {
   const { start, end } = directCostMonth(month);
   const [allProjects, productivity, timecards, foodTotals] = await Promise.all([
@@ -50,7 +51,8 @@ export async function loadQboBillQueue(companyId: string, month: string, page?: 
           Object.assign(row, { billNumber: review.billNumber, gross: review.grossTotal == null ? draft.total : review.grossTotal.toFixed(2), previousGross: review.previousGross, laborHours: draft.labor.combinedHours, itemCount: draft.lines.length, lastPosted: review.lastPosted });
           row.reasons = [...new Set([...draft.issues, ...review.issues])];
           row.issueSources = draft.issueSources;
-          if (review.action === 'reconcile') { row.status = 'blocked'; row.reasons.push('Saved bill status requires reconciliation.'); }
+          if (billProductSetupNeeded(draft, review)) { row.status = review.billId ? 'update' : 'create'; row.setupRequired = true; row.reasons = []; }
+          else if (review.action === 'reconcile') { row.status = 'blocked'; row.reasons.push('Saved bill status requires reconciliation.'); }
           else if (row.reasons.length) row.status = 'blocked';
           else if (!draft.lines.length && !review.billId) row.status = 'no_activity';
           else if (!review.connected) { row.status = 'unavailable'; row.reasons.push('Project mapping or integration ledger unavailable; bill status is not verified.'); }

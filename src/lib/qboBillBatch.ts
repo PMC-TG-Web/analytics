@@ -1,3 +1,4 @@
+import { billProductSetupNeeded as productSetupNeeded } from './qboBillProductSetup.js';
 // Pure state machine: each step is persisted before another project/operation starts.
 export const batchStages = ['catalog', 'purchase_orders', 'daily_logs', 'timecards', 'review', 'setup_options', 'setup_budget', 'setup', 'bill_budget', 'prepare', 'post', 'verify'] as const;
 export type BatchStage = typeof batchStages[number];
@@ -24,12 +25,6 @@ export class BatchWait extends Error {
   constructor(message: string, retryMs = 60_000) { super(message); this.retryMs = retryMs; }
 }
 export const batchTerminal = (status: string) => ['created', 'updated', 'current', 'empty', 'skipped', 'needs_attention'].includes(status);
-function productSetupNeeded(draft: BatchDraft, review: BatchReview) {
-  const mappingUpdate = (issue: string) => /^QBO product mapping for .+ (?:needs updating: saved product .+ must use .+|needs the \.LS suffix)\. Run Set up products to refresh the assignment\.$/i.test(issue);
-  const missing = draft.lines.some(line => !review.products[line.lineKey]);
-  return (missing || review.issues.some(mappingUpdate))
-    && review.issues.every(issue => /Missing QBO item mapping|QBO product setup needed/i.test(issue) || mappingUpdate(issue));
-}
 export function batchError(error: unknown, attempts: number, writing = false): BatchStep {
   const message = error instanceof Error ? error.message : 'The project could not finish. Open its review for details.';
   if (writing) return { status: 'waiting', stage: 'verify', retryMs: 60_000, message: 'Checking whether QBO saved the bill before any further write.' };

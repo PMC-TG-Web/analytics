@@ -17,8 +17,17 @@ test('project rate multiplies source quantity and keeps explicit project evidenc
  const result=aggregateDirectCosts([{id:'4',date,status:'approved',quantityUsed:2,lineItemId:'3',updatedAt:date}],[{...source,procoreId:'3',unitCost:price.unitCost,projectPrice:price.evidence,updatedAt:date}],new Map());
  assert.equal(result.total,'3040.00');assert.equal(result.lines[0].projectPrice.revision,1);
 });
-test('changed units or source details require review and no rule retains normal pricing',()=>{
- assert.equal(projectPrice(source,undefined),null);assert.match(projectPrice({...source,uom:'hr'},rule).issue,/changed/);assert.match(projectPrice(source,{...rule,unitCost:'0'}).issue,/positive/);
+test('saved project price survives PO source edits including the laser screed LS correction',()=>{
+ for (const edit of [{costType:'Labor Laser Screeding',costCode:'03-300-20-30.LS'},{description:'Somero S-840 (8 hr minimum) - SOG'},{uom:'hr'}]) {
+  const price=projectPrice({...source,...edit},rule);
+  assert.equal(price.unitCost,1520);
+  assert.deepEqual(price.evidence, {companyId:'1',projectId:'2',lineKey:'3',unitCost:'1520',sourceSignature:rule.sourceSignature,revision:1,updatedBy:'operator',reason:'Project-specific price'});
+ }
+});
+test('absent or cleared rules retain normal pricing and invalid prices still block',()=>{
+ assert.equal(projectPrice(source,undefined),null);
+ assert.equal(projectPrice(source,{...rule,unitCost:null}),null);
+ for (const unitCost of ['0','-1','NaN','Infinity']) assert.match(projectPrice(source,{...rule,unitCost}).issue,/positive/);
 });
 const js=ts.transpileModule(readFileSync('src/app/api/accounting/direct-cost-bills/line-rule/route.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
 test('line setting route enforces session, CSRF and company, and uses session attribution',async()=>{

@@ -12,7 +12,7 @@ test('bulk selection submits only available projects in the filtered bill table'
 import Batch from ${JSON.stringify(path.resolve('src/app/accounting/direct-cost-bills/MonthlyBillBatch.tsx'))};
 import Queue from ${JSON.stringify(path.resolve('src/app/accounting/direct-cost-bills/ProjectBillQueue.tsx'))};
 const noop=()=>{};
-function App(){const[ids,setIds]=useState(null);const[loading,setLoading]=useState(false);const visible=useCallback((_company,_month,ids)=>setIds(ids),[]);return <><Batch companyId="1" month="2026-09" visibleProjectIds={ids} refreshing={loading&&ids!==null} disabled={loading} onRunning={noop} onComplete={noop} onReview={noop}/><Queue companyId="1" month="2026-09" revision={0} disabled={false} selectedProjectId="" onReview={noop} onLoading={setLoading} onVisibleProjects={visible} expandedContent={null}/></>}
+function App(){const[ids,setIds]=useState(null);const[loading,setLoading]=useState(false);const visible=useCallback((_company,_month,ids)=>setIds(ids),[]);return <><Batch companyId="1" month="2026-09" visibleProjectIds={ids} refreshing={loading&&ids!==null} disabled={false} onRunning={noop} onComplete={noop} onReview={noop}/><Queue companyId="1" month="2026-09" revision={0} disabled={false} selectedProjectId="" onReview={noop} onLoading={setLoading} onVisibleProjects={visible} expandedContent={null}/></>}
 createRoot(document.getElementById('root')).render(<App/>);`;
   const built = await esbuild.build({ stdin: { contents: entry, resolveDir: process.cwd(), loader: 'tsx' }, write: false, bundle: true, platform: 'browser', format: 'iife', jsx: 'automatic', alias: { '@': path.resolve('src') }, define: { 'process.env.NODE_ENV': '"test"' } });
   const server = http.createServer((req, res) => { res.setHeader('content-type', req.url === '/bundle.js' ? 'application/javascript' : 'text/html'); res.end(req.url === '/bundle.js' ? built.outputFiles[0].text : '<!doctype html><html><body><div id="root"></div><script src="/bundle.js"></script></body></html>'); });
@@ -70,7 +70,13 @@ createRoot(document.getElementById('root')).render(<App/>);`;
     await page.getByRole('button', { name: 'Refresh status', exact: true }).click();
     await page.getByText('Refreshing status… 1 verified projects remain shown', { exact: true }).waitFor();
     assert.equal(await page.getByRole('checkbox', { name: 'Existing bill', exact: true }).count(), 1, 'Verified projects remain visible during a refresh');
-    assert.equal(await page.getByRole('checkbox', { name: 'Existing bill', exact: true }).isDisabled(), true, 'The retained list cannot be submitted while its status refreshes');
+    assert.equal(await page.getByRole('checkbox', { name: 'Existing bill', exact: true }).isDisabled(), false, 'Background refresh must not lock verified projects');
+    await page.getByRole('checkbox', { name: 'Existing bill', exact: true }).uncheck();
+    await selectAll();
+    assert.equal(await submit.isDisabled(), false);
+    await submit.click();
+    await page.getByText('Started', { exact: true }).waitFor();
+    assert.deepEqual(posts[0].projectIds, ['10']);
     holdQueue = false; releaseQueue();
     await page.getByText('1 available projects shown', { exact: true }).waitFor();
     failQueue = true;
@@ -83,7 +89,7 @@ createRoot(document.getElementById('root')).render(<App/>);`;
     if (!await page.getByRole('checkbox', { name: 'Existing bill', exact: true }).isChecked()) await selectAll();
     await submit.click();
     await page.getByText('Started', { exact: true }).waitFor();
-    assert.equal(posts.length, 1);
+    assert.equal(posts.length, 2);
     assert.deepEqual(posts[0].projectIds, ['10']);
     assert.deepEqual(errors, []);
   } finally { await browser?.close(); await new Promise(resolve => server.close(resolve)); }

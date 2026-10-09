@@ -1,0 +1,264 @@
+--- a/src/direct-cost-bill-service.js
++++ b/src/direct-cost-bill-service.js
+@@ -1,4 +1,5 @@
+ import { aggregateBillItems } from './aggregate-bill-items.js';
++import { closedMonthPrices, isClosedBillMonth } from './closed-month-pricing.js';
+ import { mergeQboBill, applyQboPrices, billContentFingerprint, billSourcesUnchanged } from './qbo-managed-bill.js';
+ import { applyScreedingClasses } from './screeding-classes.js';
+ import { readdir, readFile } from 'node:fs/promises';
+@@ -11,7 +12,7 @@
+ import { reviewBillReconciliation, confirmBillReconciliation } from './bill-reconciliation.js';
+
+ const jsonFile = async file => JSON.parse(await readFile(file, 'utf8'));
+-export function createDirectCostBillService({ directory, environment, realmId, companyId, writesEnabled, connect }) {
++export function createDirectCostBillService({ directory, environment, realmId, companyId, writesEnabled, connect, now = () => new Date() }) {
+   if (!['production', 'sandbox'].includes(environment) || !/^\d+$/.test(realmId || '') || !/^\d+$/.test(companyId || '')) throw new Error('Configure an explicit QBO environment, realm and Procore company.');
+   // All callers share a single connection/refresh lane and the same durable ledger.
+   let lane = Promise.resolve();
+@@ -68,6 +69,15 @@
+         prepared = buildDirectCostBill(draft, mapping, `${month}-01`, result.billNumber);
+       }
+     } catch (e) { if (operation === 'post' || operation.startsWith('reconcile-')) throw e; result.issues = [e.message]; return result; }
++    if (receipt && result.action !== 'reconcile' && isClosedBillMonth(month, now())) {
++      try {
++        prepared.closedMonthPrices = await closedMonthPrices(path.join(directory, 'posted', identity), receipt, prepared);
++      } catch (e) {
++        if (operation === 'post' || operation.startsWith('reconcile-')) throw e;
++        return { ...result, action: 'reconcile', issues: [e.message] };
++      }
++    }
++    if (!qboPricePolicy && prepared.closedMonthPrices) prepared = applyQboPrices(prepared);
+     if (qboPricePolicy && receipt && result.action !== 'reconcile') {
+       if (operation === 'status') prepared = applyQboPrices(prepared,receipt.qboPrices || {},receipt.qboOffsetAdjustments || []);
+       else if (operation === 'prepare' || operation === 'post' || operation.startsWith('reconcile-')) {
+--- a/src/qbo-managed-bill.js
++++ b/src/qbo-managed-bill.js
+@@ -26,7 +26,7 @@
+  }
+  return result;
+ }
+-async function savedPrepared(claim,receipt) {
++export async function savedPrepared(claim,receipt) {
+  let saved=JSON.parse(await readFile(path.join(claim,'attempt.json'),'utf8'));
+  if(saved.fingerprint!==receipt.fingerprint && /^pc-[a-f0-9]{40}$/.test(receipt.requestId || '')) saved=JSON.parse(await readFile(path.join(claim,`update-${receipt.requestId}.json`),'utf8')).prepared;
+  if(saved.fingerprint!==receipt.fingerprint) throw new Error('Saved source history is unavailable.');
+@@ -70,8 +70,9 @@
+  const payload=structuredClone(prepared.payload), priceRows={};
+  const sources=prepared.source || [], items=payload.Line.filter(l=>l.ItemBasedExpenseLineDetail);
+  for(let i=0;i<items.length;i++) {
+-  const key=sources[i]?.lineKey, value=prices[key];
+-  if(!value || (!value.manual && !(prepared.screedingLineKeys || []).includes(key)))continue;
++  const key=sources[i]?.lineKey, supplied=prices[key];
++  const value=supplied && (supplied.manual || (prepared.screedingLineKeys || []).includes(key)) ? supplied : prepared.closedMonthPrices?.[key];
++  if(!value)continue;
+   const detail=items[i].ItemBasedExpenseLineDetail;
+   if(!Number.isFinite(Number(value.unitCost)) || Number(value.unitCost)<=0)throw new Error('The QBO item price must be positive.');
+   const amount=expenseAmount(detail.Qty,value.unitCost);
+@@ -89,7 +90,7 @@
+   detail.UnitPrice=Number(value.unitCost);items[i].Amount=amount;
+   if(classRef)detail.ClassRef=structuredClone(classRef);else delete detail.ClassRef;
+   if(value.description)items[i].Description=value.description;
+-  priceRows[key]={unitCost:String(value.unitCost),amount:amount.toFixed(2),description:items[i].Description,manual:!!value.manual,classRef:classRef||null};
++  priceRows[key]={unitCost:String(value.unitCost),amount:amount.toFixed(2),description:items[i].Description,manual:!!value.manual,classRef:classRef||null,...(value.closedMonth ? {closedMonth:true} : {})};
+  }
+  const adjusted=applyOffsetAdjustments(payload,offsetAdjustments);
+  const grossTotal=items.reduce((n,l)=>n+Math.round(l.Amount*100),0)/100;
+--- /dev/null
++++ b/src/closed-month-pricing.js
+@@ -0,0 +1,40 @@
++import { savedPrepared } from './qbo-managed-bill.js';
++
++// The accounting page and host use the same business timezone, independent of
++// the server's timezone. A month remains open until local midnight on the first.
++export function isClosedBillMonth(month, now = new Date()) {
++  if (!/^20\d{2}-(0[1-9]|1[0-2])$/.test(month)) throw new Error('Invalid bill month.');
++  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit' }).formatToParts(now);
++  const current = `${parts.find(p => p.type === 'year').value}-${parts.find(p => p.type === 'month').value}`;
++  return month < current;
++}
++
++// Only a successful receipt may supply history. Never use catalog history,
++// draft prices, product names, or a failed/pending replacement as a baseline.
++export async function closedMonthPrices(claim, receipt, prepared) {
++  const saved = await savedPrepared(claim, receipt);
++  if (saved.identity !== prepared.identity) throw new Error('Closed-month price history does not match this bill.');
++  const sources = new Map((saved.source || []).map(source => [source.lineKey, source]));
++  const prices = new Map();
++  const additions = new Set((saved.preservedLines || []).map(line => String(line.Id)));
++  const items = (saved.payload?.Line || []).filter(line => line.ItemBasedExpenseLineDetail && !(line.Id && additions.has(String(line.Id))));
++  for (let index = 0; index < items.length; index++) {
++    const keys = saved.itemSourceKeys?.[index] || [saved.source?.[index]?.lineKey];
++    for (const key of keys) {
++      if (!key || !sources.has(key) || prices.has(key)) throw new Error('Closed-month price ownership requires reconciliation.');
++      prices.set(key, items[index].ItemBasedExpenseLineDetail.UnitPrice);
++    }
++  }
++  const result = {};
++  for (const source of prepared.source || []) {
++    // Food's quantity-one rate represents a changing expense total, not a unit price.
++    if (source.sourceType === 'manual_food') continue;
++    const old = sources.get(source.lineKey);
++    if (!old) continue; // New source lines still need normal pricing and review.
++    if (old.sourceType !== source.sourceType || old.uom !== source.uom) throw new Error('A closed-month source unit or type changed; price history requires reconciliation.');
++    const price = prices.get(source.lineKey);
++    if (!Number.isFinite(Number(price)) || Number(price) <= 0) throw new Error('A saved closed-month unit price is unavailable; reconciliation is required.');
++    result[source.lineKey] = { unitCost: String(price), closedMonth: true };
++  }
++  return result;
++}
+--- a/test/direct-cost-bill-service.test.js
++++ b/test/direct-cost-bill-service.test.js
+@@ -3,7 +3,9 @@
+ import { mkdtemp, writeFile, rm, mkdir, readdir } from 'node:fs/promises';
+ import path from 'node:path';
+ import os from 'node:os';
+-import { createDirectCostBillService } from '../src/direct-cost-bill-service.js';
++import { createDirectCostBillService as serviceFactory } from '../src/direct-cost-bill-service.js';
++// These scenarios exercise an open month; closed-month policy has dedicated tests.
++const createDirectCostBillService = options => serviceFactory({ ...options, now: () => new Date('2026-09-20T12:00:00Z') });
+ import { buildDirectCostBill } from '../src/direct-cost-bill.js';
+ import { reserveProjectBillNumber } from '../src/bill-number-sequence.js';
+
+--- /dev/null
++++ b/test/closed-month-pricing.test.js
+@@ -0,0 +1,140 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
++import path from 'node:path';
++import os from 'node:os';
++import { isClosedBillMonth, closedMonthPrices } from '../src/closed-month-pricing.js';
++import { buildDirectCostBill } from '../src/direct-cost-bill.js';
++import { createDirectCostBillService } from '../src/direct-cost-bill-service.js';
++import { aggregateBillItems } from '../src/aggregate-bill-items.js';
++import { applyQboPrices, mergeQboBill, billContentFingerprint, bindBillSources } from '../src/qbo-managed-bill.js';
++
++test('accounting months close at Eastern midnight, including the year boundary', () => {
++  assert.equal(isClosedBillMonth('2026-09', new Date('2026-10-01T03:59:59Z')), false);
++  assert.equal(isClosedBillMonth('2026-09', new Date('2026-10-01T04:00:00Z')), true);
++  assert.equal(isClosedBillMonth('2026-10', new Date('2026-10-01T04:00:00Z')), false);
++  assert.equal(isClosedBillMonth('2027-01', new Date('2026-10-01T04:00:00Z')), false);
++  assert.equal(isClosedBillMonth('2026-12', new Date('2027-01-01T04:59:59Z')), false);
++  assert.equal(isClosedBillMonth('2026-12', new Date('2027-01-01T05:00:00Z')), true);
++});
++
++async function fixture(run) {
++  const directory = await mkdtemp(path.join(os.tmpdir(), 'qbo-closed-month-'));
++  try {
++    const mapping = { companyId:'2', projectId:'3', environment:'sandbox', realmId:'1', vendorId:'4', customerId:'5', customerName:'Project', items:{'6':{itemId:'7',itemName:'2508-03-300-20-20.M',uom:'cy'}}, offsets:{customerAssignment:'none',material:{accountId:'8',accountName:'Direct Costs -',classId:null}} };
++    const draft = { schemaVersion:1, scope:'productivity_logs', vendorName:'PMC Procore Direct Costs', companyId:'2', projectId:'3', projectName:'Project', projectNumber:'2508', month:'2026-09', issues:[], total:'100.00', lines:[{procoreLineItemId:'6',lineKey:'6',sourceType:'productivity',description:'Material',costCode:'03-300-20-20',costType:'Materials',uom:'cy',quantity:'1',unitCost:'100',amount:'100.00',sourceLogs:[{id:'9',date:'2026-09-16',quantity:'1'}]}] };
++    Object.assign(draft,{schemaVersion:3,scope:'productivity_and_timecards',pricingSource:'cost_catalog',catalogCheckedAt:new Date().toISOString(),labor:{totalHours:'0',unpricedHours:'0'},timecardsNotIncluded:{hours:0}});
++    draft.lines[0].catalogPrice={itemId:'10',catalogId:'11',name:'Material',uom:'cy',unitCost:'100'};
++    await writeFile(path.join(directory,'project-mapping.json'),JSON.stringify(mapping));
++    const saved = aggregateBillItems(buildDirectCostBill(draft,mapping,'2026-09-01','Project 001'),draft,mapping);
++    const claim = path.join(directory,'posted',saved.identity);await mkdir(claim,{recursive:true});
++    const current = {...structuredClone(saved.payload),Id:'100',SyncToken:'0',TotalAmt:0,Balance:0};
++    current.Line.forEach((line,index)=>line.Id=String(index+1));
++    const receipt = {billId:'100',docNumber:'Project 001',syncToken:'0',fingerprint:saved.fingerprint,requestId:saved.requestId,contentFingerprint:billContentFingerprint(saved.payload),sourceKeys:saved.source.map(s=>s.lineKey),sourceBindings:bindBillSources(saved,current),managedLines:current.Line,privateNote:current.PrivateNote};
++    await writeFile(path.join(claim,'attempt.json'),JSON.stringify(saved));
++    await writeFile(path.join(claim,'receipt.json'),JSON.stringify(receipt));
++    let reads=0,writes=0;
++    const reader={realmId:'1',baseUrl:'https://sandbox-quickbooks.api.intuit.com',getVendor:async()=>({Vendor:{DisplayName:'PMC Procore Direct Costs'}}),getCustomer:async()=>({Customer:{DisplayName:'Project',ParentRef:{value:'20'}}}),getAccount:async()=>({Account:{Name:'Direct Costs -',AccountType:'Expense'}}),request:async url=>{
++      reads++;return url.startsWith('/bill/')?{Bill:current}:{Item:{Name:mapping.items['6'].itemName,Type:'Service',ExpenseAccountRef:{value:'8'}}};
++    }};
++    const writer={updateBill:async prepared=>{writes++;Object.assign(current,structuredClone(prepared.payload),{SyncToken:String(writes)});return current;},createBill:async()=>{throw new Error('Unexpected creation');}};
++    const connect=async()=>({reader,writer});
++    const service=createDirectCostBillService({directory,environment:'sandbox',realmId:'1',companyId:'2',writesEnabled:true,connect,now:()=>new Date('2026-10-09T12:00:00Z')});
++    const request=(draft,operation='status',extra={})=>service({companyId:'2',projectId:'3',month:draft.month,draft,operation,...extra});
++    await run({directory,claim,mapping,draft,saved,receipt,current,connect,request,counts:()=>({reads,writes})});
++  } finally { await rm(directory,{recursive:true,force:true}); }
++}
++const repriced = (draft, quantity='1') => {
++  const next=structuredClone(draft);next.lines[0].unitCost='150';next.lines[0].catalogPrice.unitCost='150';next.lines[0].quantity=quantity;next.lines[0].sourceLogs[0].quantity=quantity;next.total=next.lines[0].amount=(150*Number(quantity)).toFixed(2);return next;
++};
++
++test('closed-month catalog-only changes stay current; quantity changes use saved rates on review and posting',()=>fixture(async f=>{
++  const draft=repriced(f.draft);
++  for(const operation of ['status','prepare']) {
++    const review=await f.request(draft,operation);
++    assert.equal(review.action,'current');assert.equal(review.canPost,false);assert.equal(review.grossTotal,100);
++    assert.equal(review.qboPrices['6'].unitCost,'100');assert.equal(review.qboPrices['6'].closedMonth,true);
++  }
++  assert.deepEqual(f.counts(),{reads:0,writes:0});
++  const changed=repriced(f.draft,'2');
++  const review=await f.request(changed,'prepare');assert.equal(review.action,'update');assert.equal(review.grossTotal,200);
++  assert.equal(review.offsetLines[0].amount,-200);
++  await f.request(changed,'post',{fingerprint:review.fingerprint,actor:'operator@example.test'});
++  assert.equal(f.counts().writes,1);assert.equal(f.current.Line[0].ItemBasedExpenseLineDetail.UnitPrice,100);
++  assert.equal((await f.request(changed)).action,'current');
++  const receipt=JSON.parse(await readFile(path.join(f.claim,'receipt.json'),'utf8'));
++  assert.notEqual(receipt.fingerprint,f.receipt.fingerprint,'latest successful revision supplies subsequent prices');
++}));
++
++test('open-month price changes and first-time historical bills still use current rates',()=>fixture(async f=>{
++  const service=createDirectCostBillService({directory:f.directory,environment:'sandbox',realmId:'1',companyId:'2',writesEnabled:true,connect:f.connect,now:()=>new Date('2026-09-30T12:00:00Z')});
++  const draft=repriced(f.draft);
++  const review=await service({companyId:'2',projectId:'3',month:draft.month,draft,operation:'status'});
++  assert.equal(review.action,'update');assert.equal(review.grossTotal,150);assert.deepEqual(review.qboPrices,{});
++  const first=structuredClone(draft);first.month='2026-08';first.lines[0].sourceLogs[0].date='2026-08-16';
++  const created=await f.request(first);assert.equal(created.action,'create');assert.equal(created.grossTotal,150);
++}));
++
++test('missing or uncertain successful history cannot silently reprice a closed month',()=>fixture(async f=>{
++  const wrong={...f.saved,fingerprint:'wrong'};await writeFile(path.join(f.claim,'attempt.json'),JSON.stringify(wrong));
++  const review=await f.request(repriced(f.draft));assert.equal(review.action,'reconcile');assert.equal(review.canPost,false);
++  assert.deepEqual(f.counts(),{reads:0,writes:0});
++}));
++
++test('grouped source keys keep saved prices; new lines and Food totals are not frozen',()=>fixture(async f=>{
++  const saved=structuredClone(f.saved);
++  saved.source.push({...saved.source[0],lineKey:'second'});saved.itemSourceKeys=[['6','second']];
++  const addition={...structuredClone(saved.payload.Line[0]),Id:'99'};
++  saved.preservedLines=[addition];saved.payload.Line.push(addition);
++  await writeFile(path.join(f.claim,'attempt.json'),JSON.stringify(saved));
++  const prepared=structuredClone(saved);prepared.source.push({...saved.source[0],lineKey:'new'},{lineKey:'food',sourceType:'manual_food'});
++  const prices=await closedMonthPrices(f.claim,f.receipt,prepared);
++  assert.deepEqual(Object.keys(prices).sort(),['6','second']);assert.equal(prices.second.unitCost,'100');
++  prepared.source[0].uom='hr';await assert.rejects(closedMonthPrices(f.claim,f.receipt,prepared),/unit or type changed/);
++}));
++
++test('live QBO manual prices remain authoritative; closing a month does not mark catalog prices as manual',()=>fixture(async f=>{
++  const prepared=buildDirectCostBill(repriced(f.draft),f.mapping,'2026-09-01','Project 001');
++  prepared.closedMonthPrices=await closedMonthPrices(f.claim,f.receipt,prepared);
++  const merged=await mergeQboBill({claim:f.claim,receipt:f.receipt,prepared,current:f.current});
++  assert.equal(merged.grossTotal,100);assert.equal(merged.qboPrices['6'].manual,false);
++  f.current.Line[0].ItemBasedExpenseLineDetail.UnitPrice=125;f.current.Line[0].Amount=125;f.current.Line[1].Amount=-125;
++  // receipt and current are separate snapshots, as they are in the service.
++  const receipt=JSON.parse(await readFile(path.join(f.claim,'receipt.json'),'utf8'));
++  const edited=await mergeQboBill({claim:f.claim,receipt,prepared,current:f.current});
++  assert.equal(edited.grossTotal,125);assert.equal(edited.qboPrices['6'].manual,true);
++  assert.equal(applyQboPrices(prepared,edited.qboPrices).grossTotal,125);
++}));
++
++test('configured QBO-managed service uses the same closed rates for status, live prepare and post',()=>fixture(async f=>{
++  await writeFile(path.join(f.directory,'setup-defaults.json'),JSON.stringify({companyId:'2',realmId:'1',environment:'sandbox',screeding:{qboManagedPrices:true,classes:{}}}));
++  const priceOnly=repriced(f.draft);
++  assert.equal((await f.request(priceOnly)).action,'current');assert.equal(f.counts().reads,0);
++  assert.equal((await f.request(priceOnly,'prepare')).action,'current');
++  const draft=repriced(f.draft,'3');const review=await f.request(draft,'prepare');
++  assert.equal(review.grossTotal,300);assert.equal(review.action,'update');
++  await f.request(draft,'post',{fingerprint:review.fingerprint,actor:'operator@example.test'});
++  assert.equal(f.counts().writes,1);assert.equal((await f.request(draft)).action,'current');
++}));
++
++test('historical labor hours retain saved hourly rates while an added Food expense remains an update',()=>fixture(async f=>{
++  const key='labor:03-300-20-10',foodKey='food:01-300-10-80';
++  f.mapping.items[key]={itemId:'12',itemName:'2508-03-300-20-10.L',uom:'hr'};
++  f.mapping.items[foodKey]={itemId:'13',itemName:'2508-01-300-10-80.M',uom:'total'};
++  f.mapping.offsets.labor={accountId:'14',accountName:'Labor -',classId:null};
++  const draft=structuredClone(f.draft);
++  draft.lines.push({lineKey:key,sourceType:'timecard',description:'Labor',costCode:'03-300-20-10',costType:'Labor',uom:'hr',quantity:'2',unitCost:'50',amount:'100.00',rateCostCode:'03-300-20-10',rateSources:[{catalogItemId:'15',catalogId:'11',lineItemId:'15',costCode:'03-300-20-10',rate:'50'}],sourceLogs:[{id:'16',date:'2026-09-16',quantity:'2'}]});
++  draft.lines.push({lineKey:foodKey,sourceType:'manual_food',description:'Food',costCode:'01-300-10-80',costType:'Materials',uom:'total',quantity:'1',unitCost:'25.00',amount:'25.00',sourceLogs:[],foodTotal:{companyId:'2',projectId:'3',month:draft.month,revision:1,amount:'25.00',updatedBy:'operator@example.test'}});
++  draft.labor.totalHours='2';draft.total='225.00';
++  const saved=buildDirectCostBill(draft,f.mapping,'2026-09-01','Project 001');
++  await writeFile(path.join(f.claim,'attempt.json'),JSON.stringify(saved));
++  const receipt={...f.receipt,fingerprint:saved.fingerprint};
++  draft.lines[1].quantity='3';draft.lines[1].sourceLogs[0].quantity='3';draft.labor.totalHours='3';
++  draft.lines[1].unitCost='60';draft.lines[1].rateSources[0].rate='60';draft.lines[1].amount='180.00';
++  draft.lines[2].unitCost=draft.lines[2].amount=draft.lines[2].foodTotal.amount='40.00';draft.lines[2].foodTotal.revision=2;draft.total='320.00';
++  const prepared=buildDirectCostBill(draft,f.mapping,'2026-09-01','Project 001');
++  prepared.closedMonthPrices=await closedMonthPrices(f.claim,receipt,prepared);
++  const result=applyQboPrices(prepared);
++  assert.equal(result.qboPrices[key].unitCost,'50');assert.equal(result.qboPrices[key].amount,'150.00');
++  assert.equal(result.qboPrices[foodKey],undefined);assert.equal(result.grossTotal,290);assert.equal(result.total,0);
++}));

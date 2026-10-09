@@ -7,8 +7,8 @@ import type { DirectCostIssueSource } from '@/lib/qboDirectCosts';
 
 type Run = NonNullable<Awaited<ReturnType<typeof getBillBatch>>>;
 const labels: Record<string, string> = { queued: 'In progress', waiting: 'Waiting', created: 'Created', updated: 'Updated', current: 'Already current', empty: 'No eligible costs', skipped: 'Skipped', needs_attention: 'Needs attention' };
-export default function MonthlyBillBatch({ companyId, month, disabled, visibleProjectIds, onRunning, onComplete, onReview }: {
-  companyId: string; month: string; disabled: boolean; visibleProjectIds: string[] | null; onRunning: (running: boolean) => void; onComplete: () => void; onReview: (id: string) => void;
+export default function MonthlyBillBatch({ companyId, month, disabled, refreshing = false, visibleProjectIds, onRunning, onComplete, onReview }: {
+  companyId: string; month: string; disabled: boolean; refreshing?: boolean; visibleProjectIds: string[] | null; onRunning: (running: boolean) => void; onComplete: () => void; onReview: (id: string) => void;
 }) {
   const [enabled, setEnabled] = useState(false);
   const [run, setRun] = useState<Run | null>(null);
@@ -83,7 +83,7 @@ export default function MonthlyBillBatch({ companyId, month, disabled, visiblePr
       <div className="flex flex-wrap items-center gap-4 text-sm">
         <button type="button" disabled={!shownIds.length || allShownSelected || shownIds.length > maxProjects} onClick={() => setSelected(shownIds)} className="text-blue-700 underline disabled:opacity-50">Select all shown</button>
         <button type="button" disabled={!selected.length} onClick={() => setSelected([])} className="text-blue-700 underline disabled:opacity-50">Clear selection</button>
-        <span className="text-slate-500">{visibleProjectIds === null ? 'Loading available projects…' : `${shownProjects.length} available projects shown`}</span>
+        <span className="text-slate-500">{visibleProjectIds === null ? 'Loading available projects…' : refreshing ? `Refreshing status… ${shownProjects.length} verified projects remain shown` : `${shownProjects.length} available projects shown`}</span>
       </div>
       {shownIds.length > maxProjects && <p className="text-xs text-slate-600">Narrow your search or select projects individually to stay within the {maxProjects}-project limit.</p>}
       <div className="max-h-40 overflow-auto rounded border p-2">{shownProjects.map(p => <label key={p.procoreProjectId} className="flex items-center gap-2 p-1 text-sm">

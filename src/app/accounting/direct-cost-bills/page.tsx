@@ -42,8 +42,9 @@ export default function DirectCostBillsPage() {
   const batchComplete = useCallback(() => { setQueueRevision(n => n + 1); setPreview(null); setProjectId(''); }, []);
   useEffect(() => { if (batchRunning) { setPreview(null); setProjectId(''); } }, [batchRunning]);
   const [syncMessage, setSyncMessage] = useState('');
+  const [queueLoading, setQueueLoading] = useState(false);
   const queueRequestPending = useRef(false);
-  const onQueueLoading = useCallback((pending: boolean) => { queueRequestPending.current = pending; }, []);
+  const onQueueLoading = useCallback((pending: boolean) => { queueRequestPending.current = pending; setQueueLoading(pending); }, []);
   const live = useRef({ busy, posting: batchRunning || posting || settingUp || mappingEditing || ruleEditing || reconciling || foodEditing, projectId, loadPreview });
   live.current = { busy, posting: batchRunning || posting || settingUp || mappingEditing || ruleEditing || reconciling || foodEditing, projectId, loadPreview };
   useEffect(() => {
@@ -174,7 +175,7 @@ export default function DirectCostBillsPage() {
     {error && !projectId && <p role="alert" className="text-red-700">{error}</p>}
     {savedMessage && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">{savedMessage}</p>}
     <p role="status" className="text-sm text-slate-500">{syncMessage} Checks run while this page is visible; projects are checked in turn.</p>
-    <MonthlyBillBatch companyId={companyId} month={month} visibleProjectIds={visibleBatchProjects?.companyId === companyId && visibleBatchProjects?.month === month ? visibleBatchProjects.ids : null} disabled={busy || posting || settingUp || mappingEditing || ruleEditing || reconciling || foodEditing} onRunning={setBatchRunning} onComplete={batchComplete} onReview={loadPreview} />
+    <MonthlyBillBatch companyId={companyId} month={month} visibleProjectIds={visibleBatchProjects?.companyId === companyId && visibleBatchProjects?.month === month ? visibleBatchProjects.ids : null} refreshing={queueLoading && Array.isArray(visibleBatchProjects?.ids)} disabled={queueLoading || busy || posting || settingUp || mappingEditing || ruleEditing || reconciling || foodEditing} onRunning={setBatchRunning} onComplete={batchComplete} onReview={loadPreview} />
     <ProjectBillQueue key={`${companyId}:${month}`} revision={queueRevision} companyId={companyId} month={month} disabled={batchRunning || busy || posting || settingUp || mappingEditing || ruleEditing || reconciling || foodEditing} selectedProjectId={projectId} onReview={loadPreview} onLoading={onQueueLoading} onVisibleProjects={onVisibleProjects} expandedContent={expandedContent} />
 
   </main>;

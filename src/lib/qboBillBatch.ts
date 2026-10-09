@@ -25,7 +25,7 @@ export class BatchWait extends Error {
 }
 export const batchTerminal = (status: string) => ['created', 'updated', 'current', 'empty', 'skipped', 'needs_attention'].includes(status);
 function productSetupNeeded(draft: BatchDraft, review: BatchReview) {
-  const mappingUpdate = (issue: string) => /^QBO product mapping for .+ needs updating: saved product .+ must use .+\. Run Set up products to refresh the assignment\.$/i.test(issue);
+  const mappingUpdate = (issue: string) => /^QBO product mapping for .+ (?:needs updating: saved product .+ must use .+|needs the \.LS suffix)\. Run Set up products to refresh the assignment\.$/i.test(issue);
   const missing = draft.lines.some(line => !review.products[line.lineKey]);
   return (missing || review.issues.some(mappingUpdate))
     && review.issues.every(issue => /Missing QBO item mapping|QBO product setup needed/i.test(issue) || mappingUpdate(issue));

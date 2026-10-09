@@ -145,3 +145,33 @@ test('a completed setup that leaves a stale mapping blocks instead of cycling in
   assert.equal(result.status, 'needs_attention');
   assert.deepEqual(result.issues, [staleMapping]);
 });
+
+test('laser screed LS mapping refresh continues through setup and one bill update', async () => {
+  const issue = 'QBO product mapping for Somero S-840 (8 hr minimum) - SOG needs the .LS suffix. Run Set up products to refresh the assignment.';
+  let setup = false;
+  const f = fixture({ review: async () => setup ? ready : { ...ready, canPost: false, fingerprint: null, issues: [issue] },
+    setup: async () => { setup = true; return { complete: true, remaining: 0 }; } });
+  for (const stage of ['review', 'bill_budget', 'prepare']) {
+    const step = await advanceBillBatch({ ...f.item, stage, context: { fingerprint: ready.fingerprint } }, f.deps);
+    assert.equal(step.stage, 'setup_options');
+    assert.equal(step.context.fingerprint, undefined);
+  }
+  let item = f.item, result;
+  const stages = [];
+  for (let i = 0; i < 12; i++) {
+    stages.push(item.stage);
+    result = await advanceBillBatch(item, f.deps);
+    if (batchTerminal(result.status)) break;
+    item = { ...item, stage: result.stage, context: result.context };
+  }
+  assert.equal(result.status, 'updated');
+  assert.deepEqual(stages, ['review', 'setup_options', 'setup_budget', 'setup', 'review', 'bill_budget', 'prepare', 'post']);
+  assert.deepEqual(f.calls, ['intent', 'post']);
+  for (const extra of [{ issues: [issue, 'Wrong class requires review.'] }, { action: 'reconcile', issues: [issue] }]) {
+    const blocked = fixture({ review: async () => ({ ...ready, ...extra }) });
+    assert.equal((await advanceBillBatch(blocked.item, blocked.deps)).status, 'needs_attention');
+    assert.deepEqual(blocked.calls, []);
+  }
+  const unresolved = fixture({ review: async () => ({ ...ready, issues: [issue] }) });
+  assert.equal((await advanceBillBatch({ ...unresolved.item, context: { setupCompleted: true } }, unresolved.deps)).status, 'needs_attention');
+});

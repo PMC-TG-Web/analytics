@@ -81,7 +81,7 @@ test('resolves explicit aliases and blocks ambiguous, missing, duplicate, or neg
   ]) assert.ok(aggregateDirectCosts(logs, items, new Map()).issues.length);
 });
 
-test('omits only the four named pumping items at 03-300-40-30 before price validation', () => {
+test('omits the three code-specific pumping items and Telebelts at 03-300-40-30 before price validation', () => {
   for (const description of ['Line Dragon', 'Boom Pump Rental w/Operator', 'Telebelt (4 hr minimum)', ' Trailer Pump (Includes 3 hr)\u00a0', 'LINE  DRAGON']) {
     const result = aggregateDirectCosts([log('1', 2, { lineItemId: 'old' })], [{ ...item, description, costCode: '03-300-40-30', costType: 'Other', unitCost: 0, uom: null }], new Map([['old', '10']]));
     assert.equal(result.lines.length, 0);
@@ -94,6 +94,22 @@ test('omits only the four named pumping items at 03-300-40-30 before price valid
     { description: 'Line Dragon', costCode: '03-300-20-30' },
     { description: 'Line Dragon', costCode: '03-300-40-30', costType: 'Labor' },
   ]) assert.equal(aggregateDirectCosts([log('1', 2)], [{ ...item, ...overrides }], new Map()).lines.length, 1);
+});
+test('Telebelts are manual-only across PO codes, cost types, aliases and labels before pricing checks', () => {
+  for (const overrides of [
+    { description: 'Telebelt', costCode: '31-100-10-50', costType: 'Equipment' },
+    { description: 'Telebelt', costCode: '03-300-20-10', costType: 'Labor' },
+    { description: 'Telebelt (4 hr minimum)', costCode: '03-300-20-10', costType: 'Labor' },
+    { description: 'TB130 telebelt', costCode: '03-300-40-30', costType: 'Commitments' },
+    { description: 'CO6 - TELEBELTS', costCode: null, costType: null },
+    { description: null, costCode: '03-300-20-30', costType: 'Materials' },
+  ]) {
+    const result = aggregateDirectCosts([log('1', 2, { lineItemId: 'old', lineItemDescription: 'Telebelt' })],
+      [{ ...item, ...overrides, unitCost: null, uom: null, pricingIssue: 'Ambiguous catalog rates' }], new Map([['old', '10']]));
+    assert.equal(result.total, '0.00'); assert.equal(result.lines.length, 0);
+    assert.equal(result.excluded.pumpingEquipment, 1); assert.deepEqual(result.issues, []);
+    assert.deepEqual(result.issueSources, []);
+  }
 });
 test('excludes change-order-prefixed pumping items while preserving other descriptions, codes and labor', () => {
   for (const description of ['CO6 - Trailer Pump (Includes 3 hr)', 'CO12 - Line Dragon', 'co 3 \u2013 Boom Pump Rental w/Operator', 'CO4\u2014Telebelt (4 hr minimum)']) {

@@ -17,7 +17,6 @@ export const EXCLUDED_CONCRETE_COST_CODES = new Set([
 const EXCLUDED_PUMPING_ITEMS = new Set([
   'line dragon',
   'boom pump rental w/operator',
-  'telebelt (4 hr minimum)',
   'trailer pump (includes 3 hr)',
 ]);
 function isExcludedConcrete(item: DirectCostItem, sourceName: string) {
@@ -36,9 +35,13 @@ function normalizedEquipmentName(item: DirectCostItem, sourceName: string) {
     .replace(/^co\s*\d+\s*[-\u2013\u2014]\s*/, '');
 }
 function isExcludedPumpingItem(item: DirectCostItem, sourceName: string) {
+  const name = normalizedEquipmentName(item, sourceName);
+  // Telebelts are entered manually regardless of the legacy PO code/type used.
+  // This applies only to PO/productivity sources; employee timecards are loaded separately.
+  if (/\btelebelts?\b/.test(name)) return true;
   return item.costCode?.trim() === '03-300-40-30'
     && !/^(labor|l)$/i.test(item.costType?.trim() || '')
-    && EXCLUDED_PUMPING_ITEMS.has(normalizedEquipmentName(item, sourceName));
+    && EXCLUDED_PUMPING_ITEMS.has(name);
 }
 function isExcludedBoomLiftRental(item: DirectCostItem, sourceName: string) {
   return !/^(labor|l)$/i.test(item.costType?.trim() || '')

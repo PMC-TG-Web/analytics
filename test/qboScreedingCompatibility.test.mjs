@@ -19,7 +19,7 @@ test('.LS screeders retain their machine class through host setup and bill prepa
   const line=applyDirectCostCoding({procoreLineItemId:'100',lineKey:'100',sourceType:'productivity',description,costCode:'03-300-20-30',costType:'Labor Laser Screeding',wbsCode:'03-300-20-30.LS',uom:'ea',quantity:'2',unitCost:'100',amount:'200.00',sourceLogs:[{id:'200',date:'2026-03-02',quantity:'2'}]});
   const draft={schemaVersion:1,scope:'productivity_logs',vendorName:'PMC Procore Direct Costs',companyId:'1',projectId:'2',projectNumber:'TEST',month:'2026-03',issues:[],lines:[line],total:'200.00'};
   const [product]=planProjectProducts(draft,defaults);
-  assert.equal(product.name,'TEST-03-300-20-30.E');
+  assert.equal(product.name,'TEST-03-300-20-30.LS');
   const mapping={environment:'sandbox',realmId:'1',companyId:'1',projectId:'2',vendorId:'3',customerId:'4',customerName:'Example',items:{'100':{itemId:'5',itemName:product.name,classId:'6',offsetCategory:'material'}},offsets:{customerAssignment:'none',material:{accountId:'7',accountName:'Direct Costs -',classId:'6'}}};
   const classified=applyScreedingClasses(draft,mapping,screeding);
   const bill=buildDirectCostBill(draft,classified,'2026-03-01','PMCDC001');

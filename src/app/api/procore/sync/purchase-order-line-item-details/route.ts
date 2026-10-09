@@ -11,6 +11,7 @@ import {
   type ProcorePurchaseOrderContract,
 } from "@/lib/procorePurchaseOrderLineItemDetails";
 import { refreshCommitmentsAggMaterializedView } from "@/lib/commitmentsAggMv";
+import { readProcoreSyncCookieValues } from "@/lib/procoreSyncRequestCookies";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -317,13 +318,13 @@ async function runSync(request: Request) {
   return withProcoreLiveApiBypassForSyncSecret(request, async () => {
   try {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
-    const cookieStore = await cookies();
+    const cookieValues = await readProcoreSyncCookieValues(hasValidProcoreSyncSecret(request), cookies);
     const explicitAccessToken = String(body.accessToken || "").trim() || undefined;
-    const cookieAccessToken = cookieStore.get("procore_access_token")?.value || undefined;
+    const cookieAccessToken = cookieValues.accessToken || undefined;
     // Dedicated syncs must not consume a browser token belonging to another app.
     let accessToken = currentProcoreConnection() === 'shared' ? explicitAccessToken || cookieAccessToken : undefined;
     const companyId = String(
-      body.companyId || cookieStore.get("procore_company_id")?.value || procoreConfig.companyId || ''
+      body.companyId || cookieValues.companyId || procoreConfig.companyId || ''
     ).trim();
 
     if (!accessToken) {

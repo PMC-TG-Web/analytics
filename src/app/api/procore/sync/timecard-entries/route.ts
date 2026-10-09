@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { currentProcoreConnection } from "@/lib/procoreConnection";
-import { makeRequest, procoreConfig, getClientCredentialsToken, withProcoreLiveApiBypassForSyncSecret } from "@/lib/procore";
+import { hasValidProcoreSyncSecret, makeRequest, procoreConfig, getClientCredentialsToken, withProcoreLiveApiBypassForSyncSecret } from "@/lib/procore";
+import { readProcoreSyncCookieValues } from "@/lib/procoreSyncRequestCookies";
 import {
   normalizeDate,
   persistTimecardEntries,
@@ -212,14 +213,14 @@ export async function POST(request: Request) {
   return withProcoreLiveApiBypassForSyncSecret(request, async () => {
     try {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
-    const cookieStore = await cookies();
+    const cookieValues = await readProcoreSyncCookieValues(hasValidProcoreSyncSecret(request), cookies);
     const userAccessToken =
-      cookieStore.get("procore_access_token")?.value ||
+      cookieValues.accessToken ||
       String(body.accessToken || "").trim() ||
       "";
     const companyId = String(
       body.companyId ||
-        cookieStore.get("procore_company_id")?.value ||
+        cookieValues.companyId ||
         procoreConfig.companyId ||
         ""
     ).trim();

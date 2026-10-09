@@ -38,7 +38,7 @@ async function refreshSources(companyId: string, projectId: string, month: strin
       const data = await response.json();
       if (procoreSyncResponseIsRateLimited(response.status, data)) throw new BatchWait('Waiting for Procore API capacity.', 300_000);
       if (!response.ok || procoreSyncDetailHasErrors(data) || procoreSyncDetailHasErrors(data.summary) || data.activeProjects?.some((p: { status?: string }) => /unavailable|error/i.test(p.status || ''))) {
-        throw new Error(`${stage.replaceAll('_', ' ')} refresh did not complete${response.ok ? '' : ` (HTTP ${response.status})`}. ${[...(data.errors || data.summary?.errors || []), data.error || ''].join(' ').slice(0, 1200)}`);
+        throw new Error(`${stage.replaceAll('_', ' ')} refresh did not complete${response.ok ? '' : ` (HTTP ${response.status})`}. ${[...(data.errors || data.summary?.errors || []), data.error || '', data.details || ''].join(' ').slice(0, 1200)}`);
       }
     });
   } finally { await releaseProcoreWorker(companyId, lease.leaseId); }

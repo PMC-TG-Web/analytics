@@ -96,6 +96,15 @@ for (const route of ['purchase-order-line-item-details', 'productivity-projects'
         getClientCredentialsToken: async () => { tokenAttempts++; throw new Error('Billing authentication rejected'); },
         makeRequest: async () => assert.fail('Must not send the shared browser token'),
       },
+      '@/lib/procoreSyncRequestCookies': {
+        readProcoreSyncCookieValues: async (_hasSyncSecret, loadCookies) => {
+          const store = await loadCookies();
+          return {
+            accessToken: store.get('procore_access_token')?.value || '',
+            companyId: store.get('procore_company_id')?.value || '',
+          };
+        },
+      },
     });
     const response = await connection.withProcoreConnection('billing', () => handler.POST(new Request('http://internal', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ companyId: '2', projectIds: ['3'], accessToken: 'shared-body-token' }),

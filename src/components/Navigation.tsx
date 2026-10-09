@@ -135,14 +135,14 @@ export default function Navigation({
     };
 
     let channel: BroadcastChannel | null = null;
-    if (typeof window !== "undefined" && "BroadcastChannel" in window) {
-      channel = new BroadcastChannel(AUTH_LOGOUT_SIGNAL_CHANNEL);
-      channel.onmessage = (event) => {
-        if (event.data === AUTH_LOGOUT_SIGNAL_KEY) {
-          redirectToSignedOutPage();
-        }
-      };
-    }
+    try {
+      if (typeof window !== "undefined" && "BroadcastChannel" in window) {
+        channel = new BroadcastChannel(AUTH_LOGOUT_SIGNAL_CHANNEL);
+        channel.onmessage = (event) => {
+          if (event.data === AUTH_LOGOUT_SIGNAL_KEY) redirectToSignedOutPage();
+        };
+      }
+    } catch { /* Browser privacy settings may disable cross-tab storage. */ }
 
     const onStorage = (event: StorageEvent) => {
       if (event.key === AUTH_LOGOUT_SIGNAL_KEY && event.newValue) {
@@ -248,8 +248,11 @@ export default function Navigation({
               const localLogout = await fetch('/api/auth/logout/local', {
                 method: 'POST',
                 credentials: 'include',
+                signal: AbortSignal.timeout(15_000),
               });
-              const result = localLogout.ok ? await localLogout.json() : null;
+              if (!localLogout.ok) throw new Error('Sign-out was not confirmed.');
+              const result = await localLogout.json();
+              if (result?.success !== true) throw new Error('Sign-out was not confirmed.');
               try { sessionStorage.removeItem('analytics-auth-user'); } catch { /* Continue signing out. */ }
               if (result?.developerSession === true) {
                 // Developer accounts have no Auth0 session to sign out of.
@@ -262,7 +265,8 @@ export default function Navigation({
                 return;
               }
             } catch {
-              // Ignore local logout failures and continue with Auth0 logout.
+              window.alert('We could not confirm sign-out. Please try Sign Out again.');
+              return;
             }
 
             try {

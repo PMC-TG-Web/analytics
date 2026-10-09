@@ -24,6 +24,11 @@ export default function ProcoreLogin({ allowEmail }: { allowEmail: boolean }) {
       try {
         const result = await fetch('/api/auth/me', { credentials: 'include', cache: 'no-store', signal: AbortSignal.timeout(8000) });
         if (!result.ok || !active) return false;
+        const user = await result.json();
+        if (user.needsReconnect) {
+          setMessage('Your app session is active. Continue with Procore to reconnect live Procore tools.');
+          return false;
+        }
         // A previously authenticated but now forbidden destination must not create a login loop.
         let previous = 0;
         try { previous = Number(sessionStorage.getItem('analytics-procore-login-return') || 0); } catch { /* Storage can be blocked. */ }
@@ -46,8 +51,11 @@ export default function ProcoreLogin({ allowEmail }: { allowEmail: boolean }) {
     const onStorage = (event: StorageEvent) => {
       if (event.key === 'analytics-auth-complete') void check();
     };
-    const channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('analytics-auth');
-    if (channel) channel.onmessage = (event) => { if (event.data === 'analytics-auth-complete') void check(); };
+    let channel: BroadcastChannel | null = null;
+    try {
+      if (typeof BroadcastChannel !== 'undefined') channel = new BroadcastChannel('analytics-auth');
+      if (channel) channel.onmessage = (event) => { if (event.data === 'analytics-auth-complete') void check(); };
+    } catch { /* Embedded storage can be denied; opener messages and polling remain available. */ }
     window.addEventListener('message', onMessage);
     window.addEventListener('storage', onStorage);
     return () => {
@@ -89,7 +97,7 @@ export default function ProcoreLogin({ allowEmail }: { allowEmail: boolean }) {
       checking = true;
       try {
         const result = await fetch('/api/auth/me', { credentials: 'include', cache: 'no-store', signal: AbortSignal.timeout(8000) });
-        if (result.ok) {
+        if (result.ok && !(await result.json()).needsReconnect) {
           if (timer.current) clearInterval(timer.current);
           try { sessionStorage.removeItem('analytics-auth-user'); } catch { /* Storage can be blocked. */ }
           window.location.replace(returnTo);

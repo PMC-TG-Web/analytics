@@ -73,26 +73,34 @@ test('developer logout returns to the picker and clears the old browser identity
   visit(source);
   assert.ok(handler);
   const code = ts.transpileModule(`const handler = ${handler.getText(source)}; handler;`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
-  for (const developerSession of [true, false]) {
-    const removed = [], navigation = [];
-    const window = { confirm: () => true, location: {
+  for (const mode of ['developer', 'email', 'procore', 'unavailable', 'network', 'invalid-response']) {
+    const removed = [], navigation = [], alerts = [];
+    const window = { confirm: () => true, alert: message => alerts.push(message), location: {
       pathname: '/', search: '', origin: 'http://localhost:3000',
       replace: url => navigation.push(url), assign: url => navigation.push(url),
     } };
     window.self = window.top = window;
     const onClick = vm.runInNewContext(code, {
-      window, Date, encodeURIComponent,
+      window, Date, encodeURIComponent, AbortSignal,
       AUTH_LOGOUT_CONTEXT_KEY: 'logout-context', AUTH_LOGOUT_SIGNAL_KEY: 'logout-signal',
       localStorage: { setItem() {} }, sessionStorage: { removeItem: key => removed.push(key) },
       fetch: async url => {
         assert.equal(url, '/api/auth/logout/local');
-        return { ok: true, json: async () => ({ success: true, developerSession }) };
+        if (mode === 'network') throw new Error('offline');
+        return { ok: mode !== 'unavailable', json: async () => ({ success: mode !== 'invalid-response', developerSession: mode === 'developer', procoreSession: mode === 'procore' }) };
       },
     });
     await onClick();
+    if (['unavailable', 'network', 'invalid-response'].includes(mode)) {
+      assert.equal(alerts.length, 1, mode);
+      assert.deepEqual(navigation, [], 'do not claim logout or navigate to a GET endpoint after failed revocation');
+      assert.deepEqual(removed, []);
+      continue;
+    }
     assert.deepEqual(removed, ['analytics-auth-user']);
     assert.equal(navigation.length, 1);
-    if (developerSession) assert.equal(navigation[0], '/dev-login');
+    if (mode === 'developer') assert.equal(navigation[0], '/dev-login');
+    else if (mode === 'procore') assert.equal(navigation[0], '/auth/logout-complete');
     else assert.ok(navigation[0].startsWith('/api/auth/logout?'));
   }
 });

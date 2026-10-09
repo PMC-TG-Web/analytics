@@ -4,7 +4,7 @@ Status: prepared on `codex/procore-primary-signin`; **not launched**. The owner 
 
 ## Intended experience
 
-The login page offers **Continue with Procore**. A verified Procore user who belongs to the configured company and has an active existing Analytics `User` record receives one app session. The existing User permissions still control every page and API; signing in never creates users or grants permissions. An active session works across the app without a second Auth0 login. Existing email login remains available by default pending confirmation that every user has a Procore account.
+The login page offers **Continue with Procore**. A verified Procore user who belongs to the configured company and has an active existing Analytics `User` record receives one app session. The existing User permissions still control every page and API; signing in never creates users or grants permissions. An active session works across the app without a second Auth0 login. The owner expects everyone to have Procore access. Keep the email fallback available until the account mismatches below are resolved; the intended launch can then set `AUTH0_EMAIL_LOGIN_ENABLED=false`.
 
 Standalone browsers authenticate in the current tab. An embedded page opens the authentication flow in a user-initiated tab, returns via `/auth/complete`, and verifies `/api/auth/me` before continuing. Storage signals, an origin-checked opener message, and bounded polling support the handoff. Browsers that block cross-site cookies retain an explicit **Open app in a new tab** action. An embedded browser is not assumed to inherit the parent Procore session automatically.
 
@@ -17,6 +17,7 @@ Standalone browsers authenticate in the current tab. An embedded page opens the 
 - Provider identity/company checks occur during the OAuth callback and credential renewal, through the shared Procore HTTP module. Token refresh is bounded and uses a durable compare-and-set claim so concurrent requests do not spend a rotating refresh token twice. Both new tokens are saved together. Known revocation rejects the app session; an unknown refresh outcome is not replayed and leaves saved-data access available while live Procore tools require reconnecting. An abandoned claim likewise requires reconnection.
 - API identity, `/api/auth/me`, audit attribution, KPI writers and route permissions use the same app identity. An invalid Procore app cookie cannot silently select a different Auth0 account. Sign-in replaces old account/permission cookies; logout revokes the server session and clears all identity cookies without signing the user out of Procore globally.
 - The new mode disables the legacy analytics link/query-parameter authentication bypass. Signed, project-specific Commitment Maker links and secret-authenticated workers retain their existing scope. In fallback mode, normal Auth0-authenticated traffic now runs the SDK middleware to renew rolling sessions.
+- Legacy `/auth/start`, protected-page sign-in and KPI links reach the shared login page in Procore mode. A session marked `needsReconnect` stays on that page so the Procore button remains usable. Browser storage denial does not crash sign-in/navigation, and an unsuccessful server logout reports a retry instead of falsely announcing success. Refresh exchanges include the configured callback URL.
 
 ## Configuration for later activation
 
@@ -37,12 +38,22 @@ The existing Procore app registration may already have the correct callback and 
 
 ## Validation and remaining launch checks
 
+Read-only preflight (2026-10-09):
+
+- Fresh `origin/main` and Netlify's published commit both remain `fcefea87eb207a6c5e298800ae8abd05309db4c9`; the prepared branch includes that baseline. Repeat the check at release time.
+- A live, read-only Procore company-directory request returned 99 entries. Of 24 active Analytics User records, 21 matched an active directory email, 3 had no matching email, and 3 of the matched records had no recorded Procore login. All 24 app accounts had assigned permissions. Account-level exceptions were presented to the owner; no users, aliases or permissions were changed. The cached directory is stale and must not be used as current access evidence.
+- Production has the existing Procore client configuration and correct `APP_BASE_URL`. The new sign-in flag and encryption secret are absent, and the new session table is absent from the configured database. These activation prerequisites remain deliberately unapplied. The production callback derives from `APP_BASE_URL` when an explicit `PROCORE_REDIRECT_URI` is absent; its registration in the Procore portal still needs an actual user-flow check.
+- The current live login page permits Procore framing through CSP and has no conflicting `X-Frame-Options`. Anonymous `/api/auth/me` returns 401 and `/kpi` redirects to login. These checks describe the existing live release, not a deployed test of this branch.
+- No new server, deployment, app registration, production environment change or database migration was launched. Real user OAuth, browser cookie behavior and provider renewal still require the controlled pilot described below before a full rollout.
+
 Automated validation uses in-memory database and provider doubles; it makes no live Procore mutations and applies no migration:
 
 Preparation validation (2026-10-08): `npm run verify` passed with 819 passing tests, 9 skipped tests, no TypeScript errors, and no lint errors (617 existing lint warnings). The direct Next.js webpack build passed with the new sign-in flag enabled only in the build process. No development server was started for this branch.
 
+Preflight validation (2026-10-09): after the fixes above, `npm run verify` passed with 825 passing tests, 9 skipped tests, no TypeScript errors, and no lint errors (616 warnings). The direct Next.js webpack build passed with `PROCORE_SIGN_IN_ENABLED=true` and `AUTH0_EMAIL_LOGIN_ENABLED=false` scoped only to that build process. This validates the Procore-only build without enabling it for users.
+
 ```powershell
-node --test test/appSessionService.test.mjs test/procoreAppOAuth.test.mjs test/procoreAppSignIn.test.mjs test/productivityReviewAuth.test.mjs test/loginNavigation.test.mjs test/localLogoutCookies.test.mjs test/permissions.test.mjs
+node --test test/appSessionService.test.mjs test/procoreAppOAuth.test.mjs test/procoreAppSignIn.test.mjs test/procoreSignInTransport.test.mjs test/productivityReviewAuth.test.mjs test/loginNavigation.test.mjs test/localLogoutCookies.test.mjs test/permissions.test.mjs
 npx tsc --noEmit
 npm test
 npm run lint

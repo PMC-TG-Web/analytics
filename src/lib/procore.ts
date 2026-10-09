@@ -332,7 +332,8 @@ export function getProcoreSignInToken(code: string, redirectUri: string) {
 }
 
 export function refreshProcoreSignInToken(refreshToken: string) {
-  return exchangeProcoreSignInToken({ grant_type: 'refresh_token', refresh_token: refreshToken });
+  return exchangeProcoreSignInToken({ grant_type: 'refresh_token', refresh_token: refreshToken,
+    redirect_uri: getProcoreRedirectUri() });
 }
 
 export async function getProcoreSignInIdentity(accessToken: string) {

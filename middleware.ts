@@ -1,7 +1,7 @@
 import { getDeveloperEmail, isLocalDeveloperRequest } from '@/lib/developerIdentity';
 import { NextRequest, NextResponse } from 'next/server';
 import { auth0 } from '@/lib/auth0';
-import { APP_SESSION_COOKIE, emailSignInEnabled, procoreSignInEnabled } from '@/lib/appSignInPolicy';
+import { APP_SESSION_COOKIE, emailSignInEnabled, procoreSignInEnabled, safeAppReturnTo } from '@/lib/appSignInPolicy';
 import { resolvePermissionForPath } from '@/lib/permissionRoutes';
 import {
   getPermissionCookieOptions,
@@ -445,6 +445,11 @@ export async function middleware(request: NextRequest) {
 
   // Allow login handoff page (used to break out of iframe before Auth0 redirect)
   if (pathname === '/auth/start') {
+    if (procoreSignInEnabled()) {
+      const loginUrl = new URL('/login', request.url);
+      loginUrl.searchParams.set('returnTo', safeAppReturnTo(request.nextUrl.searchParams.get('returnTo')));
+      return NextResponse.redirect(loginUrl);
+    }
     return NextResponse.next();
   }
   if (procoreSignInEnabled() && (pathname === '/auth/complete' || pathname === '/auth/logout-complete')) {

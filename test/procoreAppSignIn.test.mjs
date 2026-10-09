@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server.js';
 import * as csrf from '../src/lib/csrfProtection.ts';
 import * as routes from '../src/lib/permissionRoutes.js';
 import * as logout from '../src/lib/localLogoutCookies.ts';
+import { safeAppReturnTo } from '../src/lib/appSignInPolicy.ts';
 
 function load(file, imports, globals = {}) {
   const code = ts.transpileModule(fs.readFileSync(file, 'utf8'), {
@@ -27,7 +28,7 @@ function harness({ enabled = true, emailEnabled = true, auth0Email = null, sessi
     getSession: async () => { calls.auth0Reads++; return auth0Email ? { user: { email: auth0Email } } : null; },
     middleware: async () => { calls.rolls++; return NextResponse.next(); },
   };
-  const policy = { APP_SESSION_COOKIE: 'analytics_app_session', procoreSignInEnabled: () => enabled, emailSignInEnabled: () => emailEnabled };
+  const policy = { APP_SESSION_COOKIE: 'analytics_app_session', procoreSignInEnabled: () => enabled, emailSignInEnabled: () => emailEnabled, safeAppReturnTo };
   const appSessions = {
     resolve: async () => sessionStatus === 200 ? { user: { email: 'procore@example.test', sub: 'procore|123' } } : null,
     revoke: async (token) => { calls.revoked.push(token); },
@@ -118,6 +119,9 @@ test('Auth0 fallback sessions roll during normal browsing and can be disabled ex
   const disabled = harness({ emailEnabled: false, auth0Email: 'email@example.test' });
   assert.equal((await disabled.middleware(request('/api/permissions/me', { cookie: '' }))).status, 401);
   assert.equal((await disabled.middleware(request('/api/auth/login', { cookie: '' }))).status, 404);
+  const handoff = await disabled.middleware(request('/auth/start?returnTo=%2Fkpi%3Fyear%3D2026', { cookie: '' }));
+  assert.equal(handoff.headers.get('location'), 'https://app.example.test/login?returnTo=%2Fkpi%3Fyear%3D2026');
+  assert.equal((await disabled.middleware(request('/auth/start?returnTo=%2F%2Fevil.test', { cookie: '' }))).headers.get('location'), 'https://app.example.test/login?returnTo=%2F');
 });
 
 test('server request identity and browser user endpoint agree on the Procore user', async () => {
@@ -140,4 +144,28 @@ test('Procore logout revokes the server session, clears all identity cookies and
   }
   assert.equal((await route.POST(request('/api/auth/logout/local', { method: 'POST', origin: 'https://evil.test' }))).status, 403);
   assert.equal((await route.GET(request('/api/auth/logout/local'))).status, 405);
+});
+
+test('session renewal route is disabled until activation, enforces origin, and distinguishes expiration from outages', async () => {
+  const off = harness({ enabled: false });
+  assert.equal((await load('src/app/api/auth/session/route.ts', off.imports).POST(request('/api/auth/session', { method: 'POST' }))).status, 404);
+  const f = harness();
+  const route = load('src/app/api/auth/session/route.ts', f.imports);
+  assert.equal((await route.POST(request('/api/auth/session', { method: 'POST', origin: 'https://evil.test' }))).status, 403);
+  f.imports['@/lib/appSession'].appSessions.resolve = async (_token, renew) => {
+    assert.equal(renew, true);
+    return { user: { email: 'operator@example.test' }, accessToken: 'renewed-private-access',
+      accessExpiresAt: new Date(Date.now() + 3600000), companyId: 'company', scope: 'procore_all' };
+  };
+  const success = await route.POST(request('/api/auth/session', { method: 'POST' }));
+  assert.equal(success.status, 200);
+  assert.ok(!(await success.text()).includes('renewed-private-access'));
+  assert.equal(success.cookies.get('procore_access_token').httpOnly, true);
+  assert.match(success.headers.get('cache-control'), /no-store/);
+  f.imports['@/lib/appSession'].appSessions.resolve = async () => null;
+  assert.equal((await route.POST(request('/api/auth/session', { method: 'POST' }))).status, 401);
+  f.imports['@/lib/appSession'].appSessions.resolve = async () => { throw new Error('Database unavailable'); };
+  const outage = await route.POST(request('/api/auth/session', { method: 'POST' }));
+  assert.equal(outage.status, 503);
+  assert.equal(outage.headers.get('retry-after'), '5');
 });

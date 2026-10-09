@@ -13,13 +13,8 @@ export default function ProtectedPage({ children, page, requireAuth = true }: Pr
   const { user, loading, error } = useAuth();
  
   const navigateToLogin = () => {
-    const returnUrl = typeof window !== 'undefined' ? window.location.pathname : '/';
-    const loginUrl = `/api/auth/login?returnTo=${encodeURIComponent(returnUrl)}`;
-
-    if (typeof window !== 'undefined' && window.self !== window.top) {
-      window.top!.location.href = loginUrl;
-      return;
-    }
+    const returnUrl = typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : '/';
+    const loginUrl = `/login?returnTo=${encodeURIComponent(returnUrl)}`;
 
     window.location.href = loginUrl;
   };

@@ -1,0 +1,123 @@
+--- a/src/qbo-managed-bill.js
++++ b/src/qbo-managed-bill.js
+@@ -31,6 +31,22 @@
+  if(saved.fingerprint!==receipt.fingerprint && /^pc-[a-f0-9]{40}$/.test(receipt.requestId || '')) saved=JSON.parse(await readFile(path.join(claim,`update-${receipt.requestId}.json`),'utf8')).prepared;
+  if(saved.fingerprint!==receipt.fingerprint) throw new Error('Saved source history is unavailable.');
+  return saved;
++}
++function completedScreedProductCorrection(old, current, proposed, productName) {
++ const before=old.ItemBasedExpenseLineDetail?.ItemRef;
++ const live=current?.ItemBasedExpenseLineDetail?.ItemRef;
++ const target=proposed?.ItemBasedExpenseLineDetail?.ItemRef;
++ return !!before?.name && /\.(?:M|E|L|O)$/.test(before.name)
++  && productName === before.name.replace(/\.[A-Z]+$/, '.LS')
++  && live?.value === target?.value && live?.name === productName;
++}
++function matchingOffsetClassCorrection(old, current, state, bill) {
++ if (!old.AccountBasedExpenseLineDetail || !current?.AccountBasedExpenseLineDetail
++  || Math.round(bill.TotalAmt*100)!==0 || bill.Line.reduce((sum,line)=>sum+Math.round(line.Amount*100),0)!==0) return false;
++ const before=old.AccountBasedExpenseLineDetail.ClassRef?.value;
++ const after=current.AccountBasedExpenseLineDetail.ClassRef?.value;
++ return state.lines.some(line=>line.ItemBasedExpenseLineDetail?.ClassRef?.value===before
++  && bill.Line.some(live=>String(live.Id)===String(line.Id) && live.ItemBasedExpenseLineDetail?.ClassRef?.value===after));
+ }
+ function normalizedEquipmentName(source) {
+  return String(source?.description || source?.catalogPrice?.name || source?.projectPrice?.name || source?.poPrice?.name || '').normalize('NFKC').replace(/\s+/g,' ').trim().toLowerCase()
+@@ -130,7 +146,9 @@
+  const screeders=new Set(prepared.screedingLineKeys || []), keyById=new Map(Object.entries(state.bindings).map(([k,v])=>[String(v),k]));
+  for(const old of state.lines) {
+   const found=currentById.get(String(old.Id)),key=keyById.get(String(old.Id));
+-  const skip=new Set(old.AccountBasedExpenseLineDetail?['Amount']:['Amount','UnitPrice','ClassRef',...(screeders.has(key)?['Description']:[])]);
++  const proposed=prepared.payload.Line.filter(line=>line.ItemBasedExpenseLineDetail)[prepared.source.findIndex(source=>source.lineKey===key)];
++  const correctedProduct=screeders.has(key) && completedScreedProductCorrection(old,found,proposed,prepared.source.find(source=>source.lineKey===key)?.qboItemName);
++  const skip=new Set(old.AccountBasedExpenseLineDetail?['Amount',...(matchingOffsetClassCorrection(old,found,state,current)?['ClassRef']:[])]:['Amount','UnitPrice','ClassRef',...(screeders.has(key)?['Description']:[]),...(correctedProduct?['ItemRef']:[])]);
+   if(!reviewed && (!found || !match(old,found,skip)))throw new Error('A managed bill line was deleted or changed beyond its permitted price/class fields; reconciliation is required.');
+  }
+  const prices={};
+@@ -149,7 +167,7 @@
+   const manual=!!receipt.qboPrices?.[key]?.manual || Number(detail.UnitPrice)!==Number(old.ItemBasedExpenseLineDetail.UnitPrice) || (detail.ClassRef?.value||null)!==(old.ItemBasedExpenseLineDetail.ClassRef?.value||null);
+   if(screeders.has(key) || manual) {
+    const proposed=prepared.payload.Line.filter(item=>item.ItemBasedExpenseLineDetail)[(prepared.source || []).findIndex(source=>source.lineKey===key)];
+-   const productChanged=screeders.has(key) && String(detail.ItemRef?.name || '')!==String(proposed?.ItemBasedExpenseLineDetail?.ItemRef?.name || '');
++   const productChanged=screeders.has(key) && String(detail.ItemRef?.value || '')!==String(proposed?.ItemBasedExpenseLineDetail?.ItemRef?.value || '');
+    prices[key]={unitCost:detail.UnitPrice,description:line.Description,...(!productChanged?{classRef:detail.ClassRef||null}:{}),manual};
+   }
+  }
+--- a/src/qbo-manual-offsets.js
++++ b/src/qbo-manual-offsets.js
+@@ -23,6 +23,13 @@
+   const templates = prepared.payload.Line.filter(l => l.AccountBasedExpenseLineDetail);
+   const families = new Set(templates.map(family));
+   const offsets = current.Line.filter(l => l.AccountBasedExpenseLineDetail && families.has(family(l)));
++  // A retained QBO class may differ from the source's configured class. Locate
++  // its offset in the live bill, using only the verified generated families.
++  const liveOffsetTemplates = offsets.map(line => {
++    const template=templates.find(candidate=>family(candidate)===family(line));
++    return {...line,AccountBasedExpenseLineDetail:{...line.AccountBasedExpenseLineDetail,
++      AccountRef:template.AccountBasedExpenseLineDetail.AccountRef}};
++  });
+   const knownIds = new Set(state.lines.map(l => String(l.Id)));
+   // Only adopt split offsets when the complete live bill proves that they balance.
+   const balanced = cents(current.TotalAmt) === 0 && current.Line.reduce((sum, l) => sum + cents(l.Amount), 0) === 0
+@@ -45,7 +52,7 @@
+     if (preservedItemIds.has(id)) continue;
+     const item = current.Line.find(l => String(l.Id) === id);
+     if (!item?.ItemBasedExpenseLineDetail) throw new Error('Offset item ownership requires reconciliation.');
+-    const template = offsetForItem(prepared, source, item);
++    const template = offsetForItem({...prepared,payload:{Line:liveOffsetTemplates}}, source, item);
+     if (!template) continue;
+     const probe = structuredClone(template);
+     if (item.ItemBasedExpenseLineDetail.ClassRef) probe.AccountBasedExpenseLineDetail.ClassRef = item.ItemBasedExpenseLineDetail.ClassRef;
+--- a/test/qbo-managed-bill.test.js
++++ b/test/qbo-managed-bill.test.js
+@@ -162,3 +162,50 @@
+   await assert.rejects(mergeQboBill({...f,claim:dir}),/ownership/);
+  }finally{await rm(dir,{recursive:true,force:true});}
+ });
++
++function correctedScreedFixture() {
++ const f=fixture();
++ const product={value:'50',name:'2509 - MCH-03-300-20-30.LS'};
++ f.prepared.payload.Line[0].Description='Somero SRS4';
++ f.prepared.source[0].qboItemName=product.name;
++ f.prepared.payload.Line[0].ItemBasedExpenseLineDetail.ItemRef={value:product.value};
++ f.prepared.payload.Line[0].ItemBasedExpenseLineDetail.ClassRef={value:'srs'};
++ f.prepared.payload.Line[1].AccountBasedExpenseLineDetail.ClassRef={value:'srs'};
++ f.prepared.payload.Line[1].AccountBasedExpenseLineDetail.AccountRef.name='Direct Costs -';
++ const other=item('3',100);other.Description='Material';other.ItemBasedExpenseLineDetail.ItemRef={value:'51',name:'2509 - MCH-03-150-10-85.M'};other.ItemBasedExpenseLineDetail.ClassRef={value:'flat'};
++ const otherOffset=offset(-100);otherOffset.Id='4';otherOffset.AccountBasedExpenseLineDetail.ClassRef={value:'flat'};otherOffset.AccountBasedExpenseLineDetail.AccountRef.name='Direct Costs -';
++ f.prepared.payload.Line.push(other,otherOffset);
++ f.prepared.source.push({lineKey:'material'});
++ f.receipt.managedLines=structuredClone(f.prepared.payload.Line);
++ f.receipt.managedLines[0].ItemBasedExpenseLineDetail.ItemRef={value:'old',name:'2509 - MCH-03-300-20-30.E'};
++ f.receipt.sourceBindings.material='3';f.receipt.sourceKeys.push('material');
++ f.current.Line=structuredClone(f.prepared.payload.Line);
++ f.current.Line[0].ItemBasedExpenseLineDetail.ItemRef=product;
++ f.current.Line[0].Description='Somero S940';f.current.Line[0].Amount=1280;
++ f.current.Line[0].ItemBasedExpenseLineDetail.UnitPrice=1280;
++ f.current.Line[0].ItemBasedExpenseLineDetail.ClassRef={value:'940'};
++ f.current.Line[1].Amount=-1280;f.current.Line[1].AccountBasedExpenseLineDetail.ClassRef={value:'940'};
++ return f;
++}
++test('completed LS correction retains QBO machine, price and matching offset class',async()=>{
++ const f=correctedScreedFixture(),original=structuredClone(f);
++ const merged=await mergeQboBill(f);
++ assert.equal(merged.payload.Line[0].Description,'Somero S940');
++ assert.equal(merged.payload.Line[0].ItemBasedExpenseLineDetail.UnitPrice,1280);
++ assert.equal(merged.payload.Line[0].ItemBasedExpenseLineDetail.ItemRef.value,'50');
++ assert.equal(merged.payload.Line[0].ItemBasedExpenseLineDetail.ClassRef.value,'940');
++ assert.equal(merged.payload.Line.find(l=>l.AccountBasedExpenseLineDetail?.ClassRef?.value==='940').Amount,-1280);
++ assert.equal(merged.total,0);assert.deepEqual(merged.preservedLines,[]);assert.deepEqual(f,original);
++});
++test('LS correction does not authorize another product, quantity, project or offset account',async()=>{
++ for(const change of [
++  f=>f.current.Line[0].ItemBasedExpenseLineDetail.ItemRef.value='unexpected',
++  f=>f.current.Line[0].ItemBasedExpenseLineDetail.Qty=2,
++  f=>f.current.Line[0].ItemBasedExpenseLineDetail.CustomerRef.value='unexpected',
++  f=>f.current.Line[1].AccountBasedExpenseLineDetail.AccountRef.value='unexpected',
++  f=>f.current.Line.shift(),
++  f=>f.prepared.screedingLineKeys=[],
++  f=>f.receipt.managedLines[0].ItemBasedExpenseLineDetail.ItemRef.name='2500 - OTHER-03-300-20-30.E',
++  f=>f.current.Line[1].AccountBasedExpenseLineDetail.ClassRef.value='unrelated'
++ ]) {const f=correctedScreedFixture();change(f);await assert.rejects(mergeQboBill(f),/reconciliation/);}
++});

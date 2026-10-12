@@ -365,7 +365,9 @@ The old scheduling, Project Gantt, long-term, short-term, concrete-order schedul
 
 Migration: `20261012190000_wip_estimate_plans` adds only the two new tables. Validate with `node --test test/wipPlanning.test.mjs test/wipRoute.test.mjs test/permissions.test.mjs test/helpGuides.test.mjs`, `npx prisma validate`, and `npx tsc --noEmit`.
 
-The optional browser check is `WIP_BROWSER_TEST=1 node --test test/wipPlanning.browser.test.mjs` (set the environment variable in PowerShell before invoking Node). It uses isolated estimate fixtures, saves the October/November/January 40/40/20 example, verifies persistence and revision history, and checks that a conflict preserves unsaved notes. `WIP_SCREENSHOT` optionally writes a preview outside tracked source. It never writes a production WIP plan.
+The WIP grid accepts percentages directly in each project/month cell. Blank or zero removes a month from the row draft. Drafts retain all months while the visible 12-month window changes, and each row is saved explicitly at 100%. Planning notes and history expand beneath the project name. Filtering and refresh are disabled while rows are unsaved. The table has a bounded vertical viewport, sticky project names/month headings/workload totals, and a synchronized horizontal scrollbar above it. Saved totals exclude unsaved edits.
+
+The optional browser check is `WIP_BROWSER_TEST=1 node --test test/wipPlanning.browser.test.mjs` (set the environment variable in PowerShell before invoking Node). It uses isolated estimate fixtures to enter the October/November/January 40/40/20 example directly in cells, retain out-of-view allocations, clear/reallocate months, verify notes and conflict handling, and exercise scrolling with a long project list. `WIP_SCREENSHOT` optionally writes a preview outside tracked source. It never writes a production WIP plan.
 
 Scheduling currently spans three representations:
 

@@ -1,0 +1,93 @@
+--- a/src/qbo-managed-bill.js
++++ b/src/qbo-managed-bill.js
+@@ -129,6 +129,22 @@
+  const grossTotal=items.reduce((n,l)=>n+Math.round(l.Amount*100),0)/100;
+  const total=adjusted.Line.reduce((n,l)=>n+Math.round(l.Amount*100),0)/100;
+  return {...prepared,payload:adjusted,grossTotal,total,offsetTotal:total-grossTotal,qboPrices:priceRows,qboOffsetAdjustments:offsetAdjustments,fingerprint:hash({source:prepared.fingerprint,payload:adjusted,priceRows,offsetAdjustments})};
++}
++// Queue reads replay descriptions from the last verified receipt, using the
++// same source-to-QBO-line ownership as the live merge. Descriptions must not
++// become price overrides or hide quantity/product/class changes.
++export function applySavedQboDescriptions(prepared, receipt) {
++ const payload=structuredClone(prepared.payload);
++ const byId=new Map((receipt.managedLines || []).filter(line=>line.ItemBasedExpenseLineDetail).map(line=>[String(line.Id),line]));
++ const items=payload.Line.filter(line=>line.ItemBasedExpenseLineDetail);
++ for(let i=0;i<items.length;i++) {
++  const id=receipt.sourceBindings?.[prepared.source?.[i]?.lineKey];
++  const saved=id && byId.get(String(id));
++  if(!saved)continue;
++  if(Object.hasOwn(saved,'Description'))items[i].Description=saved.Description;
++  else delete items[i].Description;
++ }
++ return {...prepared,payload,fingerprint:hash({source:prepared.fingerprint,payload})};
+ }
+ export async function mergeQboBill({claim,receipt,prepared,current}) {
+  if (!/^\d+$/.test(String(current?.SyncToken))) throw new Error('The current QBO bill version is unavailable.');
+--- a/src/direct-cost-bill-service.js
++++ b/src/direct-cost-bill-service.js
+@@ -1,6 +1,6 @@
+ import { aggregateBillItems } from './aggregate-bill-items.js';
+ import { closedMonthPrices, isClosedBillMonth } from './closed-month-pricing.js';
+-import { mergeQboBill, applyQboPrices, billContentFingerprint, billSourcesUnchanged } from './qbo-managed-bill.js';
++import { mergeQboBill, applyQboPrices, applySavedQboDescriptions, billContentFingerprint, billSourcesUnchanged } from './qbo-managed-bill.js';
+ import { applyScreedingClasses } from './screeding-classes.js';
+ import { readdir, readFile } from 'node:fs/promises';
+ import path from 'node:path';
+@@ -79,7 +79,7 @@
+     }
+     if (!qboPricePolicy && prepared.closedMonthPrices) prepared = applyQboPrices(prepared);
+     if (qboPricePolicy && receipt && result.action !== 'reconcile') {
+-      if (operation === 'status') prepared = applyQboPrices(prepared,receipt.qboPrices || {},receipt.qboOffsetAdjustments || []);
++      if (operation === 'status') prepared = applySavedQboDescriptions(applyQboPrices(prepared,receipt.qboPrices || {},receipt.qboOffsetAdjustments || []),receipt);
+       else if (operation === 'prepare' || operation === 'post' || operation.startsWith('reconcile-')) {
+         try {
+           const { reader } = await connect();
+--- a/test/closed-month-pricing.test.js
++++ b/test/closed-month-pricing.test.js
+@@ -7,7 +7,7 @@
+ import { buildDirectCostBill } from '../src/direct-cost-bill.js';
+ import { createDirectCostBillService } from '../src/direct-cost-bill-service.js';
+ import { aggregateBillItems } from '../src/aggregate-bill-items.js';
+-import { applyQboPrices, mergeQboBill, billContentFingerprint, bindBillSources } from '../src/qbo-managed-bill.js';
++import { applyQboPrices, applySavedQboDescriptions, mergeQboBill, billContentFingerprint, bindBillSources } from '../src/qbo-managed-bill.js';
+ 
+ test('accounting months close at Eastern midnight, including the year boundary', () => {
+   assert.equal(isClosedBillMonth('2026-09', new Date('2026-10-01T03:59:59Z')), false);
+@@ -47,6 +47,37 @@
+ const repriced = (draft, quantity='1') => {
+   const next=structuredClone(draft);next.lines[0].unitCost='150';next.lines[0].catalogPrice.unitCost='150';next.lines[0].quantity=quantity;next.lines[0].sourceLogs[0].quantity=quantity;next.total=next.lines[0].amount=(150*Number(quantity)).toFixed(2);return next;
+ };
++
++test('saved QBO description corrections agree in queue and live review without masking quantity changes',()=>fixture(async f=>{
++  await writeFile(path.join(f.directory,'setup-defaults.json'),JSON.stringify({companyId:'2',realmId:'1',environment:'sandbox',screeding:{qboManagedPrices:true,classes:{}}}));
++  f.current.Line[0].Description='Corrected material description';
++  const payload={...f.saved.payload,Line:f.current.Line};
++  const receipt={...f.receipt,managedLines:structuredClone(f.current.Line),contentFingerprint:billContentFingerprint(payload)};
++  await writeFile(path.join(f.claim,'receipt.json'),JSON.stringify(receipt));
++  assert.equal((await f.request(f.draft)).action,'current');
++  assert.deepEqual(f.counts(),{reads:0,writes:0},'queue status remains a local receipt comparison');
++  assert.equal((await f.request(f.draft,'prepare')).action,'current');
++  const changed=repriced(f.draft,'2');
++  assert.equal((await f.request(changed)).action,'update');
++  assert.equal((await f.request(changed,'prepare')).action,'update');
++  const service=createDirectCostBillService({directory:f.directory,environment:'sandbox',realmId:'1',companyId:'2',writesEnabled:true,connect:f.connect,now:()=>new Date('2026-09-30T12:00:00Z')});
++  const priceChange=await service({companyId:'2',projectId:'3',month:f.draft.month,draft:repriced(f.draft),operation:'status'});
++  assert.equal(priceChange.action,'update');assert.equal(priceChange.grossTotal,150);
++  assert.equal(f.counts().writes,0);
++}));
++
++test('saved descriptions use explicit bindings for grouped sources and leave new sources unchanged',()=>fixture(async f=>{
++  const prepared=structuredClone(f.saved);
++  const item=prepared.payload.Line[0];
++  prepared.source.push({...prepared.source[0],lineKey:'second'},{...prepared.source[0],lineKey:'new'});
++  prepared.payload.Line.splice(1,0,structuredClone(item),{...structuredClone(item),Description:'New source'});
++  const receipt={sourceBindings:{'6':'1',second:'1'},managedLines:[{...structuredClone(item),Id:'1',Description:'Corrected'}]};
++  const result=applySavedQboDescriptions(prepared,receipt);
++  assert.deepEqual(result.payload.Line.slice(0,3).map(line=>line.Description),['Corrected','Corrected','New source']);
++  assert.deepEqual(result.payload.Line.map(line=>line.Amount),prepared.payload.Line.map(line=>line.Amount));
++  assert.equal(prepared.payload.Line[0].Description,item.Description,'input is not mutated');
++  assert.deepEqual(applySavedQboDescriptions(prepared,{managedLines:receipt.managedLines}).payload,prepared.payload,'never infer ownership from matching products');
++}));
+ 
+ test('closed-month catalog-only changes stay current; quantity changes use saved rates on review and posting',()=>fixture(async f=>{
+   const draft=repriced(f.draft);

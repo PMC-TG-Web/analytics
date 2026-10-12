@@ -1,5 +1,7 @@
 # QBO host: closed-month pricing
 
+`bill-status-descriptions.patch` follows the patches below. Queue status replays saved QBO item descriptions through explicit receipt source bindings before aggregation, matching live bill preparation. This prevents a retained description correction from repeatedly showing a $0.00 update. It does not freeze prices, quantities, products or classes, infer ownership by name, read QBO during queue checks, or rewrite receipts/bills. Apply with the same `--ignore-space-change` and idle-host restart procedure. Validate all 137 host tests, including `test/closed-month-pricing.test.js`, then verify `status` and `prepare` agree for an existing description-corrected bill without posting it.
+
 The bill writer runs in the separate `QBO_1` directory, outside this Git repository. `closed-month-pricing.patch` versions the host implementation and regression tests alongside the Analytics release. It contains source code only, never runtime mappings, receipts, credentials or production payloads.
 
 Apply to a compatible host checkout with `git apply --check <absolute-patch-path>`, then `git apply <absolute-patch-path>`. Git apply works outside a Git repository. Back up the affected source/test files first. If the check fails, integrate the changes with the host's newer implementation; do not overwrite it. An already updated host passes `git apply --reverse --check` instead.

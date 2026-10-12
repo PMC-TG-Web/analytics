@@ -312,6 +312,8 @@ Detailed content is grouped by domain in `src/lib/helpGuides/`, registered in `i
 
 ## Analytics and reporting
 
+The legacy `/wip` report and `/help/wip` guide were retired on 2026-10-12, along with their navigation and home-page links. Their dedicated chart and hook were removed. Financial WIP remains at `/analytics/monthly-hours`; shared scheduling pages, APIs, stored data, and existing permission assignments are retained.
+
 Analytics route handlers combine normalized database facts rather than calling Procore on demand. Important inputs include:
 
 - `pmc_projects` and `pmc_bid_board_projects` for project identity/status;

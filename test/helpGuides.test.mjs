@@ -84,6 +84,9 @@ test('contextual help resolves exact pages without leaking into unrelated child 
   assert.equal(getHelpGuideSummaryForPath('/help'), null);
   assert.equal(getHelpGuideSummaryForPath('/login'), null);
   assert.equal(getHelpGuideSummaryForPath('/not-a-page'), null);
+  assert.equal(getHelpGuideSummaryForPath('/wip'), null);
+  assert.equal(getHelpGuide('wip'), null);
+  assert.equal(getHelpGuideSummaryForPath('/analytics/monthly-hours').slug, 'financial-wip');
 });
 
 test('guide visibility honors individual permissions, group fallbacks, and signed-in Home access', () => {

@@ -39,7 +39,7 @@ test('sums used quantities and prices once per line with decimal rounding', () =
 test('excludes zero usage, unapproved logs and billing-file records', () => {
   const result = aggregateDirectCosts([log('1', 0), log('2', 100, { status: 'pending' }), log('3', 50, { lineItemHolderTitle: 'Billing File - SOG' })], [item], new Map());
   assert.equal(result.total, '0.00');
-  assert.deepEqual(result.excluded, { unapproved: 1, billingFile: 1, zeroUsage: 1, concrete: 0, pumpingEquipment: 0, boomLiftRental: 0, shopDrawings: 0 });
+  assert.deepEqual(result.excluded, { unapproved: 1, billingFile: 1, zeroUsage: 1, concrete: 0, pumpingEquipment: 0, boomLiftRental: 0, shopDrawings: 0, subcontractor: 0 });
 });
 
 test('shop drawing vendor charges are omitted before catalog pricing and product mapping', () => {

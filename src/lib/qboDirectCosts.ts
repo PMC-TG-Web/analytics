@@ -2,6 +2,7 @@ import type { PurchasePriceEvidence } from './qboCatalogMapping';
 import type { ProjectPriceEvidence } from './qboBillLineRules';
 import { Prisma } from '@prisma/client';
 import { isShopDrawingCost } from './qboDirectCostExclusions.js';
+import { isSubcontractorProductivity } from './qboSubcontractorExclusions.js';
 import type { CatalogPriceEvidence } from './qboCostCatalog';
 import type { projectManagementPrice } from './qboProjectManagementRate.js';
 
@@ -95,7 +96,7 @@ export function aggregateDirectCosts(logs: DirectCostSource[], items: DirectCost
     const poId = item?.procorePurchaseOrderContractId || (/purchase.?order/i.test(log.lineItemHolderType || '') ? log.lineItemHolderId : null);
     issueSources.push({ message, date: log.date.toISOString().slice(0, 10), purchaseOrderId: /^\d+$/.test(poId || '') ? poId! : null, ...(item?.pricingIssue && item.procoreId ? { catalogLineItemId: item.procoreId } : {}), target: item?.pricingIssue ? 'catalog' : item ? 'purchaseOrder' : 'dailyLog' });
   };
-  const excluded = { unapproved: 0, billingFile: 0, zeroUsage: 0, concrete: 0, pumpingEquipment: 0, boomLiftRental: 0, shopDrawings: 0 };
+  const excluded = { unapproved: 0, billingFile: 0, zeroUsage: 0, concrete: 0, pumpingEquipment: 0, boomLiftRental: 0, shopDrawings: 0, subcontractor: 0 };
   const seen = new Set<string>();
   const itemMap = new Map<string, DirectCostItem[]>();
   for (const item of items) {
@@ -109,6 +110,7 @@ export function aggregateDirectCosts(logs: DirectCostSource[], items: DirectCost
     seen.add(log.id);
     if (/billing file/i.test(log.lineItemHolderTitle || '')) { excluded.billingFile++; continue; }
     if (log.status?.toLowerCase() !== 'approved') { excluded.unapproved++; continue; }
+    if (isSubcontractorProductivity(log.lineItemDescription)) { excluded.subcontractor++; continue; }
     if (log.quantityUsed === null || !Number.isFinite(log.quantityUsed)) { addIssue(`${sourceLabel}: no valid quantity used.`, log); continue; }
     if (log.quantityUsed === 0) { excluded.zeroUsage++; continue; }
     if (log.quantityUsed < 0) { addIssue(`${sourceLabel}: negative quantity requires review.`, log); continue; }
@@ -116,6 +118,7 @@ export function aggregateDirectCosts(logs: DirectCostSource[], items: DirectCost
     const matches = itemMap.get(itemId || '') || [];
     if (matches.length !== 1) { addIssue(`${sourceLabel}: expected one matching Procore cost line; found ${matches.length}.`, log); continue; }
     const item = matches[0];
+    if (isSubcontractorProductivity(item.description)) { excluded.subcontractor++; continue; }
     // Shop drawing vendor bills are entered separately, including legacy PO
     // charges labeled Labor or carried under a different cost code.
     if (isShopDrawingCost(item.costCode, item.description?.trim() || sourceName)) {

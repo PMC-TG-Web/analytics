@@ -1,5 +1,11 @@
 # Procore direct cost bills
 
+## Separately invoiced subcontractor labor
+
+Timecards attributed to the generic Sub Contractor worker and productivity entries explicitly labeled Subcontractor Hours/Labor are excluded from direct-cost bill quantities, prices, and source evidence. The same rule applies to the resolved PO description, including aliased line IDs. Their supplier invoices carry the cost. Employee hours, equipment, and source daily logs remain unchanged; the broad Subcontractors cost type alone is not an exclusion.
+
+For historical corrections, `scripts/removeQboSubcontractorHours.mjs` defaults to a read-only preview. It requires the integration host path, an explicit reviewed source-ID export, and a private output directory. It matches successful posting evidence to live QBO line IDs, reduces only identified quantities at the live saved rate, and reduces the matching negative offset by the same rounded amount. It blocks changed quantities, linked bills, ambiguous offsets, and changed bill versions. Apply requires the exact preview fingerprint and uses the existing dedicated writer, monthly lock, and durable receipt workflow. Supplier invoices are never selected. Evidence and exports must stay untracked.
+
 ## Initial workflow
 
 New bill numbers use the Procore project name followed by a per-project sequence: `Evergreen Project 001`, `Evergreen Project 002`. Daily updates to the same monthly bill keep its number. Long names are shortened to fit QBO's 21-character limit. Existing posted PMCDC bills retain their original numbers. The new sequence starts at 001 independently for each project; unused old reservations are preserved as history.

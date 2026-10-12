@@ -1,13 +1,20 @@
 import { Prisma } from '@prisma/client';
 import { projectManagementPrice } from './qboProjectManagementRate.js';
+import { isSubcontractorTimecard } from './qboSubcontractorExclusions.js';
 
-export type LaborTimecard = { procoreId: string | null; date: Date; hours: number | null; totalHoursWorked: number | null; costCodeFullCode: string | null; costCodeName: string | null; updatedAt: Date };
+export type LaborTimecard = { procoreId: string | null; date: Date; hours: number | null; totalHoursWorked: number | null; costCodeFullCode: string | null; costCodeName: string | null; updatedAt: Date; party?: string | null; partyName?: string | null };
 export type LaborRate = { costCode: string; rate: string | null; lineItemId: string; proposalId?: string; bidBoardId?: string; catalogItemId?: string; catalogId?: string; updatedAt: string };
 export function aggregateDirectCostLabor(timecards: LaborTimecard[], rates: LaborRate[]) {
   const issues: string[] = [], seen = new Set<string>();
+  let excludedSubcontractorCount = 0, excludedSubcontractorHours = new Prisma.Decimal(0);
   const groups = new Map<string, { description: string; hours: Prisma.Decimal; sourceLogs: { id: string; date: string; quantity: string; updatedAt: string }[] }>();
   for (const t of timecards) {
     const hours = t.hours ?? t.totalHoursWorked;
+    if (isSubcontractorTimecard(t)) {
+      excludedSubcontractorCount++;
+      if (hours !== null && Number.isFinite(hours) && hours > 0) excludedSubcontractorHours = excludedSubcontractorHours.plus(String(hours));
+      continue;
+    }
     if (!t.procoreId || seen.has(t.procoreId)) { issues.push('A timecard has a missing or duplicate Procore ID.'); continue; }
     seen.add(t.procoreId);
     if (hours === null || !Number.isFinite(hours) || hours < 0) { issues.push(`Timecard ${t.procoreId} needs valid nonnegative hours.`); continue; }
@@ -57,5 +64,5 @@ export function aggregateDirectCostLabor(timecards: LaborTimecard[], rates: Labo
     };
   });
   const sumHours = (priced: boolean | null) => rows.filter(r => priced === null || (r.unitCost !== null) === priced).reduce((n, r) => n.plus(r.quantity), new Prisma.Decimal(0)).toFixed();
-  return { rows, issues, totalHours: sumHours(null), pricedHours: sumHours(true), unpricedHours: sumHours(false), total: rows.reduce((n, r) => n.plus(r.amount || 0), new Prisma.Decimal(0)).toFixed(2), lines: rows.filter(r => r.unitCost !== null) };
+  return { rows, issues, excludedSubcontractorCount, excludedSubcontractorHours: excludedSubcontractorHours.toFixed(), totalHours: sumHours(null), pricedHours: sumHours(true), unpricedHours: sumHours(false), total: rows.reduce((n, r) => n.plus(r.amount || 0), new Prisma.Decimal(0)).toFixed(2), lines: rows.filter(r => r.unitCost !== null) };
 }

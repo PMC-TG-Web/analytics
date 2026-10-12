@@ -1,5 +1,7 @@
 # Analytics application architecture
 
+Direct-cost billing excludes generic Sub Contractor timecards and explicitly named subcontractor labor productivity entries before pricing, using `qboSubcontractorExclusions.js` in both aggregators. PostgreSQL source logs and analytics hours remain intact. Historical removal uses `scripts/removeQboSubcontractorHours.mjs` with explicit source IDs, successful host posting evidence, saved QBO rates, and matching offset reductions through the existing dedicated bill writer. Validate with `node --test test/qboSubcontractorExclusions.test.mjs test/qboSubcontractorCorrection.test.mjs`.
+
 Last verified against the repository on 2026-08-26.
 
 This document is the fast-start map for the application. It describes the current implementation, including transitional systems that have not yet been retired. When it conflicts with executable code, `prisma/schema.prisma`, or a migration, those sources win and this map should be updated.

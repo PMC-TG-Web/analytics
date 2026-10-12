@@ -36,6 +36,7 @@ import type { PmActionItemType } from '@/lib/pmDashboard';
 import { getProcoreBackgroundCooldown } from '@/lib/procoreQuotaControl';
 import { randomUUID } from 'node:crypto';
 import { recoverStaleWebhookClaims } from '@/lib/procoreWebhookRecovery';
+import { resolveWebhookPotentialChangeOrder } from '@/lib/procoreWebhookChangeOrder';
 import { acquireProcoreWorker, releaseProcoreWorker } from '@/lib/procoreSyncQueue';
 
 const MAX_BATCH_SIZE = 100;
@@ -1392,14 +1393,14 @@ async function handleChangeOrderEvent(event: {
 
   const token = await getServiceToken();
   if (isPotentialChangeOrderResource(resource)) {
-    const response = await makeRequest(
-      `/rest/v1.0/potential_change_orders?project_id=${encodeURIComponent(projectId)}&filters%5Bid%5D=${encodeURIComponent(resourceId)}&page=1&per_page=1`,
-      token,
-      { method: 'GET', cache: 'no-store' },
-      companyId,
+    const record = await resolveWebhookPotentialChangeOrder(
+      projectId,
+      resourceId,
+      path => makeRequest(path, token, { method: 'GET', cache: 'no-store' }, companyId),
     );
-    const record = asRows(response).find((candidate) => text(candidate.id) === resourceId) || null;
-    if (!record) throw new Error(`Potential Change Order ${resourceId} returned no record.`);
+    // Preserve the event as completed evidence. The structure sweep owns mirror
+    // deletion; an obsolete update must never recreate the PCO or approval tasks.
+    if (!record) return;
     await enqueueApprovedChangeOrderTasks({ companyId, projectId, record, sourceKind: "potential_change_order" });
     await ensurePotentialChangeOrderTables();
     await upsertPotentialChangeOrder({ companyId, projectId, record });

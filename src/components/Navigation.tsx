@@ -26,6 +26,7 @@ const navLinks: NavLink[] = [
   { href: "/projects", label: "Projects", page: "projects" },
   { href: "/procore", label: "Procore", page: "procore" },
   { href: "/kpi", label: "KPI", page: "kpi" },
+  { href: "/wip", label: "WIP", page: "wip" },
   { href: "/crew-management", label: "Crew Management", page: "crew-management" },
   { href: "/estimating-tools", label: "Estimating", page: "estimating-tools" },
   { href: "/constants", label: "Constants", page: "constants" },
@@ -50,14 +51,7 @@ const navLinks: NavLink[] = [
   { href: "/help", label: "Help", page: "help" },
 ];
 
-const scheduleLinks: NavLink[] = [
-  { href: "/scheduling", label: "Wip Schedule", page: "scheduling" },
-  { href: "/project-schedule", label: "Project Gantt", page: "project-schedule" },
-  { href: "/long-term-schedule", label: "Long-Term", page: "long-term-schedule" },
-  { href: "/concrete-orders-schedule", label: "Concrete Orders", page: "concrete-orders-schedule" },
-  { href: "/short-term-schedule", label: "Short-Term", page: "short-term-schedule" },
-  { href: "/daily-crew-dispatch-board", label: "Crew Dispatch", page: "crew-dispatch" },
-];
+const scheduleLinks: NavLink[] = [];
 
 export const GlobalNavigationContext = createContext(false);
 

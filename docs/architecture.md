@@ -355,6 +355,18 @@ Each dashboard card resolves to the exact Procore record. Procore-supplied deep 
 
 ## Scheduling
 
+### Estimated-hours WIP (2026-10-12)
+
+`/wip` and `/api/wip` are the new monthly planning entry point, protected by the existing `wip` permission. Current-company In Progress Bid Board jobs appear without importing any legacy allocations. `loadWipPlanning.ts` reuses the selected-estimate calculations from `estimatingDashboard.ts`: the full estimated hours minus its `PM` labor group (including cost code `01-300-10-20`). Actual labor and change-order hours never enter the planning basis. Canonical `PmcProject` company/project identity is required to save; unresolved project links, ambiguous duplicate Bid Board links, missing estimate lines, and nonpositive eligible hours are shown for source review. Names and job numbers never establish identity.
+
+`WipPlan` / `wip_plans` store a versioned estimate snapshot, explicit `YYYY-MM` percentages, planning notes, and editor attribution, keyed by company and Procore project ID. Every successful save atomically appends an immutable `WipPlanRevision` / `wip_plan_revisions` snapshot. Percentages use hundredths of a percent, must total exactly 100%, and can span years with gaps. Writes require an authenticated database-authorized WIP user, same-origin CSRF validation, a current estimate fingerprint, and the expected revision. A changed estimate flags the plan for review; monthly hours retain the saved basis until a PM explicitly reviews and saves against the new estimate. The UI shows the latest 50 revisions; all revisions remain stored. Jobs leaving In Progress leave the active view without deleting plans.
+
+The old scheduling, Project Gantt, long-term, short-term, concrete-order schedule, and crew-dispatch page URLs redirect to WIP. Their navigation and help entries are retired. Shared APIs, tables, and code remain for existing Home, KPI, and project-detail consumers; this release does not purge old data or bridge new WIP plans into the old scheduler. Future weekly/scoped/crew planning should consume the new WIP plans directly. Financial WIP remains a separate accounting report.
+
+Migration: `20261012190000_wip_estimate_plans` adds only the two new tables. Validate with `node --test test/wipPlanning.test.mjs test/wipRoute.test.mjs test/permissions.test.mjs test/helpGuides.test.mjs`, `npx prisma validate`, and `npx tsc --noEmit`.
+
+The optional browser check is `WIP_BROWSER_TEST=1 node --test test/wipPlanning.browser.test.mjs` (set the environment variable in PowerShell before invoking Node). It uses isolated estimate fixtures, saves the October/November/January 40/40/20 example, verifies persistence and revision history, and checks that a conflict preserves unsaved notes. `WIP_SCREENSHOT` optionally writes a preview outside tracked source. It never writes a production WIP plan.
+
 Scheduling currently spans three representations:
 
 - legacy operational scheduling (`ProjectScope`, `Schedule`, `ScheduleAllocation`, `ActiveSchedule`);

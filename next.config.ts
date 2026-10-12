@@ -30,6 +30,16 @@ const nextConfig: NextConfig = {
   images: {
     unoptimized: true,
   },
+  async redirects() {
+    // Retire the old scheduling surfaces; shared APIs and historical data remain
+    // available to existing non-scheduling consumers until separately migrated.
+    return [
+      '/scheduling', '/project-schedule', '/long-term-schedule',
+      '/short-term-schedule', '/concrete-orders-schedule', '/daily-crew-dispatch-board',
+      '/help/wip-schedule', '/help/project-gantt', '/help/long-term',
+      '/help/short-term', '/help/crew-dispatch', '/help/concrete-orders',
+    ].map(source => ({ source, destination: source.startsWith('/help/') ? '/help/wip' : '/wip', permanent: false }));
+  },
   async headers() {
     return [
       {

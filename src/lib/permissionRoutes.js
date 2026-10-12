@@ -1,4 +1,6 @@
 export const PATH_PERMISSION_RULES = [
+  { prefix: '/wip', permission: 'wip' },
+  { prefix: '/help/wip', permission: 'wip' },
   { prefix: '/auth0-test', permission: 'diagnostics' },
   { prefix: '/procore/test', permission: 'diagnostics' },
   { prefix: '/seed-kpi-cards', permission: 'admin' },
@@ -56,12 +58,6 @@ export const PATH_PERMISSION_RULES = [
   { prefix: '/help/field-productivity', permission: 'analytics' },
   { prefix: '/help/market-outlook', permission: 'analytics' },
   { prefix: '/help/reporting', permission: 'reporting' },
-  { prefix: '/help/wip-schedule', permission: 'scheduling' },
-  { prefix: '/help/project-gantt', permission: 'project-schedule' },
-  { prefix: '/help/long-term', permission: 'long-term-schedule' },
-  { prefix: '/help/short-term', permission: 'short-term-schedule' },
-  { prefix: '/help/crew-dispatch', permission: 'crew-dispatch' },
-  { prefix: '/help/concrete-orders', permission: 'concrete-orders-schedule' },
   { prefix: '/help/crew-management', permission: 'crew-management' },
   { prefix: '/help/employees', permission: 'employees' },
   { prefix: '/help/certifications', permission: 'certifications' },
@@ -80,6 +76,7 @@ export const PATH_PERMISSION_RULES = [
 ];
 
 const API_PERMISSION_RULES = [
+  { prefix: '/api/wip', permission: 'wip' },
   { prefix: '/api/analytics/commitment-productivity/reviews', permission: 'analytics' },
   { prefix: '/api/admin', permission: 'admin' },
   { prefix: '/api/accounting/direct-cost-bills', permission: 'accounting-direct-cost-bills' },

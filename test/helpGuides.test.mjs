@@ -84,8 +84,8 @@ test('contextual help resolves exact pages without leaking into unrelated child 
   assert.equal(getHelpGuideSummaryForPath('/help'), null);
   assert.equal(getHelpGuideSummaryForPath('/login'), null);
   assert.equal(getHelpGuideSummaryForPath('/not-a-page'), null);
-  assert.equal(getHelpGuideSummaryForPath('/wip'), null);
-  assert.equal(getHelpGuide('wip'), null);
+  assert.equal(getHelpGuideSummaryForPath('/wip').slug, 'wip');
+  assert.equal(getHelpGuide('wip').pagePermission, 'wip');
   assert.equal(getHelpGuideSummaryForPath('/analytics/monthly-hours').slug, 'financial-wip');
 });
 

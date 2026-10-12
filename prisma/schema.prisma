@@ -2484,6 +2484,7 @@ model PmcProject {
   scopes          PmcProjectScope[]
   scheduleEntries PmcScheduleEntry[]
   allocations     PmcScheduleAllocation[]
+  wipPlan         WipPlan?
   actionItems     PmcActionItem[]
   actionItemSyncState PmcActionItemSyncState?
 
@@ -2496,6 +2497,39 @@ model PmcProject {
   @@index([status])
   @@index([bidBoardStatus])
   @@map("pmc_projects")
+}
+
+/// PM monthly estimate allocation, independent of legacy schedule records.
+model WipPlan {
+  companyId   String   @map("company_id")
+  projectId   String   @map("project_id")
+  revision    Int
+  source      Json
+  allocations Json
+  notes       String   @default("")
+  updatedBy   String   @map("updated_by")
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  project     PmcProject @relation(fields: [companyId, projectId], references: [companyId, procoreProjectId], onDelete: Restrict)
+  revisions   WipPlanRevision[]
+
+  @@id([companyId, projectId])
+  @@map("wip_plans")
+}
+
+/// Immutable snapshots retain the estimate basis and percentages at each save.
+model WipPlanRevision {
+  companyId   String   @map("company_id")
+  projectId   String   @map("project_id")
+  revision    Int
+  source      Json
+  allocations Json
+  notes       String   @default("")
+  createdBy   String   @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  plan        WipPlan @relation(fields: [companyId, projectId], references: [companyId, projectId], onDelete: Restrict)
+
+  @@id([companyId, projectId, revision])
+  @@map("wip_plan_revisions")
 }
 
 /// Read-only mirror of Procore items that can appear on a project manager's

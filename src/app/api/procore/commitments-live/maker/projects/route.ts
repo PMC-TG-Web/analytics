@@ -1,14 +1,15 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { procoreConfig } from "@/lib/procore";
 import { getCurrentUserEmail } from "@/lib/requestUser";
+import { getDeveloperEmail } from "@/lib/developerIdentity";
 
 export const dynamic = "force-dynamic";
 
 // Inherits procore-commitments permission; signed project links do not authorize
 // this collection. Return only the selector fields from the maker's project mirror.
-export async function GET() {
-  if (!await getCurrentUserEmail()) {
+export async function GET(request: NextRequest) {
+  if (!(getDeveloperEmail(request) || await getCurrentUserEmail())) {
     return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   }
   try {

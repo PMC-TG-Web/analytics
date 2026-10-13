@@ -3,13 +3,13 @@ import React, { useCallback, useEffect, useState, useMemo, useRef } from "react"
 import dynamic from "next/dynamic";
 import { resolveEstimateActualHours } from "@/lib/kpiEstimateHours";
 import KpiWinRateRow from "@/components/KpiWinRateRow";
+import KpiActualSalesRow, { useKpiActualSales } from "@/components/KpiActualSalesRow";
+import KpiScheduledHoursRow, { useWipScheduledHours } from "@/components/KpiScheduledHoursRow";
+import KpiScheduledSalesRow, { useWipScheduledSales } from "@/components/KpiScheduledSalesRow";
 import {
   getKpiCardValue,
-  getKpiCardValueIndex,
   getKpiCardYearValues,
-  KPI_CARD_VALUE_COUNT,
   KPI_CARD_YEARS,
-  normalizeKpiCardValues,
 } from "@/lib/kpiCardMonths";
 const Line = dynamic(() => import('react-chartjs-2').then(mod => mod.Line), { ssr: false });
 import {
@@ -94,6 +94,8 @@ type KPIDrilldownEntry = {
   customer: string;
   value: number;
   dateLabel: string;
+  projectValue?: number;
+  percent?: number;
 };
 
 function normalizeStatusValue(value: unknown) {
@@ -314,20 +316,6 @@ function formatCardValue(cardName: string, kpiName: string, rawValue: string) {
 
 function normalizeCardName(name: string) {
   return name.replace(/^\uFEFF/, "").trim().toLowerCase();
-}
-
-function ensureSalesCardRows(rows: Array<{ kpi: string; values: string[] }>) {
-  const existingRows = Array.isArray(rows) ? rows : [];
-  const hasScheduledHours = existingRows.some((row) => normalizeCardName((row?.kpi || "").toString()) === "scheduled hours");
-  if (hasScheduledHours) return existingRows;
-
-  return [
-    ...existingRows,
-    {
-      kpi: "Scheduled Hours",
-      values: Array(12).fill(""),
-    },
-  ];
 }
 
 function parseJobKeyParts(jobKey: string): { customer: string; projectNumber: string; projectName: string } {
@@ -599,7 +587,7 @@ export default function KPIPage() {
   const [kpiData, setKpiData] = useState<any[]>([]);
   const [cardLoadData, setCardLoadData] = useState<Record<string, { kpi: string; values: string[] }[]>>(defaultCardLoadData);
   const [loading, setLoading] = useState(true);
-  const [yearFilter, setYearFilter] = useState<string>("");
+  const [yearFilter, setYearFilter] = useState<string>(() => String(new Date().getFullYear()));
   const [monthFilter, setMonthFilter] = useState<number>(new Date().getMonth() + 1);
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
@@ -826,6 +814,9 @@ function KPIPageContent({
 }: any) {
   const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const baseKpiTableMinWidth = `${150 + monthNames.length * 90 + 110}px`;
+  const wipScheduledHours = useWipScheduledHours();
+  const wipScheduledSales = useWipScheduledSales();
+  const actualSales = useKpiActualSales();
   const selectedManagedYear = yearFilter || String(new Date().getFullYear());
   const ytdMonthCutoff = Math.min(Math.max(1, new Date().getMonth() + 1), 12);
   const [cardLoadWarning, setCardLoadWarning] = useState<string>("");
@@ -959,73 +950,9 @@ function KPIPageContent({
     // Return immediately without waiting
   };
 
-  const beginEditKpiCell = (year: string, month: number, field: "scheduledSales" | "bidSubmittedSales" | "estimates" | "estimatesActualHours" | "scheduledHours", currentValue: number) => {
+  const beginEditKpiCell = (year: string, month: number, field: "bidSubmittedSales" | "estimates" | "estimatesActualHours", currentValue: number) => {
     setEditingCell({ year, month, field });
     setEditValue(Number.isFinite(currentValue) ? String(currentValue) : "");
-  };
-
-  const saveSalesCardScheduledHours = (year: string, month: number, value: number | null) => {
-    const normalizedSalesCardName = normalizeCardName("Sales By Month");
-    const valueIndex = getKpiCardValueIndex(year, month);
-    if (valueIndex === null) return;
-
-    setCardLoadData((prev) => {
-      const next = { ...prev };
-      const existingRows = ensureSalesCardRows(next[normalizedSalesCardName] || []);
-      const scheduledHoursIndex = existingRows.findIndex(
-        (row) => normalizeCardName((row?.kpi || "").toString()) === "scheduled hours"
-      );
-
-      const rows = existingRows.map((row) => ({
-        ...row,
-        values: normalizeKpiCardValues(row.values),
-      }));
-
-      const targetIndex = scheduledHoursIndex >= 0 ? scheduledHoursIndex : rows.length;
-      if (scheduledHoursIndex < 0) {
-        rows.push({ kpi: "Scheduled Hours", values: Array(KPI_CARD_VALUE_COUNT).fill("") });
-      }
-
-      rows[targetIndex].values[valueIndex] = value === null ? "" : String(value);
-      next[normalizedSalesCardName] = rows;
-      return next;
-    });
-
-    (async () => {
-      try {
-        const normalizedCurrentRows = ensureSalesCardRows(cardLoadData[normalizedSalesCardName] || []);
-        const rowsForSave = normalizedCurrentRows.map((row) => ({
-          ...row,
-          values: normalizeKpiCardValues(row.values),
-        }));
-
-        const scheduledHoursIndex = rowsForSave.findIndex(
-          (row) => normalizeCardName((row?.kpi || "").toString()) === "scheduled hours"
-        );
-
-        const targetIndex = scheduledHoursIndex >= 0 ? scheduledHoursIndex : rowsForSave.length;
-        if (scheduledHoursIndex < 0) {
-          rowsForSave.push({ kpi: "Scheduled Hours", values: Array(KPI_CARD_VALUE_COUNT).fill("") });
-        }
-
-        rowsForSave[targetIndex].values[valueIndex] = value === null ? "" : String(value);
-
-        await fetch("/api/kpi-cards", {
-          method: "POST",
-          credentials: "include",
-          cache: "no-store",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            cardName: "Sales By Month",
-            rows: rowsForSave,
-            allowRowDeletes: true,
-            updatedBy: "admin",
-          }),
-        });
-      } catch (error) {
-        console.warn("[KPI] Error saving Scheduled Hours row:", error);
-      }
-    })();
   };
 
   const cancelEditKpiCell = () => {
@@ -1035,21 +962,6 @@ function KPIPageContent({
 
   const commitEditKpiCell = () => {
     if (!editingCell) return;
-
-    if (editingCell.field === "scheduledHours") {
-      const raw = String(editValue ?? "").trim();
-      if (!raw) {
-        saveSalesCardScheduledHours(editingCell.year, editingCell.month, null);
-        cancelEditKpiCell();
-        return;
-      }
-
-      const parsed = Number(raw.replace(/[$,\s]/g, ""));
-      const sanitized = Number.isFinite(parsed) ? parsed : 0;
-      saveSalesCardScheduledHours(editingCell.year, editingCell.month, sanitized);
-      cancelEditKpiCell();
-      return;
-    }
 
     const parsed = Number(String(editValue || "").replace(/[$,\s]/g, ""));
     const sanitized = Number.isFinite(parsed) ? parsed : 0;
@@ -1082,19 +994,6 @@ function KPIPageContent({
     cancelEditKpiCell();
   };
 
-  // Load year filter from localStorage on mount
-  useEffect(() => {
-    const savedYear = localStorage.getItem("kpi-year-filter");
-    if (savedYear) {
-      setYearFilter(savedYear);
-    }
-  }, []);
-
-  // Save year filter to localStorage when it changes
-  useEffect(() => {
-    localStorage.setItem("kpi-year-filter", yearFilter);
-  }, [yearFilter]);
-
   // Project and Schedule data is now fetched in the parent KPIPage component
   // to support dynamic data source switching between Database and Procore Live.
 
@@ -1123,9 +1022,7 @@ function KPIPageContent({
         cards.forEach((card: any) => {
           const cardNameNormalized = normalizeCardName(card.cardName);
           const rows = Array.isArray(card.rows) ? card.rows : [];
-          mapped[cardNameNormalized] = cardNameNormalized === normalizeCardName("Sales By Month")
-            ? ensureSalesCardRows(rows)
-            : rows;
+          mapped[cardNameNormalized] = rows;
         });
 
         setCardLoadData(mapped);
@@ -1788,76 +1685,7 @@ function KPIPageContent({
     return result;
   }, [aggregatedProjects]);
 
-  const scheduledSalesProjectsByMonth = useMemo(() => {
-    const result: Record<string, KPIDrilldownEntry[]> = {};
-
-    schedules.forEach((schedule: Schedule) => {
-      const scheduleKeys = getScheduleIdentityKeys(schedule);
-      const project = resolveProjectForSchedule(schedule);
-      if (!project) return;
-      if (!isScheduledSalesQualifyingStatus(project)) return;
-
-      const projectSales = Number(project.sales ?? 0);
-      if (!Number.isFinite(projectSales) || projectSales <= 0) return;
-
-      const budgetHours = [...scheduleKeys, ...getProjectIdentityKeys(project)]
-        .map((key) => budgetHoursByIdentity.get(key))
-        .find((hours): hours is number => Number.isFinite(hours) && hours > 0);
-
-      const baseHours = Number.isFinite(budgetHours) && budgetHours > 0
-        ? budgetHours
-        : Number(schedule.totalHours ?? 0);
-      if (!Number.isFinite(baseHours) || baseHours <= 0) return;
-
-      const monthlyScheduledHours = scheduledHoursByScheduleMonth.get(schedule.id);
-      if (!monthlyScheduledHours || monthlyScheduledHours.size === 0) return;
-
-      monthlyScheduledHours.forEach((scheduledHours, monthKey) => {
-        if (!isValidMonthKey(monthKey)) return;
-        if (!Number.isFinite(scheduledHours) || scheduledHours <= 0) return;
-
-        const allocationRatio = Math.min(scheduledHours / baseHours, 1);
-        if (!Number.isFinite(allocationRatio) || allocationRatio <= 0) return;
-
-        const monthlySales = projectSales * allocationRatio;
-        if (!result[monthKey]) result[monthKey] = [];
-
-        const scheduleProjectName = (schedule.projectName || "").toString().trim();
-        const scheduleProjectNumber = (schedule.projectNumber || "").toString().trim();
-        const scheduleCustomer = (schedule.customer || "").toString().trim();
-
-        const projectName = (project.projectName || "").toString().trim();
-        const projectNumber = (project.projectNumber || "").toString().trim();
-        const projectCustomer = (project.customer || "").toString().trim();
-
-        const useScheduleIdentity = Boolean(scheduleProjectName || scheduleProjectNumber || scheduleCustomer);
-
-        const displayProjectName = useScheduleIdentity
-          ? (scheduleProjectName || projectName || "Unnamed Project")
-          : (projectName || "Unnamed Project");
-
-        const displayProjectNumber = useScheduleIdentity
-          ? scheduleProjectNumber
-          : projectNumber;
-
-        const displayCustomer = useScheduleIdentity
-          ? (scheduleCustomer || projectCustomer || "Unknown Customer")
-          : (projectCustomer || "Unknown Customer");
-
-        result[monthKey].push({
-          id: `${displayCustomer}~${displayProjectNumber}~${displayProjectName}`,
-          projectName: displayProjectName,
-          projectNumber: displayProjectNumber,
-          customer: displayCustomer,
-          value: monthlySales,
-          dateLabel: monthKey,
-        });
-      });
-    });
-
-    Object.keys(result).forEach((monthKey) => result[monthKey].sort((a, b) => b.value - a.value));
-    return result;
-  }, [budgetHoursByIdentity, resolveProjectForSchedule, scheduledHoursByScheduleMonth, schedules]);
+  const scheduledSalesProjectsByMonth = wipScheduledSales.report?.projectsByMonth || {};
 
   const getDrilldownEntriesForYearMonth = (
     sourceMap: Record<string, KPIDrilldownEntry[]>,
@@ -1914,6 +1742,10 @@ function KPIPageContent({
       month: options.month,
       entries,
     });
+  };
+
+  const openScheduledSalesDetails = (year: string | null, month: number | null) => {
+    openKpiDrilldown(`Scheduled ${month ? monthNames[month - 1] + " " : ""}${year || "All Years"}${month ? "" : " Total"}`, scheduledSalesProjectsByMonth, { year, month, valueLabel: "Scheduled revenue", valuePrefix: "$" });
   };
 
   const closeKpiDrilldown = () => {
@@ -2045,17 +1877,8 @@ function KPIPageContent({
       }
 
       const isScheduledSalesRow = rowLabel.includes("sched") && !rowLabel.includes("hour");
-      if (normalizeCardName(cardName) === normalizeCardName("Sales By Month") && isScheduledSalesRow) {
-        const selectedYear = yearFilter || new Date().getFullYear().toString();
-        rowValues = monthNames.map((_, idx) => {
-          const month = idx + 1;
-          const manualValue = kpiData.find((k: any) => k.year === selectedYear && k.month === month)?.scheduledSales;
-          const calculatedValue = scheduledSalesYearMonthMap[selectedYear]?.[month] || 0;
-          const isManual = manualValue !== undefined && manualValue !== null;
-          const value = isManual ? Number(manualValue) : calculatedValue;
-          if (isManual) return Number.isFinite(value) ? value.toString() : "0";
-          return value > 0 ? value.toString() : "";
-        });
+      if (normalizeCardName(cardName) === normalizeCardName("Sales By Month") && isScheduledSalesRow && !isGoalRow) {
+        return <KpiScheduledSalesRow key={rowIndex} months={monthNames.map((_, index) => ({ year: selectedManagedYear, month: index + 1 }))} data={wipScheduledSales} onDetails={openScheduledSalesDetails} />;
       }
 
       if (normalizeCardName(cardName) === normalizeCardName("Leadtimes by Month")) {
@@ -2165,76 +1988,9 @@ function KPIPageContent({
     );});
   };
 
-  const scheduledSalesByMonth: Record<string, number> = {};
-
-  const qualifyingProjectsWithSalesCount = aggregatedProjects.filter((project: Project) =>
-    isScheduledSalesQualifyingStatus(project) && Number(project.sales ?? 0) > 0
-  ).length;
-
-  schedules.forEach((schedule: Schedule) => {
-    const scheduleKeys = getScheduleIdentityKeys(schedule);
-    const project = resolveProjectForSchedule(schedule);
-    if (!project) return;
-    if (!isScheduledSalesQualifyingStatus(project)) return;
-
-    const projectSales = Number(project.sales ?? 0);
-    if (!Number.isFinite(projectSales) || projectSales <= 0) return;
-
-    const budgetHours = [...scheduleKeys, ...getProjectIdentityKeys(project)]
-      .map((key) => budgetHoursByIdentity.get(key))
-      .find((hours): hours is number => Number.isFinite(hours) && hours > 0);
-
-    const baseHours = Number.isFinite(budgetHours) && budgetHours > 0
-      ? budgetHours
-      : Number(schedule.totalHours ?? 0);
-    if (!Number.isFinite(baseHours) || baseHours <= 0) return;
-
-    const monthlyScheduledHours = scheduledHoursByScheduleMonth.get(schedule.id);
-    if (!monthlyScheduledHours || monthlyScheduledHours.size === 0) return;
-
-    monthlyScheduledHours.forEach((scheduledHours, monthKey) => {
-      if (!isValidMonthKey(monthKey)) return;
-      if (!Number.isFinite(scheduledHours) || scheduledHours <= 0) return;
-
-      const allocationRatio = Math.min(scheduledHours / baseHours, 1);
-      if (!Number.isFinite(allocationRatio) || allocationRatio <= 0) return;
-
-      const monthlySales = projectSales * allocationRatio;
-      scheduledSalesByMonth[monthKey] = (scheduledSalesByMonth[monthKey] || 0) + monthlySales;
-    });
-  });
-
-  const scheduledSalesMonths = Object.keys(scheduledSalesByMonth).sort();
-  const manualScheduledSalesByMonth: Record<string, number> = {};
-  kpiData.forEach((entry) => {
-    const record = (entry ?? {}) as Record<string, unknown>;
-    const year = String(record.year ?? "").trim();
-    const month = Number(record.month);
-    const rawValue = record.scheduledSales;
-    if (!year || rawValue === undefined || rawValue === null) return;
-    if (!Number.isInteger(month) || month < 1 || month > 12) return;
-
-    const value = Number(rawValue);
-    if (!Number.isFinite(value)) return;
-
-    const monthKey = `${year}-${String(month).padStart(2, "0")}`;
-    manualScheduledSalesByMonth[monthKey] = value;
-  });
-  const effectiveScheduledSalesByMonth: Record<string, number> = {
-    ...scheduledSalesByMonth,
-    ...manualScheduledSalesByMonth,
-  };
+  const effectiveScheduledSalesByMonth = wipScheduledSales.error ? {} : (wipScheduledSales.report?.months || {});
   const effectiveScheduledSalesMonths = Object.keys(effectiveScheduledSalesByMonth).sort();
-  
-  const scheduledTotal = Object.values(scheduledSalesByMonth).reduce((sum, val) => sum + val, 0);
-  
-  logKpiDebug("[KPI] === Scheduled Sales Breakdown ===");
-  logKpiDebug(`[KPI] Projects with qualifying status (In Progress/Accepted/Complete): ${qualifyingProjectsWithSalesCount}`);
-  logKpiDebug(`[KPI] Schedules used for allocation: ${schedules.length}`);
-  logKpiDebug(`[KPI] Total Scheduled sales: $${scheduledTotal.toLocaleString()}`);
-  logKpiDebug("[KPI] Scheduled sales by month:", scheduledSalesByMonth);
-  logKpiDebug("[KPI] Bid submitted sales by month:", bidSubmittedSalesByMonth);
-  
+
   const scheduledSalesYearMonthMap: Record<string, Record<number, number>> = {};
   effectiveScheduledSalesMonths.forEach((month) => {
     const [year, m] = month.split("-");
@@ -2244,18 +2000,6 @@ function KPIPageContent({
     scheduledSalesYearMonthMap[year][Number(m)] = effectiveScheduledSalesByMonth[month];
   });
   const scheduledSalesYears = Object.keys(scheduledSalesYearMonthMap).sort();
-
-  const managedScheduledHoursByYearMonth = useMemo(() => {
-    const rows = cardLoadData[normalizeCardName("Sales By Month")] || [];
-    const row = rows.find((entry: any) => normalizeCardName((entry?.kpi || "").toString()) === "scheduled hours");
-    const byYearMonth: Record<string, string> = {};
-    KPI_CARD_YEARS.forEach((year) => {
-      monthNames.forEach((_, idx) => {
-        byYearMonth[`${year}-${idx + 1}`] = getKpiCardValue(row?.values, year, idx + 1).trim();
-      });
-    });
-    return byYearMonth;
-  }, [cardLoadData, monthNames]);
 
   const getCardActualMonthMap = (cardName: string): Record<number, number> => {
     const rows = cardLoadData[normalizeCardName(cardName)] || [];
@@ -2279,6 +2023,9 @@ function KPIPageContent({
 
   const currentYear = new Date().getFullYear().toString();
   const combinedSalesYears = Array.from(new Set<string>([
+    ...(wipScheduledHours.report?.years || []),
+    ...(wipScheduledSales.report?.years || []),
+    ...(actualSales.report?.years || []),
     ...scheduledSalesYears,
     ...bidSubmittedSalesYears,
     ...KPI_CARD_YEARS.map((year) => String(year)),
@@ -2507,7 +2254,7 @@ function KPIPageContent({
           style={{ height: 160, overflowX: "auto", overflowY: "hidden" }}
         >
           <div style={{ minWidth: salesByMonthMinWidth, height: "100%" }}>
-            {(filteredScheduledSalesMonths.length > 0 || filteredBidSubmittedSalesMonths.length > 0) ? (
+            {wipScheduledSales.error || !wipScheduledSales.report ? <div role="status" style={{ padding: 12, color: "#666" }}>{wipScheduledSales.error || "Loading WIP revenue…"}</div> : (filteredScheduledSalesMonths.length > 0 || filteredBidSubmittedSalesMonths.length > 0) ? (
               <CombinedSalesLineChart
                 scheduledMonths={filteredScheduledSalesMonths}
                 scheduledSalesByMonth={filteredScheduledSalesByMonth}
@@ -2527,6 +2274,7 @@ function KPIPageContent({
       {filteredCombinedSalesYears.length > 0 && (
         <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4 }}>
           <h2 style={{ color: "#15616D", marginBottom: 8, fontSize: 14 }}>Sales by Month</h2>
+          <p style={{ color: "#6b7280", margin: "0 0 8px", fontSize: 11 }}>Scheduled revenue is the full project sales value × its saved WIP monthly percentage. Scheduled Hours uses estimated hours excluding Project Management. {wipScheduledHours.report?.localOnly ? "Local WIP workspace. " : ""}{!!wipScheduledHours.report?.excludedDraftCount && `${wipScheduledHours.report.excludedDraftCount} import drafts are excluded until saved at 100%. `}Historical jobs not imported into WIP are not included.</p>
           <div
             ref={salesByMonthScrollRef}
             onScroll={() => syncSalesScroll("table")}
@@ -2548,14 +2296,6 @@ function KPIPageContent({
                 </thead>
                 <tbody>
                   {filteredCombinedSalesYears.map((year, yearIndex) => {
-                    const scheduledTotal = monthNames.reduce((sum, _, idx) => {
-                      const calculatedValue = scheduledSalesYearMonthMap[year]?.[idx + 1] || 0;
-                      return sum + calculatedValue;
-                    }, 0);
-                    const scheduledYtdTotal = monthNames.slice(0, ytdMonthCutoff).reduce((sum, _, idx) => {
-                      const calculatedValue = scheduledSalesYearMonthMap[year]?.[idx + 1] || 0;
-                      return sum + calculatedValue;
-                    }, 0);
                     const bidSubmittedMonthValues = monthNames.map((_, idx) => {
                       const month = idx + 1;
                       const manualValue = kpiData.find((k: any) => k.year === year && k.month === month)?.bidSubmittedSales;
@@ -2574,75 +2314,7 @@ function KPIPageContent({
                       .reduce((sum, { sales }) => sum + sales, 0);
                     return (
                     <React.Fragment key={year}>
-                      <tr style={{ borderBottom: "1px solid #eee", backgroundColor: (yearIndex * 2) % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
-                        <td style={{ padding: "4px 6px", color: (yearIndex * 2) % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 13 }}>Scheduled</td>
-                        {monthNames.map((_, idx) => {
-                          const month = idx + 1;
-                          const manualValue = kpiData.find((k: any) => k.year === year && k.month === month)?.scheduledSales;
-                          const calculatedValue = scheduledSalesYearMonthMap[year]?.[month] || 0;
-                          const isManual = manualValue !== undefined && manualValue !== null;
-                          const sales = isManual ? Number(manualValue) : calculatedValue;
-                          const isEditing =
-                            editingCell?.year === year &&
-                            editingCell?.month === month &&
-                            editingCell?.field === "scheduledSales";
-                          
-                          return (
-                            <td 
-                              key={idx}
-                              onDoubleClick={() => beginEditKpiCell(year, month, "scheduledSales", Number(sales) || 0)}
-                              style={{ 
-                                padding: "4px 2px", 
-                                textAlign: "center", 
-                                color: sales > 0 ? ((yearIndex * 2) % 2 === 0 ? "#15616D" : "#E06C00") : "#999", 
-                                fontWeight: sales > 0 ? 700 : 400, 
-                                fontSize: 12,
-                                cursor: "pointer",
-                              }}
-                              title="Double-click to edit"
-                            >
-                              {isEditing ? (
-                                <input
-                                  ref={inputRef}
-                                  value={editValue}
-                                  onChange={(e) => setEditValue(e.target.value)}
-                                  onBlur={commitEditKpiCell}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") commitEditKpiCell();
-                                    if (e.key === "Escape") cancelEditKpiCell();
-                                  }}
-                                  className="w-full border border-gray-300 rounded px-1 py-0.5 text-xs text-right"
-                                />
-                              ) : sales > 0 && !isManual ? (
-                                <button
-                                  type="button"
-                                  onClick={() => openKpiDrilldown(`Scheduled ${monthNames[idx]} ${year}`, scheduledSalesProjectsByMonth, { year, month, valueLabel: "Data Point (Sales)", valuePrefix: "$" })}
-                                  style={{ background: "transparent", border: "none", color: (yearIndex * 2) % 2 === 0 ? "#15616D" : "#E06C00", cursor: "pointer", fontWeight: 700, fontSize: 12, textDecoration: "underline", padding: 0 }}
-                                >
-                                  ${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                                </button>
-                              ) : isManual ? `$${Number(sales || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
-                            </td>
-                          );
-                        })}
-                        <td style={{ padding: "4px 6px", textAlign: "center", color: (yearIndex * 2) % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                          {scheduledTotal > 0 ? (
-                            <button
-                              type="button"
-                              onClick={() => openKpiDrilldown(`Scheduled ${year} Total`, scheduledSalesProjectsByMonth, { year, month: null, valueLabel: "Data Point (Sales)", valuePrefix: "$" })}
-                              style={{ background: "transparent", border: "none", color: (yearIndex * 2) % 2 === 0 ? "#15616D" : "#E06C00", cursor: "pointer", fontWeight: 700, fontSize: 12, textDecoration: "underline", padding: 0 }}
-                            >
-                              {renderTotalWithYtd(
-                                `$${scheduledTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
-                                `$${scheduledYtdTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
-                              )}
-                            </button>
-                          ) : renderTotalWithYtd(
-                            `$${scheduledTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
-                            `$${scheduledYtdTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
-                          )}
-                        </td>
-                      </tr>
+                      <KpiScheduledSalesRow months={monthNames.map((_, index) => ({ year, month: index + 1 }))} data={wipScheduledSales} onDetails={openScheduledSalesDetails} />
                       <tr style={{ borderBottom: "1px solid #eee", backgroundColor: (yearIndex * 2 + 1) % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
                         <td style={{ padding: "4px 6px", color: (yearIndex * 2 + 1) % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 13 }}>Bid Subm.</td>
                         {bidSubmittedMonthValues.map(({ month, sales, isManual }, idx) => {
@@ -2688,69 +2360,7 @@ function KPIPageContent({
                           )}
                         </td>
                       </tr>
-                      <tr style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
-                        <td style={{ padding: "4px 6px", color: "#15616D", fontWeight: 700, fontSize: 13 }}>Scheduled Hours</td>
-                        {monthNames.map((_, idx) => {
-                          const rawValue = managedScheduledHoursByYearMonth[`${year}-${idx + 1}`] || "";
-                          const numericValue = Number(rawValue.replace(/[^0-9.-]/g, ""));
-                          const hasValue = rawValue.length > 0 && Number.isFinite(numericValue) && numericValue !== 0;
-                          const formatted = hasValue
-                            ? numericValue.toLocaleString(undefined, { maximumFractionDigits: 2 })
-                            : "—";
-                          const isEditing =
-                            editingCell?.year === year &&
-                            editingCell?.month === idx + 1 &&
-                            editingCell?.field === "scheduledHours";
-
-                          return (
-                            <td
-                              key={idx}
-                              onDoubleClick={() => beginEditKpiCell(year, idx + 1, "scheduledHours", Number.isFinite(numericValue) ? numericValue : 0)}
-                              style={{
-                                padding: "4px 2px",
-                                textAlign: "center",
-                                color: hasValue ? "#15616D" : "#999",
-                                fontWeight: hasValue ? 700 : 400,
-                                fontSize: 12,
-                                cursor: "pointer",
-                              }}
-                              title="Double-click to edit"
-                            >
-                              {isEditing ? (
-                                <input
-                                  ref={inputRef}
-                                  value={editValue}
-                                  onChange={(e) => setEditValue(e.target.value)}
-                                  onBlur={commitEditKpiCell}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") commitEditKpiCell();
-                                    if (e.key === "Escape") cancelEditKpiCell();
-                                  }}
-                                  className="w-full border border-gray-300 rounded px-1 py-0.5 text-xs text-right"
-                                />
-                              ) : formatted}
-                            </td>
-                          );
-                        })}
-                        <td style={{ padding: "4px 6px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                          {(() => {
-                            const total = monthNames.reduce((sum, _, idx) => {
-                              const rawValue = managedScheduledHoursByYearMonth[`${year}-${idx + 1}`] || "";
-                              const numericValue = Number(rawValue.replace(/[^0-9.-]/g, ""));
-                              return sum + (Number.isFinite(numericValue) ? numericValue : 0);
-                            }, 0);
-                            const ytdTotal = monthNames.slice(0, ytdMonthCutoff).reduce((sum, _, idx) => {
-                              const rawValue = managedScheduledHoursByYearMonth[`${year}-${idx + 1}`] || "";
-                              const numericValue = Number(rawValue.replace(/[^0-9.-]/g, ""));
-                              return sum + (Number.isFinite(numericValue) ? numericValue : 0);
-                            }, 0);
-                            return renderTotalWithYtd(
-                              total.toLocaleString(undefined, { maximumFractionDigits: 2 }),
-                              ytdTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })
-                            );
-                          })()}
-                        </td>
-                      </tr>
+                      <KpiScheduledHoursRow months={monthNames.map((_, index) => ({ year, month: index + 1 }))} data={wipScheduledHours} />
                     </React.Fragment>
                   );} ) }
                 </tbody>
@@ -2769,15 +2379,6 @@ function KPIPageContent({
                   }
                 });
                 
-                const scheduledTotal = allYearMonths.reduce((sum, { year, month }) => {
-                  const calculatedValue = scheduledSalesYearMonthMap[year]?.[month] || 0;
-                  return sum + calculatedValue;
-                }, 0);
-                const scheduledYtdTotal = allYearMonths.reduce((sum, { year, month }) => {
-                  if (month > ytdMonthCutoff) return sum;
-                  const calculatedValue = scheduledSalesYearMonthMap[year]?.[month] || 0;
-                  return sum + calculatedValue;
-                }, 0);
                 const bidSubmittedValues = allYearMonths.map(({ year, month, label }) => {
                   const manualValue = kpiData.find((k: any) => k.year === year && k.month === month)?.bidSubmittedSales;
                   const calculatedValue = bidSubmittedSalesYearMonthMap[year]?.[month] || 0;
@@ -2811,62 +2412,7 @@ function KPIPageContent({
                       </tr>
                     </thead>
                     <tbody>
-                      <tr style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
-                        <td style={{ padding: "4px 6px", color: "#15616D", fontWeight: 700, fontSize: 13 }}>Scheduled</td>
-                        {allYearMonths.map(({ year, month }, idx) => {
-                          const manualValue = kpiData.find((k: any) => k.year === year && k.month === month)?.scheduledSales;
-                          const calculatedValue = scheduledSalesYearMonthMap[year]?.[month] || 0;
-                          const isManual = manualValue !== undefined && manualValue !== null;
-                          const sales = isManual ? Number(manualValue) : calculatedValue;
-                          const isEditing =
-                            editingCell?.year === year &&
-                            editingCell?.month === month &&
-                            editingCell?.field === "scheduledSales";
-                          return (
-                            <td 
-                              key={idx} 
-                              onDoubleClick={() => beginEditKpiCell(year, month, "scheduledSales", Number(sales) || 0)}
-                              style={{ 
-                                padding: "4px 2px", 
-                                textAlign: "center", 
-                                color: sales > 0 ? "#15616D" : "#999", 
-                                fontWeight: sales > 0 ? 700 : 400, 
-                                fontSize: 12,
-                                cursor: "pointer",
-                              }}
-                              title="Double-click to edit"
-                            >
-                              {isEditing ? (
-                                <input
-                                  ref={inputRef}
-                                  value={editValue}
-                                  onChange={(e) => setEditValue(e.target.value)}
-                                  onBlur={commitEditKpiCell}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") commitEditKpiCell();
-                                    if (e.key === "Escape") cancelEditKpiCell();
-                                  }}
-                                  className="w-full border border-gray-300 rounded px-1 py-0.5 text-xs text-right"
-                                />
-                              ) : sales > 0 && !isManual ? (
-                                <button
-                                  type="button"
-                                  onClick={() => openKpiDrilldown(`Scheduled ${monthNames[month - 1]} ${year}`, scheduledSalesProjectsByMonth, { year, month, valueLabel: "Data Point (Sales)", valuePrefix: "$" })}
-                                  style={{ background: "transparent", border: "none", color: "#15616D", cursor: "pointer", fontWeight: 700, fontSize: 12, textDecoration: "underline", padding: 0 }}
-                                >
-                                  ${sales.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                                </button>
-                              ) : isManual ? `$${Number(sales || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
-                            </td>
-                          );
-                        })}
-                        <td style={{ padding: "4px 6px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                          {renderTotalWithYtd(
-                            `$${scheduledTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
-                            `$${scheduledYtdTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
-                          )}
-                        </td>
-                      </tr>
+                      <KpiScheduledSalesRow months={allYearMonths} data={wipScheduledSales} onDetails={openScheduledSalesDetails} />
                       <tr style={{ borderBottom: "1px solid #eee", backgroundColor: "#f9f9f9" }}>
                         <td style={{ padding: "4px 6px", color: "#E06C00", fontWeight: 700, fontSize: 13 }}>Bid Subm.</td>
                         {bidSubmittedValues.map(({ year, month, sales, isManual }, idx) => {
@@ -2911,70 +2457,7 @@ function KPIPageContent({
                           )}
                         </td>
                       </tr>
-                      <tr style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
-                        <td style={{ padding: "4px 6px", color: "#15616D", fontWeight: 700, fontSize: 13 }}>Scheduled Hours</td>
-                        {allYearMonths.map(({ year, month }, idx) => {
-                          const rawValue = managedScheduledHoursByYearMonth[`${year}-${month}`] || "";
-                          const numericValue = Number(rawValue.replace(/[^0-9.-]/g, ""));
-                          const hasValue = rawValue.length > 0 && Number.isFinite(numericValue) && numericValue !== 0;
-                          const formatted = hasValue
-                            ? numericValue.toLocaleString(undefined, { maximumFractionDigits: 2 })
-                            : "—";
-                          const isEditing =
-                            editingCell?.year === year &&
-                            editingCell?.month === month &&
-                            editingCell?.field === "scheduledHours";
-
-                          return (
-                            <td
-                              key={idx}
-                              onDoubleClick={() => beginEditKpiCell(year, month, "scheduledHours", Number.isFinite(numericValue) ? numericValue : 0)}
-                              style={{
-                                padding: "4px 2px",
-                                textAlign: "center",
-                                color: hasValue ? "#15616D" : "#999",
-                                fontWeight: hasValue ? 700 : 400,
-                                fontSize: 12,
-                                cursor: "pointer",
-                              }}
-                              title="Double-click to edit"
-                            >
-                              {isEditing ? (
-                                <input
-                                  ref={inputRef}
-                                  value={editValue}
-                                  onChange={(e) => setEditValue(e.target.value)}
-                                  onBlur={commitEditKpiCell}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") commitEditKpiCell();
-                                    if (e.key === "Escape") cancelEditKpiCell();
-                                  }}
-                                  className="w-full border border-gray-300 rounded px-1 py-0.5 text-xs text-right"
-                                />
-                              ) : formatted}
-                            </td>
-                          );
-                        })}
-                        <td style={{ padding: "4px 6px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                          {(() => {
-                            const total = allYearMonths.reduce((sum, { year, month }) => {
-                              const rawValue = managedScheduledHoursByYearMonth[`${year}-${month}`] || "";
-                              const numericValue = Number(rawValue.replace(/[^0-9.-]/g, ""));
-                              return sum + (Number.isFinite(numericValue) ? numericValue : 0);
-                            }, 0);
-                            const ytdTotal = allYearMonths.reduce((sum, { year, month }) => {
-                              if (month > ytdMonthCutoff) return sum;
-                              const rawValue = managedScheduledHoursByYearMonth[`${year}-${month}`] || "";
-                              const numericValue = Number(rawValue.replace(/[^0-9.-]/g, ""));
-                              return sum + (Number.isFinite(numericValue) ? numericValue : 0);
-                            }, 0);
-                            return renderTotalWithYtd(
-                              total.toLocaleString(undefined, { maximumFractionDigits: 2 }),
-                              ytdTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })
-                            );
-                          })()}
-                        </td>
-                      </tr>
+                      <KpiScheduledHoursRow months={allYearMonths} data={wipScheduledHours} />
                     </tbody>
                   </table>
                 );
@@ -3373,7 +2856,8 @@ function KPIPageContent({
 
                   return (
                     <>
-                      {renderCardRows("Sales By Month", "#E06C00", nonGoalRows.slice(0, insertAfter), 0)}
+                      {renderCardRows("Sales By Month", "#E06C00", nonGoalRows.slice(0, actualSalesIndex >= 0 ? actualSalesIndex : insertAfter), 0)}
+                      <KpiActualSalesRow year={selectedManagedYear} data={actualSales} />
                       <KpiWinRateRow year={selectedManagedYear} />
                       {renderCardRows("Sales By Month", "#E06C00", nonGoalRows.slice(insertAfter), insertAfter)}
                       {renderCardRows("Sales By Month", "#E06C00", goalRows, nonGoalRows.length)}
@@ -3683,7 +3167,7 @@ function KPIPageContent({
                     <tr style={{ borderBottom: "1px solid #e5e5e5" }}>
                       <th style={{ textAlign: "left", padding: "8px 6px", color: "#666", width: "32%" }}>Project</th>
                       <th style={{ textAlign: "left", padding: "8px 6px", color: "#666", width: "28%" }}>Customer</th>
-                      <th style={{ textAlign: "left", padding: "8px 6px", color: "#666", width: "20%" }}>Created</th>
+                      <th style={{ textAlign: "left", padding: "8px 6px", color: "#666", width: "20%" }}>{kpiDrilldown.entries.some(entry => entry.projectValue !== undefined) ? "WIP allocation" : "Created"}</th>
                       <th style={{ textAlign: "right", padding: "8px 6px", color: "#666", width: "20%" }}>{kpiDrilldown.valueLabel}</th>
                     </tr>
                   </thead>
@@ -3694,7 +3178,7 @@ function KPIPageContent({
                           <div style={{ fontWeight: 600 }}>{entry.projectName}</div>
                         </td>
                         <td style={{ padding: "8px 6px", color: "#222" }}>{entry.customer}</td>
-                        <td style={{ padding: "8px 6px", color: "#444" }}>{entry.dateLabel}</td>
+                        <td style={{ padding: "8px 6px", color: "#444" }}>{entry.dateLabel}{entry.projectValue !== undefined && <div style={{ fontSize: 11, color: "#666" }}>{entry.percent}% × ${entry.projectValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>}</td>
                         <td style={{ padding: "8px 6px", color: "#15616D", textAlign: "right", fontWeight: 700 }}>
                           {kpiDrilldown.valuePrefix}{entry.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         </td>

@@ -377,7 +377,7 @@ async function upsertProposalLineItemsBatch(params: {
         DO UPDATE SET
           procore_project_id = EXCLUDED.procore_project_id,
           group_id = EXCLUDED.group_id,
-          group_name = EXCLUDED.group_name,
+          group_name = COALESCE(EXCLUDED.group_name, CASE WHEN procore_estimate_line_items.group_id = EXCLUDED.group_id THEN procore_estimate_line_items.group_name END),
           name = EXCLUDED.name,
           status = EXCLUDED.status,
           cost_code_id = EXCLUDED.cost_code_id,

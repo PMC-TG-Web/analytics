@@ -1,4 +1,7 @@
 export const PATH_PERMISSION_RULES = [
+  { prefix: '/help/subcontract-allocation', permission: 'procore-commitments' },
+  { prefix: '/procore/commitments-live/allocation', permission: 'procore-commitments' },
+  { prefix: '/api/procore/commitments-live/allocation', permission: 'procore-commitments' },
   { prefix: '/help/billing-analytics', permission: 'analytics' },
   { prefix: '/accounting/billing-analytics', permission: 'analytics' },
   { prefix: '/wip', permission: 'wip' },

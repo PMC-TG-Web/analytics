@@ -10,7 +10,7 @@ import {
 
 test('job-cost sync options apply safe production defaults', () => {
   const options = parseArgs([], { LOCALAPPDATA: 'C:\\Local' });
-  assert.equal(options.delaySeconds, 15);
+  assert.equal(options.delaySeconds, 180);
   assert.equal(options.jobCostUrl, DEFAULT_JOB_COST_URL);
   assert.equal(options.includeTest, false);
   assert.equal(options.dryRun, false);

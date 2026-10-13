@@ -206,17 +206,20 @@ type SoldEstimateInput = {
   customFields?: Record<string, unknown>;
 };
 
-export function calculateEstimatingSoldContracts(projects: SoldEstimateInput[], year: number) {
-  const soldStatuses = new Set([
+export function isSoldEstimateStatus(status: unknown): boolean {
+  return new Set([
     "awarded", "in progress", "active", "course of construction",
     "complete", "completed", "post-construction",
-  ]);
+  ]).has(String(status || "").trim().toLowerCase());
+}
+
+export function calculateEstimatingSoldContracts(projects: SoldEstimateInput[], year: number) {
   const seen = new Set<string>();
   const rows = [];
   for (const project of projects) {
     const soldYear = resolveSoldYear({ ...project, procoreProjectNumber: project.projectNumber });
     if (project.projectArchived
-      || !soldStatuses.has(String(project.status || "").trim().toLowerCase())
+      || !isSoldEstimateStatus(project.status)
       || !Number.isInteger(year) || year < 2000 || year > 2099
       || soldYear.soldYear !== year) continue;
 

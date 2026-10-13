@@ -450,21 +450,37 @@ function HomeContent() {
   const endDate = dateKeys[dateKeys.length - 1];
 
   useEffect(() => {
+    if (authLoading || !user?.email) {
+      setWeather(null);
+      return;
+    }
+    const controller = new AbortController();
+    const unavailable: WeatherData = {
+      temp: null, condition: 'Unavailable', icon: '☁', location: 'Local Site',
+      hourly: [], daily: [], unavailable: true,
+    };
     async function fetchWeather() {
       try {
-        const weatherRes = await fetch('/api/weather', { cache: 'no-store', credentials: 'include' });
-        if (!weatherRes.ok) {
-          throw new Error(`Weather API returned ${weatherRes.status}`);
+        const weatherRes = await fetch('/api/weather', {
+          cache: 'no-store', credentials: 'include', signal: controller.signal,
+        });
+        if (weatherRes.status === 401 || weatherRes.status === 403) {
+          if (!controller.signal.aborted) setWeather({ ...unavailable, condition: 'Sign in to view weather' });
+          return;
         }
-
-        setWeather(await weatherRes.json());
+        if (!weatherRes.ok) throw new Error(`Weather API returned ${weatherRes.status}`);
+        const forecast = await weatherRes.json();
+        if (!controller.signal.aborted) setWeather(forecast);
       } catch (error) {
-        console.error("Weather fetch failed:", error);
+        if (controller.signal.aborted) return;
+        setWeather(unavailable);
+        console.warn("Weather unavailable:", error);
       }
     }
 
-    fetchWeather();
-  }, []);
+    void fetchWeather();
+    return () => controller.abort();
+  }, [authLoading, user?.email]);
 
   useEffect(() => {
     async function fetchData() {

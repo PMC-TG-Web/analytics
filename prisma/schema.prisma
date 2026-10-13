@@ -3,6 +3,33 @@ generator client {
   binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
+/// Shared review proposal only. No mutation of Procore mirrors or live contracts.
+model SubcontractAllocationDraft {
+  companyId String @map("company_id")
+  projectId String @map("project_id")
+  revision Int @default(1)
+  sourceFingerprint String @map("source_fingerprint")
+  source Json
+  changes Json
+  updatedBy String @map("updated_by")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  @@id([companyId, projectId])
+  @@map("subcontract_allocation_drafts")
+}
+
+model SubcontractAllocationRevision {
+  companyId String @map("company_id")
+  projectId String @map("project_id")
+  revision Int
+  sourceFingerprint String @map("source_fingerprint")
+  source Json
+  changes Json
+  createdBy String @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@id([companyId, projectId, revision])
+  @@map("subcontract_allocation_revisions")
+}
+
 /// Immutable individual Food expenses; entry ID makes retries idempotent.
 model QboBillFoodEntry {
   id String @id
@@ -2485,6 +2512,7 @@ model PmcProject {
   scheduleEntries PmcScheduleEntry[]
   allocations     PmcScheduleAllocation[]
   wipPlan         WipPlan?
+  wipImportDraft  WipImportDraft?
   actionItems     PmcActionItem[]
   actionItemSyncState PmcActionItemSyncState?
 
@@ -2500,6 +2528,18 @@ model PmcProject {
 }
 
 /// PM monthly estimate allocation, independent of legacy schedule records.
+/// Imported percentages awaiting review; never included in saved-plan KPI totals.
+model WipImportDraft {
+  companyId String @map("company_id")
+  projectId String @map("project_id")
+  allocations Json
+  notes String
+  sourceName String @map("source_name")
+  @@id([companyId, projectId])
+  project PmcProject @relation(fields: [companyId, projectId], references: [companyId, procoreProjectId], onDelete: Restrict)
+  @@map("wip_import_drafts")
+}
+
 model WipPlan {
   companyId   String   @map("company_id")
   projectId   String   @map("project_id")

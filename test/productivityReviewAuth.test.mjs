@@ -54,6 +54,7 @@ function harness({ auth0Email = null, databaseAllowed = true } = {}) {
     },
     '@/lib/procoreLiveApiRoutes': { isProcoreLiveApiRoutePath: () => false },
     '@/lib/commitmentMakerAccess': {},
+    '@/lib/subcontractAllocationAccess': load('src/lib/subcontractAllocationAccess.ts'),
     '@/lib/billingAnalyticsAccess': load('src/lib/billingAnalyticsAccess.ts'),
   };
   const { middleware } = load('middleware.ts', imports, {
@@ -183,4 +184,13 @@ test('completed review stores the verified reviewer instead of a client-supplied
   assert.equal(response.status, 200);
   assert.equal(saved.reviewedByEmail, 'abner@example.com');
   assert.equal(saved.notificationStatus, 'queued');
+});
+
+test('allocation pilot blocks other authenticated administrators and admits only Todd', async () => {
+  for (const path of ['/procore/commitments-live/allocation', '/api/procore/commitments-live/allocation']) {
+    const denied = await harness({ auth0Email: 'david@pmcdecor.com' }).middleware(request({ path, method: 'GET' }));
+    assert.equal(denied.status, path.startsWith('/api/') ? 403 : 307);
+    const allowed = await harness({ auth0Email: 'todd@pmcdecor.com' }).middleware(request({ path, method: 'GET', cookie: 'session=test' }));
+    assert.equal(allowed.status, 200);
+  }
 });

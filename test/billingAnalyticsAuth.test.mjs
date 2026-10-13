@@ -1,3 +1,4 @@
+import * as subcontractAccess from '../src/lib/subcontractAllocationAccess.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -25,6 +26,7 @@ test('API enforces identity and active database permission before reading report
     let reads = 0;
     const { GET } = load('src/app/api/accounting/billing-analytics/route.ts', {
       'next/server': { NextRequest, NextResponse }, '@/lib/requestUser': { getRequestUserEmail: async () => email },
+      '@/lib/subcontractAllocationAccess': subcontractAccess,
       '@/lib/billingAnalyticsAccess': access, '@/lib/permissions': { hasDatabasePageAccess: async () => allowed }, '@/lib/prisma': { prisma: {} },
       '@/lib/billingAnalytics': domain, '@/lib/loadBillingAnalytics': { loadBillingAnalytics: async company => { assert.equal(company, 'company'); reads++; return { rows: [] }; } },
     });
@@ -43,6 +45,7 @@ test('middleware blocks broad-role and link-cookie bypasses and admits only perm
       'next/server': { NextRequest, NextResponse }, '@/lib/auth0': { auth0: { getSession: async () => email ? { user: { email } } : null, middleware: async () => NextResponse.next() } },
       '@/lib/appSignInPolicy': { APP_SESSION_COOKIE: 'app_session', procoreSignInEnabled: () => procoreMode, emailSignInEnabled: () => !procoreMode },
       '@/lib/procoreUserSession': {},
+      '@/lib/subcontractAllocationAccess': subcontractAccess,
       '@/lib/billingAnalyticsAccess': access, '@/lib/developerIdentity': developer, '@/lib/permissionRoutes': routes,
       '@/lib/permissionCookie': { PERMISSION_COOKIE_NAME: 'analytics_permissions', verifyPermissionCookieValue: async () => null },
       '@/lib/rateLimit': { getClientIdentifier: () => 'test', checkRateLimit: () => ({ limited: false, limit: 300, remaining: 299, resetAt: Date.now() + 60000 }) },

@@ -67,11 +67,12 @@ When this app is embedded inside Procore, the site must allow framing from Proco
 - Use CSP `frame-ancestors` to allow Procore, for example: `https://*.procore.com`.
 - Optional: add extra allowed parent origins with `FRAME_ANCESTORS` (comma-separated) in environment variables.
 
-Auth0 must also be configured for your deployed URL:
+Auth0 must also be configured for the deployed URL and any local development origin:
 
-- Allowed Callback URLs: include your `/api/auth/callback` URL.
-- Allowed Logout URLs: include your app origin.
-- Allowed Web Origins: include your app origin.
+- Allowed Callback URLs: include `https://<app-origin>/api/auth/callback` and, for local development, `http://localhost:3000/api/auth/callback`.
+- Allowed Logout URLs and Allowed Web Origins: include the app origin (and `http://localhost:3000` when developing locally).
+- Use a Regular Web Application with Token Endpoint Authentication Method set to **Post**; the Auth0 SDK exchanges the authorization code using `client_secret_post`.
+- Set `AUTH0_CLIENT_ID` and `AUTH0_CLIENT_SECRET` from that same Auth0 application. Never share or commit the secret.
 
 After changing headers or Auth0 settings, redeploy and retest from the Procore app iframe.
 

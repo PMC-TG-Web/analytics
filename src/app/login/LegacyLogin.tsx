@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { clearLoginRedirectGuard, shouldAutoRedirectFromLogin } from "@/lib/loginRedirectGuard";
 
 const AUTH_SIGNAL_KEY = "analytics-auth-complete";
 const AUTH_SIGNAL_CHANNEL = "analytics-auth";
@@ -75,6 +76,7 @@ function LoginContent() {
         // Network error — attempt the redirect optimistically.
       }
       setStatus("Login complete. Reloading embedded app...");
+      clearLoginRedirectGuard(window.sessionStorage);
       window.location.replace(returnTo || "/");
     };
 
@@ -98,12 +100,17 @@ function LoginContent() {
 
     // If a valid session already exists (e.g., callback landed back on /login),
     // skip the login screen and continue to the intended destination.
+    // The guard stops the page/login bounce that happens when /api/auth/me
+    // recognizes a user (e.g. the dev-login cookie) but the server session is gone.
     void (async () => {
       try {
         const res = await fetch("/api/auth/me", { credentials: "include" });
-        if (res.ok) {
+        if (!res.ok) return;
+        if (shouldAutoRedirectFromLogin(window.sessionStorage, safeReturnTo || "/")) {
           window.location.replace(safeReturnTo || "/");
+          return;
         }
+        setStatus("Your session has expired or was not accepted. Please sign in again.");
       } catch {
         // Ignore transient auth check failures here.
       }
@@ -136,6 +143,7 @@ function LoginContent() {
             window.clearInterval(pollRef.current);
             pollRef.current = null;
           }
+          clearLoginRedirectGuard(window.sessionStorage);
           if (framed) {
             setStatus("Login successful. Reloading embedded app...");
             window.location.replace(returnTo || "/");

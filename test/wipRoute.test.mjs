@@ -11,7 +11,7 @@ const compiled = ts.transpileModule(readFileSync('src/app/api/wip/route.ts', 'ut
 }).outputText;
 const source = { bidBoardId: '11', proposalId: '22', estimatedHours: 1200, projectManagementHours: 200, allocatableHours: 1000 };
 const input = { projectId: '101', revision: 0, fingerprint: 'current', allocations: [{ month: '2026-10', percent: 100 }], notes: 'Expected work' };
-function setup({ actor = 'pm@example.com', permission = true, projects = [{ projectId: '101', fingerprint: 'current', source, issue: null }], revision = 0, fail = false } = {}) {
+function setup({ actor = 'pm@example.com', permission = true, projects = [{ projectId: '101', fingerprint: 'current', source, issue: null }], revision = 0, fail = false, local = false, localFail = false } = {}) {
   const calls = [];
   let saved = revision ? { ...input, companyId: 'company', revision, source } : null;
   const revisions = [];
@@ -36,6 +36,15 @@ function setup({ actor = 'pm@example.com', permission = true, projects = [{ proj
     '@/lib/csrfProtection': { validateCsrfRequest },
     '@/lib/loadWipPlanning': { wipCompanyId: () => 'company', loadWipPlanning: async force => { calls.push({ force }); if (fail) throw new Error('sensitive database details'); return projects; } },
     '@/lib/wipPlanning': { validateWipAllocations },
+    '@/lib/wipLocalStore': {
+      wipLocalStorePath: () => local ? 'local-file' : null,
+      readWipLocalStore: async () => ({ history: { '101': [] } }),
+      saveWipLocalPlan: async (_path, company, id, expected, data, email) => {
+        calls.push('local-save');
+        if (localFail) throw new Error('private file error');
+        return { ...data, revision: expected + 1, updatedBy: email, updatedAt: new Date().toISOString() };
+      },
+    },
   };
   const module = { exports: {} };
   new Function('require', 'module', 'exports', compiled)(id => { assert.ok(id in mocks, id); return mocks[id]; }, module, module.exports);
@@ -116,4 +125,17 @@ test('legacy page URLs retire into WIP without removing shared scheduling data',
   }
   const migration = readFileSync('prisma/migrations/20261012190000_wip_estimate_plans/migration.sql', 'utf8');
   assert.doesNotMatch(migration, /DROP|TRUNCATE|DELETE FROM/);
+});
+
+test('local mode saves and reads history without shared plan writes, including file failures', async () => {
+  const fixture = setup({ local: true });
+  assert.equal((await fixture.POST(request(input))).status, 200);
+  assert.deepEqual(fixture.calls, [{ force: true }, 'local-save']);
+  assert.equal((await fixture.GET(getRequest('?projectId=101'))).status, 200);
+  assert.equal((await (await fixture.GET(getRequest())).json()).localOnly, true);
+  const failed = setup({ local: true, localFail: true });
+  const response = await failed.POST(request(input));
+  assert.equal(response.status, 503);
+  assert.doesNotMatch(await response.text(), /private file/);
+  assert.ok(!failed.calls.includes('transaction'));
 });

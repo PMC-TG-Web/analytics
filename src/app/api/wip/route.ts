@@ -6,6 +6,7 @@ import { hasDatabasePageAccess } from '@/lib/permissions';
 import { validateCsrfRequest } from '@/lib/csrfProtection';
 import { loadWipPlanning, wipCompanyId } from '@/lib/loadWipPlanning';
 import { validateWipAllocations } from '@/lib/wipPlanning';
+import { readWipLocalStore, saveWipLocalPlan, wipLocalStorePath } from '@/lib/wipLocalStore';
 
 export const dynamic = 'force-dynamic';
 const json = (body: unknown, status = 200) => NextResponse.json(body, { status, headers: { 'Cache-Control': 'private, no-store' } });
@@ -29,13 +30,18 @@ export async function GET(request: NextRequest) {
     const projectId = request.nextUrl.searchParams.get('projectId');
     if (projectId) {
       if (!/^\d+$/.test(projectId)) return json({ error: 'Invalid project.' }, 400);
+      const localPath = wipLocalStorePath();
+      if (localPath) {
+        const local = await readWipLocalStore(localPath, wipCompanyId());
+        return json({ history: (local.history[projectId] || []).slice(-50).reverse() });
+      }
       const history = await prisma.wipPlanRevision.findMany({
         where: { companyId: wipCompanyId(), projectId }, orderBy: { revision: 'desc' }, take: 50,
         select: { revision: true, source: true, allocations: true, notes: true, createdBy: true, createdAt: true },
       });
       return json({ history });
     }
-    return json({ projects: await loadWipPlanning() });
+    return json({ projects: await loadWipPlanning(), localOnly: !!wipLocalStorePath() });
   } catch (error) { return failure(error); }
 }
 
@@ -61,6 +67,11 @@ export async function POST(request: NextRequest) {
     const key = { companyId: wipCompanyId(), projectId: input.projectId };
     const revision = input.revision + 1;
     const data = { source: { ...project.source }, allocations, notes: input.notes.trim(), revision };
+    const localPath = wipLocalStorePath();
+    if (localPath) {
+      const plan = await saveWipLocalPlan(localPath, key.companyId, key.projectId, input.revision, data, auth.actor!);
+      return plan ? json({ plan }) : json({ error: 'Another user saved this plan. Reload before saving your changes.' }, 409);
+    }
     const result = await prisma.$transaction(async tx => {
       if (input.revision === 0) await tx.wipPlan.create({ data: { ...key, ...data, updatedBy: auth.actor! } });
       else {

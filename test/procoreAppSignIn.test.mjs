@@ -1,3 +1,4 @@
+import * as subcontractAccess from '../src/lib/subcontractAllocationAccess.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -46,7 +47,8 @@ function harness({ enabled = true, emailEnabled = true, auth0Email = null, sessi
     '@/lib/diagnosticsGate': { matchesDiagnosticsOrTestRoute: () => false, shouldBlockDiagnosticsInProduction: () => true },
     '@/lib/procoreLiveApiRoutes': { isProcoreLiveApiRoutePath: () => false },
     '@/lib/commitmentMakerAccess': {},
-    '@/lib/billingAnalyticsAccess': billingAnalyticsAccess,
+    '@/lib/subcontractAllocationAccess': subcontractAccess,
+      '@/lib/billingAnalyticsAccess': billingAnalyticsAccess,
   };
   const middleware = load('middleware.ts', imports, {
     fetch: async (url, options) => {

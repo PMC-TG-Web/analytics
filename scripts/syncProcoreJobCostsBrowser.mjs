@@ -8,7 +8,7 @@ export const DEFAULT_JOB_COST_URL =
   'https://us02.procore.com/598134325805519/company/erp_integrations/job_costs';
 export const DEFAULT_TEST_PROJECT_ID = '598134326669479';
 export const DEFAULT_TEST_PROJECT_NAME = 'TAD-001 - ToddandDave cost code test';
-const DEFAULT_DELAY_SECONDS = 15;
+const DEFAULT_DELAY_SECONDS = 180;
 const JOB_SELECT = '#active_synced_projects';
 const SYNC_BUTTON = 'Sync Job Costs for Selected Job';
 const SUCCESS_MESSAGE = 'Job Costs Will Begin Syncing';

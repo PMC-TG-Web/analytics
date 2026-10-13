@@ -61,3 +61,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+## Combined release authorization (2026-10-13)
+
+- The owner explicitly authorized publishing all pending changes, including the WIP iterations. The earlier local-only hold is lifted for this release. Preserve historical checkouts and evidence; integrate current work onto origin/main and use its Netlify Git deployment.

@@ -1,6 +1,14 @@
 import { defineGuide } from './defineGuide.ts';
 
 export const projectGuides = [
+  defineGuide('subcontract-allocation', {
+    purpose: 'Prepare a saved proposal for transferring estimate scope to a subcontractor. The pilot is available to Todd.',
+    steps: [{ title: 'Choose the scope', body: 'Select a project and estimate lines or groups, then select the destination subcontract code.' }, { title: 'Review the changes', body: 'Check allocated quantities, budget transfers, purchase-order quantities, and any source warnings.' }, { title: 'Save the proposal', body: 'Save the shared draft. Reload if another revision was saved or the source changed.' }],
+    data: ['Synchronized estimate, budget, and purchase-order records supply the source.', 'Saved proposals and revision history stay in Analytics. Saving does not change Procore contracts or budgets.'],
+    terms: [['Allocation', 'A proposed quantity transferred from an estimate line.'], ['Revision', 'A saved version of the proposal.'], ['Destination code', 'The approved subcontract code receiving the proposed scope.']],
+    example: 'Select part of a concrete line and its approved subcontract code, review the corresponding budget transfer, and save for review.',
+    checks: ['Resolve missing costs and source changes before saving.', 'A saved proposal does not establish a vendor invoice or execute a transfer.'],
+  }),
   defineGuide('dashboard', {
     purpose: 'Get an overview of estimating activity: project statuses, customers, sales, labor hours, and concrete quantities. Use this page to understand the bid pipeline and investigate the projects behind a summary.',
     steps: [{ title: 'Start with the overview', body: 'Read summary cards, Sales Funnel, and Status Breakdown before applying filters.' }, { title: 'Narrow the dates', body: 'Set the date range and open available card or chart details to inspect the jobs. Date filtering uses the later available project update or creation date.' }, { title: 'Review a job or export', body: 'Open job details to check the underlying record. Export Projects to CSV when a project list is needed for review.' }],

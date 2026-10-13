@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { canAccessSubcontractAllocation, isSubcontractAllocationPath } from "@/lib/subcontractAllocationAccess";
 import { canAccessBillingAnalytics, isBillingAnalyticsPath } from "@/lib/billingAnalyticsAccess";
 import { createContext, useContext, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
@@ -21,6 +22,7 @@ interface NavLink {
 }
 
 const navLinks: NavLink[] = [
+  { href: "/procore/commitments-live/allocation", label: "Subcontract Allocation", page: "procore-commitments", fallbackPage: "procore" },
   { href: "/", label: "Home", page: "home" },
   { href: "/pm-dashboard", label: "My Work", page: "pm-dashboard" },
   { href: "/dashboard", label: "Dashboard", page: "dashboard" },
@@ -166,7 +168,7 @@ export default function Navigation({
     ? permissionSnapshot?.permissions
     : null;
 
-  const canAccessLink = (link: NavLink) => (!isBillingAnalyticsPath(link.href) || canAccessBillingAnalytics(user?.email)) && canAccessNavigationLink(link, {
+  const canAccessLink = (link: NavLink) => (!isSubcontractAllocationPath(link.href) || canAccessSubcontractAllocation(user?.email)) && (!isBillingAnalyticsPath(link.href) || canAccessBillingAnalytics(user?.email)) && canAccessNavigationLink(link, {
     email: user?.email,
     permissions: currentPermissions,
     loaded: permissionsLoaded,

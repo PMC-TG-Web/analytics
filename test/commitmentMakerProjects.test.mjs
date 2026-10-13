@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import ts from 'typescript';
+import { NextRequest } from 'next/server.js';
+import { getDeveloperEmail } from '../src/lib/developerIdentity.ts';
 import { resolvePermissionForPath } from '../src/lib/permissionRoutes.js';
 
 const endpoint = '/api/procore/commitments-live/maker/projects';
@@ -10,11 +12,12 @@ const compiled = ts.transpileModule(route, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText;
 
-function setup(email = 'commitments-only@example.com', fail = false) {
+function setup(email = 'commitments-only@example.com', fail = false, environment = 'production') {
   const calls = [];
   const mocks = {
     'next/server': { NextResponse: { json: (body, init) => Response.json(body, init) } },
     '@/lib/requestUser': { getCurrentUserEmail: async () => email },
+    '@/lib/developerIdentity': { getDeveloperEmail: request => getDeveloperEmail(request, environment) },
     '@/lib/procore': { procoreConfig: { companyId: 'configured-company' } },
     '@/lib/prisma': { prisma: { pmcProject: { findMany: async (query) => {
       calls.push(query);
@@ -27,7 +30,7 @@ function setup(email = 'commitments-only@example.com', fail = false) {
     assert.ok(id in mocks, `Unexpected dependency ${id}`);
     return mocks[id];
   }, module, module.exports);
-  return { run: module.exports.GET, calls };
+  return { run: (request = new NextRequest('https://example.com' + endpoint)) => module.exports.GET(request), calls };
 }
 
 test('Commitment Maker project selector uses the same permission as the page without opening broad Procore access', () => {
@@ -61,4 +64,13 @@ test('project lookup failures remain failures without exposing database details'
   const response = await setup('commitments-only@example.com', true).run();
   assert.equal(response.status, 500);
   assert.deepEqual(await response.json(), { error: 'Projects could not be loaded.' });
+});
+
+test('localhost developer sign-in loads the selector, but production and nonlocal cookies cannot', async () => {
+  for (const [environment, host, expected] of [['development', 'localhost:3000', 200], ['development', 'example.com', 401], ['production', 'localhost:3000', 401]]) {
+    const fixture = setup(null, false, environment);
+    const response = await fixture.run(new NextRequest(`http://${host}${endpoint}`, { headers: { cookie: 'dev_user_email=todd@pmcdecor.com' } }));
+    assert.equal(response.status, expected);
+    assert.equal(fixture.calls.length, expected === 200 ? 1 : 0);
+  }
 });

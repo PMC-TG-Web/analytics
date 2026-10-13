@@ -1,3 +1,4 @@
+import * as subcontractAccess from '../src/lib/subcontractAllocationAccess.ts';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
@@ -33,7 +34,8 @@ function harness({ signedIn = true, environment = 'production', host = 'localhos
     },
     '@/lib/procoreLiveApiRoutes': { isProcoreLiveApiRoutePath: () => false },
     '@/lib/commitmentMakerAccess': {},
-    '@/lib/billingAnalyticsAccess': billingAnalyticsAccess,
+    '@/lib/subcontractAllocationAccess': subcontractAccess,
+      '@/lib/billingAnalyticsAccess': billingAnalyticsAccess,
   };
   const code = ts.transpileModule(fs.readFileSync('middleware.ts', 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },

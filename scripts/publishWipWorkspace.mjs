@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { isDeepStrictEqual } from 'node:util';
-import { validateWipAllocations } from '../src/lib/wipPlanning.ts';
+import { sameWipSource, validateWipAllocations } from '../src/lib/wipPlanning.ts';
 
 export function validateWorkspace(store, companyId, teams) {
   if (store?.version !== 1 || store.companyId !== companyId || !store.plans || !store.history || !store.drafts) throw Error('Workspace company or format mismatch.');
@@ -47,7 +47,7 @@ export async function publishWorkspace(db, store, teams, companyId, apply = fals
       const key = { companyId, projectId };
       const existing = await tx.wipPlan.findUnique({ where: { companyId_projectId: key } });
       if (existing) {
-        if (!isDeepStrictEqual(existing.source, plan.source) || !isDeepStrictEqual(existing.allocations, plan.allocations) || existing.notes !== plan.notes || existing.revision !== plan.revision) throw Error('Shared plan conflicts with local work; no records were changed.');
+        if (!sameWipSource(existing.source, plan.source) || !isDeepStrictEqual(existing.allocations, plan.allocations) || existing.notes !== plan.notes || existing.revision !== plan.revision) throw Error('Shared plan conflicts with local work; no records were changed.');
         unchanged++; continue;
       }
       created++;
@@ -73,7 +73,7 @@ export async function publishWorkspace(db, store, teams, companyId, apply = fals
         update: { payload: team, syncedAt: new Date(team.syncedAt) } });
     }
     return { mode: apply ? 'published' : 'dry run', created, unchanged, drafts: Object.keys(store.drafts).length, teams: teams.length, newerTeamsPreserved };
-  }, { timeout: 120000, isolationLevel: 'Serializable' });
+  }, { timeout: 15000, isolationLevel: 'Serializable' });
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

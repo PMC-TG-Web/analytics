@@ -29,6 +29,7 @@ test('dry run performs no writes; matching publication is idempotent and conflic
   assert.equal(writes.length, 0);
   assert.equal((await publishWorkspace(db, store(), [], '1', true)).created, 1);
   assert.equal(writes.length, 2);
+  existing.source = { ...existing.source, estimatedHours: existing.source.estimatedHours + 1e-12 };
   assert.equal((await publishWorkspace(db, store(), [], '1', true)).unchanged, 1);
   assert.equal(writes.length, 2);
   existing.notes = 'Newer shared work';

@@ -71,3 +71,12 @@ test('estimate revisions flag review while preserving the saved monthly hours', 
   assert.equal(allocationHours(row.plan.source.allocatableHours, row.plan.allocations[0].percent), 1000);
   assert.equal(sameWipSource(row.source, row.plan.source), false);
 });
+
+
+test('database float round trips do not flag changed estimates; meaningful hours and identity changes still do', () => {
+  const source = { bidBoardId: '1', proposalId: '2', estimatedHours: 1200, projectManagementHours: 200, allocatableHours: 1000 };
+  assert.equal(sameWipSource(source, { ...source, estimatedHours: 1200 + 1e-12 }), true);
+  assert.equal(sameWipSource(source, { ...source, estimatedHours: 1200.0001 }), false);
+  assert.equal(sameWipSource(source, { ...source, proposalId: '3' }), false);
+  assert.equal(sameWipSource(source, { ...source, estimatedHours: NaN }), false);
+});

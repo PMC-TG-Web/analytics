@@ -29,4 +29,3 @@ export function useKpiReport<T>(endpoint: string) {
   }, [retry, endpoint]);
   return { report, error, retry: () => setRetry(value => value + 1) };
 }
-

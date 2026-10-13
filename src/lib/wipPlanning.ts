@@ -82,9 +82,11 @@ export function buildWipProjects(estimates: EstimateProject[], canonical: Canoni
 }
 
 export function sameWipSource(left: WipSource, right: WipSource): boolean {
+  // JSON/database round trips can differ by a few floating-point bits.
+  const sameHours = (a: number, b: number) => Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) < 1e-8;
   return left.bidBoardId === right.bidBoardId && left.proposalId === right.proposalId
-    && left.estimatedHours === right.estimatedHours && left.projectManagementHours === right.projectManagementHours
-    && left.allocatableHours === right.allocatableHours;
+    && sameHours(left.estimatedHours, right.estimatedHours) && sameHours(left.projectManagementHours, right.projectManagementHours)
+    && sameHours(left.allocatableHours, right.allocatableHours);
 }
 
 export function allocationPercent(allocations: WipAllocation[]): number {

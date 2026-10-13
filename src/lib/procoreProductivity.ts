@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { enqueueDailyLogTimeNotifications } from "@/lib/dailyLogTimeNotificationStore";
 
 export type ProcoreLog = Record<string, unknown>;
 type MutableJsonObject = Record<string, Prisma.InputJsonValue>;
@@ -410,6 +411,7 @@ export async function persistProductivityLogs(
       attempted: 0,
       saved: 0,
       skipped: 0,
+      notificationsQueued: 0,
       projectLinked: false,
       projectCreated: false,
       linkedProjectId: null as string | null,
@@ -516,8 +518,11 @@ export async function persistProductivityLogs(
     saved += 1;
   }
 
+  // Run even for unchanged rows: PO metadata may arrive after the log's webhook.
+  const notificationsQueued = await enqueueDailyLogTimeNotifications(logs, params);
   return {
     attempted: logs.length,
+    notificationsQueued,
     saved,
     skipped,
     projectLinked: Boolean(linkedProjectResult.project?.id),

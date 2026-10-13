@@ -3,6 +3,8 @@ import { Prisma } from "@prisma/client";
 import { Resend } from "resend";
 import { getRequiredSyncSecret } from "@/lib/cronSync";
 import { prisma } from "@/lib/prisma";
+import { loadTimeNotificationSource } from "@/lib/timeNotificationSource";
+import { DAILY_LOG_TIME_PREFIX } from "@/lib/dailyLogTimeNotification";
 import {
   getClientCredentialsToken,
   makeRequest,
@@ -108,6 +110,7 @@ async function processErrorAlerts(params: {
 
   const alerts = await prisma.timecardNotification.findMany({
     where: {
+      status: { in: ["pending", "failed"] },
       errorAlertMessage: { not: null },
       errorAlertSentAt: null,
       errorAlertLockedAt: null,
@@ -162,6 +165,7 @@ async function processErrorAlerts(params: {
       const projectNumber = project?.projectNumber || fallbackProject?.projectNumber || null;
       const projectUrl = `https://us02.procore.com/${encodeURIComponent(alert.projectId)}/project/home`;
       const email = buildTimecardNotificationErrorEmail({
+        source: alert.timesheetId.startsWith(DAILY_LOG_TIME_PREFIX) ? "productivity" : "timecard",
         projectNumber,
         projectName,
         timesheetId: alert.timesheetId,
@@ -235,6 +239,7 @@ async function processNotifications() {
   });
   const errorAlertsDue = await prisma.timecardNotification.count({
     where: {
+      status: { in: ["pending", "failed"] },
       errorAlertMessage: { not: null },
       errorAlertSentAt: null,
       errorAlertAttempts: { lt: 12 },
@@ -271,6 +276,7 @@ async function processNotifications() {
   let sent = 0;
   let retried = 0;
   let failed = 0;
+  let skipped = 0;
 
   for (const candidate of candidates) {
     const claim = await prisma.timecardNotification.updateMany({
@@ -287,6 +293,19 @@ async function processNotifications() {
     const attemptNumber = candidate.attempts + 1;
 
     try {
+      const source = await loadTimeNotificationSource(candidate);
+      if (source.allDeleted) {
+        await prisma.timecardNotification.update({
+          where: { id: candidate.id },
+          data: { status: "skipped", lockedAt: null, lockedBy: null,
+            lastError: null, errorAlertMessage: null, errorAlertAvailableAt: null },
+        });
+        skipped += 1;
+        continue;
+      }
+      if (!source.entries.length) throw new Error(source.source === "productivity"
+        ? "The daily productivity log has no synchronized hourly labor lines yet."
+        : "The timecard has no synchronized entry lines yet.");
       token = token || await getClientCredentialsToken();
       const project = await prisma.pmcProject.findUnique({
         where: {
@@ -318,37 +337,16 @@ async function processNotifications() {
         throw new Error("No active Project Manager with a @pmcdecor.com email was found in the Procore project directory.");
       }
 
-      const lines = await prisma.$queryRaw<Array<{
-        party_name: string | null;
-        hours: number | null;
-        created_by_name: string | null;
-      }>>`
-        SELECT
-          "partyName" AS party_name,
-          "hours" AS hours,
-          "createdByName" AS created_by_name
-        FROM "TimecardEntry"
-        WHERE "procoreProjectId" = ${candidate.projectId}
-          AND "procoreCompanyId" = ${candidate.companyId}
-          AND "procoreDeletedAt" IS NULL
-          AND COALESCE(
-            "customFields" #>> '{originalData,timesheet_id}',
-            "customFields" #>> '{originalData,_timesheet_id}'
-          ) = ${candidate.timesheetId}
-        ORDER BY "procoreId"
-      `;
-      if (!lines.length) throw new Error("The timecard has no synchronized entry lines yet.");
-
-      const createdByName = candidate.createdByName
-        || lines.find((line) => line.created_by_name)?.created_by_name
+      const createdByName = source.createdByName || candidate.createdByName
         || null;
       const projectUrl = `https://us02.procore.com/${encodeURIComponent(candidate.projectId)}/project/home`;
       const email = buildTimecardNotificationEmail({
+        source: source.source,
         projectNumber,
         projectName,
         timecardDate: candidate.timecardDate,
         createdByName,
-        entries: lines.map((line) => ({ partyName: line.party_name, hours: line.hours })),
+        entries: source.entries,
         projectUrl,
       });
       // Defense in depth: never pass a non-PMC address to the email provider,
@@ -408,7 +406,7 @@ async function processNotifications() {
   }
 
   const errorAlerts = await processErrorAlerts({ resend, from, workerId });
-  return { scanned: candidates.length, claimed, sent, retried, failed, errorAlerts };
+  return { scanned: candidates.length, claimed, sent, retried, failed, skipped, errorAlerts };
 }
 
 export async function POST(request: NextRequest) {

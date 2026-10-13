@@ -7,6 +7,7 @@ export type ProjectRoleLike = Record<string, unknown>;
 export type ProjectUserLike = Record<string, unknown>;
 
 export type TimecardNotificationEmailInput = {
+  source?: "timecard" | "productivity";
   projectNumber: string | null;
   projectName: string;
   timecardDate: Date | null;
@@ -16,6 +17,7 @@ export type TimecardNotificationEmailInput = {
 };
 
 export type TimecardNotificationErrorEmailInput = {
+  source?: "timecard" | "productivity";
   projectNumber: string | null;
   projectName: string;
   timesheetId: string;
@@ -144,6 +146,7 @@ export function selectProjectManagerRecipientsForDomain(
 }
 
 export function buildTimecardNotificationEmail(input: TimecardNotificationEmailInput) {
+  const productivity = input.source === "productivity";
   const projectLabel = [input.projectNumber, input.projectName]
     .filter(Boolean)
     .join(" · ")
@@ -163,15 +166,21 @@ export function buildTimecardNotificationEmail(input: TimecardNotificationEmailI
   const hoursLabel = Number.isInteger(totalHours) ? String(totalHours) : totalHours.toFixed(2);
   const creator = input.createdByName || "Not available";
   const employeeLabel = employees.length ? employees.join(", ") : "Not available";
-  const subject = `New Procore timecard — ${projectLabel}`;
+  const subject = `${productivity ? "Procore daily log labor" : "New Procore timecard"} — ${projectLabel}`;
+  const summary = productivity
+    ? `Labor hours were recorded in the daily productivity log for ${projectLabel}.`
+    : `A new timecard was created for ${projectLabel}.`;
+  const entriesLabel = productivity ? "Labor items" : "Employees";
   const textBody = [
-    `A new timecard was created for ${projectLabel}.`,
+    summary,
     "",
     `Work date: ${dateLabel}`,
     `Created by: ${creator}`,
-    `Employees: ${employeeLabel}`,
+    `${entriesLabel}: ${employeeLabel}`,
     `Entries: ${input.entries.length}`,
     `Total hours: ${hoursLabel}`,
+    ...(productivity ? ["Source: Daily Logs · Productivity (hourly labor only)",
+      "Snapshot at notification time; later edits do not send another daily email."] : []),
     "",
     `Open project: ${input.projectUrl}`,
   ].join("\n");
@@ -179,18 +188,19 @@ export function buildTimecardNotificationEmail(input: TimecardNotificationEmailI
     <div style="background:#f1f5f9;padding:24px;font-family:Arial,sans-serif;color:#0f172a">
       <div style="max-width:620px;margin:0 auto;background:#fff;border:1px solid #cbd5e1;border-radius:12px;overflow:hidden">
         <div style="background:#1e293b;padding:20px 24px;color:#fff">
-          <div style="font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#99f6e4">Procore Timecards</div>
-          <h1 style="font-size:22px;margin:8px 0 0">New timecard created</h1>
+          <div style="font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#99f6e4">${productivity ? "Procore Daily Logs" : "Procore Timecards"}</div>
+          <h1 style="font-size:22px;margin:8px 0 0">${productivity ? "Daily productivity labor recorded" : "New timecard created"}</h1>
         </div>
         <div style="padding:24px">
           <h2 style="font-size:18px;margin:0 0 18px">${escapeHtml(projectLabel)}</h2>
           <table role="presentation" style="width:100%;border-collapse:collapse;font-size:14px">
             <tr><td style="padding:8px 0;color:#64748b">Work date</td><td style="padding:8px 0;text-align:right;font-weight:700">${escapeHtml(dateLabel)}</td></tr>
             <tr><td style="padding:8px 0;color:#64748b">Created by</td><td style="padding:8px 0;text-align:right;font-weight:700">${escapeHtml(creator)}</td></tr>
-            <tr><td style="padding:8px 0;color:#64748b">Employees</td><td style="padding:8px 0;text-align:right;font-weight:700">${escapeHtml(employeeLabel)}</td></tr>
+            <tr><td style="padding:8px 0;color:#64748b">${entriesLabel}</td><td style="padding:8px 0;text-align:right;font-weight:700">${escapeHtml(employeeLabel)}</td></tr>
             <tr><td style="padding:8px 0;color:#64748b">Entries</td><td style="padding:8px 0;text-align:right;font-weight:700">${input.entries.length}</td></tr>
             <tr><td style="padding:8px 0;color:#64748b">Total hours</td><td style="padding:8px 0;text-align:right;font-weight:700">${escapeHtml(hoursLabel)}</td></tr>
           </table>
+          ${productivity ? '<p style="font-size:12px;color:#64748b">Daily Logs · Productivity (hourly labor only). Snapshot at notification time; later edits do not send another daily email.</p>' : ''}
           <a href="${escapeHtml(input.projectUrl)}" style="display:inline-block;margin-top:22px;background:#0f766e;color:#fff;text-decoration:none;font-weight:700;padding:11px 16px;border-radius:8px">Open Project in Procore</a>
         </div>
       </div>
@@ -201,6 +211,8 @@ export function buildTimecardNotificationEmail(input: TimecardNotificationEmailI
 }
 
 export function buildTimecardNotificationErrorEmail(input: TimecardNotificationErrorEmailInput) {
+  const kind = input.source === "productivity" ? "Daily productivity labor" : "Timecard";
+  const sourceLabel = input.source === "productivity" ? "Daily log group" : "Timesheet ID";
   const projectLabel = [input.projectNumber, input.projectName]
     .filter(Boolean)
     .join(" · ")
@@ -209,13 +221,13 @@ export function buildTimecardNotificationErrorEmail(input: TimecardNotificationE
     ? input.timecardDate.toLocaleDateString("en-US", { timeZone: "UTC", dateStyle: "long" })
     : "Date not available";
   const errorMessage = input.errorMessage.replace(/[\r\n]+/g, " ").slice(0, 1_000);
-  const subject = `[Analytics] Timecard email error — ${projectLabel}`;
+  const subject = `[Analytics] ${kind} email error — ${projectLabel}`;
   const textBody = [
-    "Analytics could not send a Procore timecard notification.",
+    `Analytics could not send a Procore ${kind.toLowerCase()} notification.`,
     "",
     `Project: ${projectLabel}`,
     `Work date: ${dateLabel}`,
-    `Timesheet ID: ${input.timesheetId}`,
+    `${sourceLabel}: ${input.timesheetId}`,
     `Delivery attempt: ${input.attemptNumber}`,
     `Error: ${errorMessage}`,
     "",
@@ -223,12 +235,12 @@ export function buildTimecardNotificationErrorEmail(input: TimecardNotificationE
   ].join("\n");
   const html = `
     <div style="font-family:Arial,sans-serif;color:#0f172a;line-height:1.5">
-      <h2>Timecard email delivery error</h2>
-      <p>Analytics could not send a Procore timecard notification.</p>
+      <h2>${kind} email delivery error</h2>
+      <p>Analytics could not send a Procore ${kind.toLowerCase()} notification.</p>
       <table role="presentation" style="border-collapse:collapse">
         <tr><td style="padding:4px 12px 4px 0;color:#64748b">Project</td><td>${escapeHtml(projectLabel)}</td></tr>
         <tr><td style="padding:4px 12px 4px 0;color:#64748b">Work date</td><td>${escapeHtml(dateLabel)}</td></tr>
-        <tr><td style="padding:4px 12px 4px 0;color:#64748b">Timesheet ID</td><td>${escapeHtml(input.timesheetId)}</td></tr>
+        <tr><td style="padding:4px 12px 4px 0;color:#64748b">${sourceLabel}</td><td>${escapeHtml(input.timesheetId)}</td></tr>
         <tr><td style="padding:4px 12px 4px 0;color:#64748b">Attempt</td><td>${input.attemptNumber}</td></tr>
         <tr><td style="padding:4px 12px 4px 0;color:#64748b">Error</td><td>${escapeHtml(errorMessage)}</td></tr>
       </table>

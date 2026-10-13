@@ -4,7 +4,7 @@ import test from "node:test";
 import ts from "typescript";
 import vm from "node:vm";
 
-function loadModule(prisma) {
+function loadModule(prisma, enqueue = async () => 0) {
   const source = fs.readFileSync("src/lib/procoreProductivity.ts", "utf8");
   const output = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
@@ -13,6 +13,7 @@ function loadModule(prisma) {
   const require = (id) => {
     if (id === "@/lib/prisma") return { prisma };
     if (id === "@prisma/client") return { Prisma: {} };
+    if (id === "@/lib/dailyLogTimeNotificationStore") return { enqueueDailyLogTimeNotifications: enqueue };
     throw new Error(`Unexpected import: ${id}`);
   };
   vm.runInNewContext(
@@ -80,7 +81,13 @@ test("skips unchanged productivity records during scheduled persistence", async 
     procoreProjectId: "project-1",
     procoreUpdatedAt: updatedAt,
   }]);
-  const { persistProductivityLogs } = loadModule(mock.prisma);
+  let notificationChecks = 0;
+  const { persistProductivityLogs } = loadModule(mock.prisma, async (logs, params) => {
+    assert.equal(logs.length, 1);
+    assert.equal(params.companyId, "company-1");
+    notificationChecks++;
+    return 1;
+  });
   const result = await persistProductivityLogs([{
     ...sampleLog,
     updated_at: updatedAt.toISOString(),
@@ -93,6 +100,8 @@ test("skips unchanged productivity records during scheduled persistence", async 
   assert.equal(result.saved, 0);
   assert.equal(result.skipped, 1);
   assert.equal(mock.getUpsertCount(), 0);
+  assert.equal(notificationChecks, 1);
+  assert.equal(result.notificationsQueued, 1);
   assert.deepEqual(mock.rawStatements, []);
 });
 

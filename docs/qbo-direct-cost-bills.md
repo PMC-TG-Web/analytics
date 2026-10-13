@@ -6,6 +6,10 @@ Timecards attributed to the generic Sub Contractor worker and productivity entri
 
 For historical corrections, `scripts/removeQboSubcontractorHours.mjs` defaults to a read-only preview. It requires the integration host path, an explicit reviewed source-ID export, and a private output directory. It matches successful posting evidence to live QBO line IDs, reduces only identified quantities at the live saved rate, and reduces the matching negative offset by the same rounded amount. It blocks changed quantities, linked bills, ambiguous offsets, and changed bill versions. Apply requires the exact preview fingerprint and uses the existing dedicated writer, monthly lock, and durable receipt workflow. Supplier invoices are never selected. Evidence and exports must stay untracked.
 
+## Vendor equipment exclusions
+
+Telebelts, pumps/pumping services and trailers are supplied by vendors and excluded from automatic direct-cost bill generation. Descriptions on daily logs or their resolved PO lines trigger the exclusion regardless of cost code, unit or cost type, including Labor. Employee timecards and Somero/company-equipment charges remain eligible. The shared loader applies the rule to previews, setup, exports, individual saves and monthly batches before pricing. Supplier bills carry the vendor cost. Deploying this rule does not post corrections to existing bills.
+
 ## Initial workflow
 
 New bill numbers use the Procore project name followed by a per-project sequence: `Evergreen Project 001`, `Evergreen Project 002`. Daily updates to the same monthly bill keep its number. Long names are shortened to fit QBO's 21-character limit. Existing posted PMCDC bills retain their original numbers. The new sequence starts at 001 independently for each project; unused old reservations are preserved as history.

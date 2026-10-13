@@ -81,7 +81,7 @@ test('resolves explicit aliases and blocks ambiguous, missing, duplicate, or neg
   ]) assert.ok(aggregateDirectCosts(logs, items, new Map()).issues.length);
 });
 
-test('omits the three code-specific pumping items and Telebelts at 03-300-40-30 before price validation', () => {
+test('omits vendor pumping equipment and retains the legacy code-specific Line Dragon rule', () => {
   for (const description of ['Line Dragon', 'Boom Pump Rental w/Operator', 'Telebelt (4 hr minimum)', ' Trailer Pump (Includes 3 hr)\u00a0', 'LINE  DRAGON']) {
     const result = aggregateDirectCosts([log('1', 2, { lineItemId: 'old' })], [{ ...item, description, costCode: '03-300-40-30', costType: 'Other', unitCost: 0, uom: null }], new Map([['old', '10']]));
     assert.equal(result.lines.length, 0);
@@ -111,6 +111,32 @@ test('Telebelts are manual-only across PO codes, cost types, aliases and labels 
     assert.deepEqual(result.issueSources, []);
   }
 });
+
+test('vendor Telebelts, pumps and trailers never enter bill quantities or pricing across codes and cost types', () => {
+  const descriptions = ['Boom Pump', 'Boom Pump Rental w/Operator', 'Concrete Pumping',
+    'CO6 - Trailer Pump (Includes 3 hr)', '#13 - PUMPS - 1 ea', 'Equipment Trailer Rental',
+    'Trailers', 'TB130 Tele-belt', 'Tele belt (4 hr minimum)'];
+  for (const description of descriptions) for (const costType of ['Materials', 'Labor', 'Equipment', 'Other', null]) {
+    const result = aggregateDirectCosts([log('1', 3, { lineItemId: 'old' })],
+      [{ ...item, description, costCode: '03-300-20-10', costType, unitCost: null,
+        uom: null, pricingIssue: 'No catalog rate' }], new Map([['old', '10']]));
+    assert.equal(result.lines.length, 0, `${description} / ${costType}`);
+    assert.equal(result.excluded.pumpingEquipment, 1);
+    assert.equal(result.laborHours, '0');
+    assert.deepEqual(result.issues, []);
+  }
+});
+
+test('vendor equipment daily labels are excluded even without PO resolution; other equipment remains eligible', () => {
+  for (const description of ['#4 - Telebelt (ea)', 'CO2 - Trailer rental', 'Boom Pump (ea)']) {
+    const result = aggregateDirectCosts([log('1', null, { lineItemDescription: description, lineItemId: null })], [], new Map());
+    assert.equal(result.excluded.pumpingEquipment, 1);
+    assert.deepEqual(result.lines, []); assert.deepEqual(result.issues, []);
+  }
+  for (const description of ['Somero S-15R (boom screed)', 'Somero Power Rake', 'Dump Truck', 'Bobcat 595 Skidloader']) {
+    assert.equal(aggregateDirectCosts([log('1', 2)], [{ ...item, description }], new Map()).lines.length, 1);
+  }
+});
 test('excludes change-order-prefixed pumping items while preserving other descriptions, codes and labor', () => {
   for (const description of ['CO6 - Trailer Pump (Includes 3 hr)', 'CO12 - Line Dragon', 'co 3 \u2013 Boom Pump Rental w/Operator', 'CO4\u2014Telebelt (4 hr minimum)']) {
     const result = aggregateDirectCosts([log('1', 2)], [{ ...item, description, costCode: '03-300-40-30', costType: 'Other', unitCost: 0, uom: null }], new Map());
@@ -120,10 +146,9 @@ test('excludes change-order-prefixed pumping items while preserving other descri
     assert.deepEqual(result.issues, []);
   }
   for (const overrides of [
-    { description: 'CO6 - Trailer Pump (Includes 3 hr) additional supplies' },
     { description: 'CO6 - Different equipment' },
-    { description: 'CO6 - Trailer Pump (Includes 3 hr)', costCode: '03-300-20-30' },
-    { description: 'CO6 - Trailer Pump (Includes 3 hr)', costType: 'Labor' },
+    { description: 'CO6 - Line Dragon', costCode: '03-300-20-30' },
+    { description: 'CO6 - Line Dragon', costType: 'Labor' },
   ]) {
     const result = aggregateDirectCosts([log('1', 2)], [{ ...item, costCode: '03-300-40-30', costType: 'Other', ...overrides }], new Map());
     assert.equal(result.lines.length, 1);
@@ -165,10 +190,10 @@ test('calendar-month bounds support year rollover and reject malformed input', (
 });
 
 test('errors identify items by name and specify only the missing cost or unit', () => {
-  const errors = overrides => aggregateDirectCosts([log('598134423749754', 2)], [{ ...item, description: 'Boom Pump', ...overrides }], new Map()).issues;
-  assert.deepEqual(errors({ unitCost: 0 }), ['Boom Pump needs a positive unit cost. SOG; daily log 2026-09-10.']);
-  assert.deepEqual(errors({ uom: null }), ['Boom Pump needs a unit of measure. SOG; daily log 2026-09-10.']);
-  assert.deepEqual(errors({ unitCost: null, uom: ' ' }), ['Boom Pump needs a positive unit cost and a unit of measure. SOG; daily log 2026-09-10.']);
+  const errors = overrides => aggregateDirectCosts([log('598134423749754', 2)], [{ ...item, description: 'Generator', ...overrides }], new Map()).issues;
+  assert.deepEqual(errors({ unitCost: 0 }), ['Generator needs a positive unit cost. SOG; daily log 2026-09-10.']);
+  assert.deepEqual(errors({ uom: null }), ['Generator needs a unit of measure. SOG; daily log 2026-09-10.']);
+  assert.deepEqual(errors({ unitCost: null, uom: ' ' }), ['Generator needs a positive unit cost and a unit of measure. SOG; daily log 2026-09-10.']);
   assert.deepEqual(errors({ description: null, unitCost: 0 }), ['Concrete needs a positive unit cost. SOG; daily log 2026-09-10.']);
   const missing = aggregateDirectCosts([log('598134423749754', 2)], [], new Map()).issues[0];
   assert.match(missing, /^Concrete \(SOG; daily log 2026-09-10\)/);
@@ -176,12 +201,12 @@ test('errors identify items by name and specify only the missing cost or unit', 
 });
 
 test('errors retain PO references and each affected daily-log date, including aliased cost sources', () => {
-  const entries = [log('1', 2, { lineItemId: 'old', lineItemHolderNumber: 'PO-17', lineItemHolderTitle: 'Pump rental' }), log('2', 3, { lineItemId: 'old', lineItemHolderNumber: 'PO-17', lineItemHolderTitle: 'Pump rental', date: new Date('2026-09-11T00:00:00Z') })];
-  const result = aggregateDirectCosts(entries, [{ ...item, description: 'Boom Pump', unitCost: 0, procorePurchaseOrderContractId: '12345', purchaseOrderContract: { number: 'PO-22', title: 'Equipment' } }], new Map([['old', '10']]));
+  const entries = [log('1', 2, { lineItemId: 'old', lineItemHolderNumber: 'PO-17', lineItemHolderTitle: 'Generator rental' }), log('2', 3, { lineItemId: 'old', lineItemHolderNumber: 'PO-17', lineItemHolderTitle: 'Generator rental', date: new Date('2026-09-11T00:00:00Z') })];
+  const result = aggregateDirectCosts(entries, [{ ...item, description: 'Generator', unitCost: 0, procorePurchaseOrderContractId: '12345', purchaseOrderContract: { number: 'PO-22', title: 'Equipment' } }], new Map([['old', '10']]));
   assert.equal(result.issues.length, 2);
   assert.ok(result.issueSources.every(source => source.target === 'purchaseOrder'));
   for (const issue of result.issues) {
-    assert.match(issue, /PO-17 — Pump rental/);
+    assert.match(issue, /PO-17 — Generator rental/);
     assert.match(issue, /Cost source: PO-22 — Equipment/);
   }
   assert.match(result.issues[0], /daily log 2026-09-10/);

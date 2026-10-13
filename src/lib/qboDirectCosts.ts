@@ -1,7 +1,7 @@
 import type { PurchasePriceEvidence } from './qboCatalogMapping';
 import type { ProjectPriceEvidence } from './qboBillLineRules';
 import { Prisma } from '@prisma/client';
-import { isShopDrawingCost } from './qboDirectCostExclusions.js';
+import { isShopDrawingCost, isVendorPumpingOrTrailer } from './qboDirectCostExclusions.js';
 import { isSubcontractorProductivity } from './qboSubcontractorExclusions.js';
 import type { CatalogPriceEvidence } from './qboCostCatalog';
 import type { projectManagementPrice } from './qboProjectManagementRate.js';
@@ -14,11 +14,6 @@ export const EXCLUDED_CONCRETE_COST_CODES = new Set([
   '03-300-20-20', // Slab On Grade Concrete
   '03-300-30-20', // Site Concrete
   '05-100-10-20', // Concrete Set And Fill Bollards
-]);
-const EXCLUDED_PUMPING_ITEMS = new Set([
-  'line dragon',
-  'boom pump rental w/operator',
-  'trailer pump (includes 3 hr)',
 ]);
 function isExcludedConcrete(item: DirectCostItem, sourceName: string) {
   const labor = /^(labor|l)$/i.test(item.costType?.trim() || '');
@@ -37,12 +32,11 @@ function normalizedEquipmentName(item: DirectCostItem, sourceName: string) {
 }
 function isExcludedPumpingItem(item: DirectCostItem, sourceName: string) {
   const name = normalizedEquipmentName(item, sourceName);
-  // Telebelts are entered manually regardless of the legacy PO code/type used.
-  // This applies only to PO/productivity sources; employee timecards are loaded separately.
-  if (/\btelebelts?\b/.test(name)) return true;
+  // Vendor equipment can be mislabeled as Labor or use another cost code.
+  if (isVendorPumpingOrTrailer(item.description) || isVendorPumpingOrTrailer(sourceName)) return true;
   return item.costCode?.trim() === '03-300-40-30'
     && !/^(labor|l)$/i.test(item.costType?.trim() || '')
-    && EXCLUDED_PUMPING_ITEMS.has(name);
+    && name === 'line dragon';
 }
 function isExcludedBoomLiftRental(item: DirectCostItem, sourceName: string) {
   return !/^(labor|l)$/i.test(item.costType?.trim() || '')
@@ -111,6 +105,7 @@ export function aggregateDirectCosts(logs: DirectCostSource[], items: DirectCost
     if (/billing file/i.test(log.lineItemHolderTitle || '')) { excluded.billingFile++; continue; }
     if (log.status?.toLowerCase() !== 'approved') { excluded.unapproved++; continue; }
     if (isSubcontractorProductivity(log.lineItemDescription)) { excluded.subcontractor++; continue; }
+    if (isVendorPumpingOrTrailer(log.lineItemDescription)) { excluded.pumpingEquipment++; continue; }
     if (log.quantityUsed === null || !Number.isFinite(log.quantityUsed)) { addIssue(`${sourceLabel}: no valid quantity used.`, log); continue; }
     if (log.quantityUsed === 0) { excluded.zeroUsage++; continue; }
     if (log.quantityUsed < 0) { addIssue(`${sourceLabel}: negative quantity requires review.`, log); continue; }

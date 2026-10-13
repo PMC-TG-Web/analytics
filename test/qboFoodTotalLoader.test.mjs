@@ -54,6 +54,17 @@ test('shared monthly draft omits boom lift rental from bill lines and catalog se
  assert.equal(d.labor.totalHours,'2'); assert.equal(d.issues.length,0);
 });
 
+test('monthly bill and setup draft exclude vendor pumps and trailers but retain employee timecards',async()=>{
+ const cards=[{procoreId:'100',date,hours:2,totalHoursWorked:null,costCodeFullCode:'03-300-20-10.L',costCodeName:'Pump operator employee',partyName:'Employee',updatedAt:date}];
+ const items=['Boom Pump','Boom Pump Rental w/Operator','Trailer Rental','Telebelt'].map((description,i)=>({procoreId:String(12+i),description,costCode:'03-300-20-10',costType:'Labor',uom:'hr',updatedAt:date}));
+ const logs=items.map((item,i)=>({id:String(3+i),procoreId:String(3+i),lineItemId:item.procoreId,lineItemDescription:item.description,quantityUsed:8,status:'approved',date,updatedAt:date}));
+ const draft=await load(null,[],cards,'Food',{items,logs});
+ assert.equal(draft.total,'107.00'); assert.equal(draft.excluded.pumpingEquipment,4);
+ assert.equal(draft.lines.filter(line=>items.some(item=>item.procoreId===line.lineKey)).length,0);
+ assert.equal(draft.catalogMappingItems.filter(line=>items.some(item=>item.procoreId===line.lineItemId)).length,0);
+ assert.equal(draft.labor.totalHours,'2'); assert.equal(draft.issues.length,0);
+});
+
 test('Food entries are optional even with daily logs; zero omits Food without removing other materials',async()=>{
  const missing=await load(null);assert.equal(missing.issues.length,0);assert.equal(missing.lines.some(l=>l.sourceType==='manual_food'),false);assert.equal(missing.total,'7.00');
  const zero=await load({amount:new Prisma.Decimal(0),revision:1,updatedBy:'operator',updatedAt:date}); assert.equal(zero.total,'7.00');assert.equal(zero.issues.length,0);assert.equal(zero.lines.length,1);

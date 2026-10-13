@@ -1,4 +1,6 @@
 export const PATH_PERMISSION_RULES = [
+  { prefix: '/help/billing-analytics', permission: 'analytics' },
+  { prefix: '/accounting/billing-analytics', permission: 'analytics' },
   { prefix: '/wip', permission: 'wip' },
   { prefix: '/help/wip', permission: 'wip' },
   { prefix: '/auth0-test', permission: 'diagnostics' },
@@ -76,6 +78,7 @@ export const PATH_PERMISSION_RULES = [
 ];
 
 const API_PERMISSION_RULES = [
+  { prefix: '/api/accounting/billing-analytics', permission: 'analytics' },
   { prefix: '/api/wip', permission: 'wip' },
   { prefix: '/api/analytics/commitment-productivity/reviews', permission: 'analytics' },
   { prefix: '/api/admin', permission: 'admin' },

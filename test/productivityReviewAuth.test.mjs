@@ -54,6 +54,7 @@ function harness({ auth0Email = null, databaseAllowed = true } = {}) {
     },
     '@/lib/procoreLiveApiRoutes': { isProcoreLiveApiRoutePath: () => false },
     '@/lib/commitmentMakerAccess': {},
+    '@/lib/billingAnalyticsAccess': load('src/lib/billingAnalyticsAccess.ts'),
   };
   const { middleware } = load('middleware.ts', imports, {
     fetch: async (url, options) => {

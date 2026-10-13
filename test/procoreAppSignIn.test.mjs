@@ -8,6 +8,7 @@ import * as csrf from '../src/lib/csrfProtection.ts';
 import * as routes from '../src/lib/permissionRoutes.js';
 import * as logout from '../src/lib/localLogoutCookies.ts';
 import { safeAppReturnTo } from '../src/lib/appSignInPolicy.ts';
+import * as billingAnalyticsAccess from '../src/lib/billingAnalyticsAccess.ts';
 
 function load(file, imports, globals = {}) {
   const code = ts.transpileModule(fs.readFileSync(file, 'utf8'), {
@@ -45,6 +46,7 @@ function harness({ enabled = true, emailEnabled = true, auth0Email = null, sessi
     '@/lib/diagnosticsGate': { matchesDiagnosticsOrTestRoute: () => false, shouldBlockDiagnosticsInProduction: () => true },
     '@/lib/procoreLiveApiRoutes': { isProcoreLiveApiRoutePath: () => false },
     '@/lib/commitmentMakerAccess': {},
+    '@/lib/billingAnalyticsAccess': billingAnalyticsAccess,
   };
   const middleware = load('middleware.ts', imports, {
     fetch: async (url, options) => {

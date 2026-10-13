@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server.js';
 import * as permissionRoutes from '../src/lib/permissionRoutes.js';
 import * as csrf from '../src/lib/csrfProtection.ts';
 import * as developerIdentity from '../src/lib/developerIdentity.ts';
+import * as billingAnalyticsAccess from '../src/lib/billingAnalyticsAccess.ts';
 
 function harness({ signedIn = true, environment = 'production', host = 'localhost:3000' } = {}) {
   const checks = [];
@@ -32,6 +33,7 @@ function harness({ signedIn = true, environment = 'production', host = 'localhos
     },
     '@/lib/procoreLiveApiRoutes': { isProcoreLiveApiRoutePath: () => false },
     '@/lib/commitmentMakerAccess': {},
+    '@/lib/billingAnalyticsAccess': billingAnalyticsAccess,
   };
   const code = ts.transpileModule(fs.readFileSync('middleware.ts', 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },

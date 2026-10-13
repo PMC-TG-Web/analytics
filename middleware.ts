@@ -1,5 +1,6 @@
 import { getDeveloperEmail, isLocalDeveloperRequest } from '@/lib/developerIdentity';
 import { NextRequest, NextResponse } from 'next/server';
+import { canAccessBillingAnalytics, isBillingAnalyticsPath } from '@/lib/billingAnalyticsAccess';
 import { auth0 } from '@/lib/auth0';
 import { APP_SESSION_COOKIE, emailSignInEnabled, procoreSignInEnabled, safeAppReturnTo } from '@/lib/appSignInPolicy';
 import { resolvePermissionForPath } from '@/lib/permissionRoutes';
@@ -311,7 +312,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // In dev mode without Auth0 config, bypass all middleware
-  if (isDev && auth0Misconfigured && !procoreSignInEnabled()) {
+  if (isDev && auth0Misconfigured && !procoreSignInEnabled() && !isBillingAnalyticsPath(pathname)) {
     return NextResponse.next();
   }
 
@@ -585,6 +586,11 @@ export async function middleware(request: NextRequest) {
     }
   }
   const session = developerEmail ? { user: { email: developerEmail } } : hasAppSession ? appSession : emailSignInEnabled() ? await auth0.getSession(request) : null;
+  // Resolve the ordinary (including renewable Procore) session before the private pilot gate.
+  if (isBillingAnalyticsPath(pathname) && session && !canAccessBillingAnalytics(session.user?.email)) {
+    if (isApiRoute) return NextResponse.json({ error: 'Forbidden' }, { status: 403, headers: { 'Cache-Control': 'private, no-store' } });
+    return NextResponse.redirect(new URL('/forbidden', request.url));
+  }
   const signedInResponse = async () => {
     // Auth0's middleware must run on ordinary authenticated requests to roll fallback sessions.
     const response = hasAppSession || developerEmail

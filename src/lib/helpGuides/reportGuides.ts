@@ -1,6 +1,18 @@
 import { defineGuide } from './defineGuide.ts';
 
 export const reportGuides = [
+  defineGuide('billing-analytics', {
+    purpose: 'Prepare subcontractor hour totals for billing review. Access to the report is currently limited to Todd, Shelly, and Dave. Viewing or exporting this report does not create an invoice or change source records.',
+    steps: [
+      { title: 'Choose the period', body: 'Set From month and Through month, up to 24 months. The default is January through the current month.' },
+      { title: 'Find the work', body: 'Select a project or search by project name, number, or cost code. The cards and table totals reflect the filters.' },
+      { title: 'Review and export', body: 'Expand a project row to check dates, sources, hours, and status. Export CSV downloads the filtered monthly cost-code totals.' },
+    ],
+    data: ['Timesheets include the worker named Sub Contractor. Productivity includes approved Subcontractor Hours quantities, including the existing legacy lump-sum line.', 'The report reads saved synchronized data. Reload report checks those saved records; it does not trigger a Procore synchronization. Deleted entries and Billing File productivity logs are excluded.'],
+    terms: [['Timesheet hours', 'Recorded hours for the Sub Contractor worker, grouped by work month and cost code.'], ['Productivity hours', 'Approved quantities on Subcontractor Hours lines. General subcontractor purchases and equipment quantities are excluded.'], ['Combined hours', 'Timesheet hours plus productivity hours. Both sources remain visible so you can review the underlying activity.'], ['Unassigned', 'Hours with no unique cost code. Resolve the coding before relying on that row for billing.']],
+    example: 'A project with 20 timesheet hours and 5 approved productivity hours for the same month and code shows 25 combined hours. Expand that row to review both sources.',
+    checks: ['Check the project, month, code, and source entries before using the totals. Warnings identify excluded entries or missing coding.', 'An empty result means no matching saved entries for those filters. Verify the range and project, then check the original timesheet or productivity record if hours are missing.'],
+  }),
   defineGuide('kpi', {
     purpose: 'Review monthly business performance against goals. Selling work, earning revenue, using labor, and producing profit are separate measures; read the row labels before comparing them.',
     steps: [{ title: 'Choose the year', body: 'Read each table heading. Sales by Month resolves All Years to the current year rather than combining every year.' }, { title: 'Compare actuals with goals', body: 'Compare the same measure and month. Use available project popups to inspect supporting records.' }, { title: 'Check the source', body: 'Saved KPI card values are maintained on Manage. Calculated rows use their reporting sources and can update on a different schedule.' }],

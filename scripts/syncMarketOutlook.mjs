@@ -14,7 +14,9 @@ if (args.includes('--apply')) {
   const { fetchMarketFeeds } = await import('../src/lib/marketFeeds.ts');
   const { fetchMarketJson } = await import('../src/lib/marketFeeds.ts');
   const { fetchLancaster } = await import('../src/lib/marketLancaster.ts');
-  const [results, local] = await Promise.all([fetchMarketFeeds(), fetchLancaster(url => fetchMarketJson(url, {}))]);
+  const { fetchManheim } = await import('../src/lib/marketManheim.ts');
+  const [results, local, manheim] = await Promise.all([fetchMarketFeeds(), fetchLancaster(url => fetchMarketJson(url, {})), fetchManheim(url => fetchMarketJson(url, {}))]);
   console.log(JSON.stringify(results.map(({ id, status, message, points }) => ({ id, status, message, observations: points.length, latest: points.at(-1) ?? null })), null, 2));
   console.log(JSON.stringify({ local: { status: local.status, message: local.message, projects: local.data?.projects.length ?? 0, sourceUpdatedAt: local.data?.sourceUpdatedAt ?? null } }));
+  console.log(JSON.stringify({ manheim: { status: manheim.status, message: manheim.message, projects: manheim.data?.projects.length ?? 0, sourceUpdatedAt: manheim.data?.sourceUpdatedAt ?? null } }));
 }

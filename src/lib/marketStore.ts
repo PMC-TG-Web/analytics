@@ -1,6 +1,7 @@
 import { PrismaClient, type Prisma } from '@prisma/client';
 import { marketSeries, normalizeMarketPoints, type MarketFeedResult, type MarketPoint, type SavedMarketSeries } from './marketSeries.ts';
 import { lancasterId, type LancasterData, type LancasterFeedResult, type SavedLancaster } from './marketLancaster.ts';
+import { manheimId, type ManheimData, type ManheimFeedResult, type SavedManheim } from './marketManheim.ts';
 
 // Optional isolated local preview database. Production normally uses the application database.
 const globalMarket = globalThis as unknown as { marketPrisma?: PrismaClient };
@@ -38,13 +39,23 @@ export async function readLancasterSnapshot(db?: PrismaClient): Promise<SavedLan
 }
 
 export async function saveLancasterResult(tx: Prisma.TransactionClient, result: LancasterFeedResult) {
-  if (result.status === 'ok' && !result.data) throw new Error('Successful county feed requires data');
-  const previous = await tx.marketLocalSnapshot.findUnique({ where: { id: lancasterId } });
-  const data = { status: result.status, message: result.message, checkedAt: new Date(result.checkedAt), lastSuccessAt: result.status === 'ok' ? new Date(result.checkedAt) : previous?.lastSuccessAt ?? null, ...(result.status === 'ok' ? { data: result.data as unknown as Prisma.InputJsonValue } : {}) };
-  await tx.marketLocalSnapshot.upsert({ where: { id: lancasterId }, create: { id: lancasterId, ...data }, update: data });
+  return saveLocalResult(tx, lancasterId, result);
 }
 
-export async function saveMarketResults(results: MarketFeedResult[], db?: PrismaClient, leaseToken?: string, local?: LancasterFeedResult) {
+export async function readManheimSnapshot(db?: PrismaClient): Promise<SavedManheim | null> {
+  db ??= await marketDatabase();
+  const row = await db.marketLocalSnapshot.findUnique({ where: { id: manheimId } });
+  return row ? { status: row.status as SavedManheim['status'], message: row.message, data: row.data as ManheimData | null, checkedAt: row.checkedAt.toISOString(), lastSuccessAt: row.lastSuccessAt?.toISOString() ?? null } : null;
+}
+
+export async function saveLocalResult(tx: Prisma.TransactionClient, id: typeof lancasterId | typeof manheimId, result: LancasterFeedResult | ManheimFeedResult) {
+  if (result.status === 'ok' && !result.data) throw new Error('Successful county feed requires data');
+  const previous = await tx.marketLocalSnapshot.findUnique({ where: { id } });
+  const data = { status: result.status, message: result.message, checkedAt: new Date(result.checkedAt), lastSuccessAt: result.status === 'ok' ? new Date(result.checkedAt) : previous?.lastSuccessAt ?? null, ...(result.status === 'ok' ? { data: result.data as unknown as Prisma.InputJsonValue } : {}) };
+  await tx.marketLocalSnapshot.upsert({ where: { id }, create: { id, ...data }, update: data });
+}
+
+export async function saveMarketResults(results: MarketFeedResult[], db?: PrismaClient, leaseToken?: string, local?: LancasterFeedResult, manheim?: ManheimFeedResult) {
   db ??= await marketDatabase();
   await db.$transaction(async tx => {
     if (leaseToken) {
@@ -60,5 +71,6 @@ export async function saveMarketResults(results: MarketFeedResult[], db?: Prisma
       await tx.marketSeriesSnapshot.upsert({ where: { id: result.id }, create: { id: result.id, ...data }, update: data });
     }
     if (local) await saveLancasterResult(tx, local);
+    if (manheim) await saveLocalResult(tx, manheimId, manheim);
   }, { timeout: 15_000 });
 }

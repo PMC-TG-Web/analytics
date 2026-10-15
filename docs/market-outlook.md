@@ -71,6 +71,14 @@ This is a rolling meeting list, not a complete inventory of county development, 
 
 Validate with `node --test test/marketLancaster.test.mjs` plus the existing market tests, `npx tsc --noEmit`, and desktop/mobile filter checks. The CLI dry run reports local status/counts alongside indicator results; the live worker adds a `local` summary without changing existing indicator result entries.
 
+## Commercial / industrial / multifamily focus and Manheim Township
+
+The default local view highlights commercial, industrial, institutional and apartment/multifamily building scope using `marketProjectFocus.ts`. Suggested categories are heuristics from published use, project title and description, not official zoning classifications or confirmed masonry scope. Single-family homes, residential garages, townhomes without explicit multifamily/apartment scope, lot changes and site-work-only plans are hidden by default. Mixed residential/business building work remains eligible. All records stay available using the scope selector; county-source residential labels alone do not establish apartment construction.
+
+`marketManheim.ts` fetches both layers of Manheim Township's public `Plan_Development_Map` FeatureServer, linked from its official Planning & Zoning page. It validates exact layer identities, required fields, status-domain meanings, counts, transfer limits, dates and source drawing links. Project identity is layer ID plus OBJECTID, never name/address; records across county and township sources are not merged or summed as unique projects. Explicit PlanStatus values UR/A/UC map to Under review/Approved/Under construction. The active layer's title does not imply construction, Final Plan does not imply approval, and DatePosted is a listing date rather than an approval or permit date. A date incorrectly entered by the publisher in DevelopmentType is displayed as unspecified; the description still supports the suggested category. Drawing links are limited to HTTPS township DocumentCenter URLs.
+
+The existing market worker saves `manheim-township-development` in `MarketLocalSnapshot` with the same lease fence, replacement-on-success and retention-on-failure behavior. Both township layers must validate before replacing its snapshot; individual feed failures remain visible. This requires no migration or key. The older of the two layer update timestamps drives the 60-day source-age warning; successful checks expire after 48 hours. Ordinary page loads read PostgreSQL only. Manheim's focused view defaults to reported approvals/construction, with filters for all stages and all projects. Issued building permits are still outside coverage. Validate `test/marketProjectFocus.test.mjs`, `test/marketManheim.test.mjs`, existing market tests, type check, and browser scope/status/search checks.
+
 ## Validation and release
 
 ```text

@@ -44,7 +44,7 @@ The local preview has been populated by explicit CLI syncs. The production Netli
 - Current means the last successful check is within 48 hours and the observation is within the series-specific release-age threshold. A failed check retains saved values but removes directional signals until recovery.
 - BLS PPI is an index, not delivered local prices. Steel mill PPI is a broad proxy. PA unemployment covers all industries. Weekly earnings reflect pay and hours worked. Nonresidential spending is nominal and annualized. Lending standards cover large/middle-market commercial and industrial loans, not commercial real-estate lending.
 - Geography is explicit. The current connectors do not claim metro-level or local commercial-permit coverage.
-- AIA, Dodge, ABC, sector forecasts and local permits remain outside automatic ingestion. Their old curated values are historical context only and excluded from the live readout.
+- AIA, Dodge, ABC, sector forecasts and local permits remain outside automatic ingestion. The page lists these coverage gaps without displaying the earlier curated snapshot or sector forecasts.
 
 ## Validation and release
 

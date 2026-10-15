@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { MARKET_OUTLOOK_UPDATED_AT, marketIndicators, sectorOutlook } from '@/lib/marketOutlook';
+import { marketIndicators } from '@/lib/marketOutlook';
 import { marketSeries, marketChanges, marketFreshness, marketSignal, formatMarketValue, type MarketSeries, type SavedMarketSeries } from '@/lib/marketSeries';
 import { loadMarketOutlook } from '@/lib/loadMarketOutlook';
 import styles from './market-outlook.module.css';
@@ -21,7 +21,6 @@ export default async function MarketOutlookPage() {
   const byId = new Map(snapshots.map(snapshot => [snapshot.id, snapshot]));
   const current = marketSeries.filter(series => marketFreshness(series, byId.get(series.id), now) === 'Current');
   const successful = snapshots.map(snapshot => snapshot.lastSuccessAt).filter((value): value is string => Boolean(value)).sort().at(-1);
-  const archived = marketIndicators.filter(indicator => !marketSeries.some(series => series.card === indicator.name));
   const comparable = current.filter(series => marketChanges(byId.get(series.id)!.points, series.frequency).annualChange !== null);
   const costs = comparable.filter(series => series.kind === 'cost');
   const risingCosts = costs.filter(series => marketSignal(series, byId.get(series.id), now) === 'weak');
@@ -44,7 +43,7 @@ export default async function MarketOutlookPage() {
           <p>{costs.length ? risingCosts.length + ' of ' + costs.length + ' current cost indicators are more than 1% above a year earlier.' : 'Current cost comparisons are not yet available.'} {demand.length ? growingDemand.length + ' of ' + demand.length + ' current demand indicators are more than 1% above a year earlier.' : 'Current demand comparisons are not yet available.'}</p>
           <p>These counts describe the connected series; they are not a forecast or a weighted market index. Missing or overdue feeds are excluded.</p>
         </div>
-        <div className={styles.actionBox}><span>LOCAL DECISIONS</span><strong>Use Pennsylvania evidence alongside national benchmarks.</strong><p>Local commercial permits, architecture activity, and contractor backlog still need separate coverage. No current sector recommendation is inferred from the archived commentary.</p></div>
+        <div className={styles.actionBox}><span>LOCAL DECISIONS</span><strong>Use Pennsylvania evidence alongside national benchmarks.</strong><p>Local commercial permits, architecture activity, and contractor backlog still need separate coverage.</p></div>
       </section>
       <div className={styles.sectionHeading}><div><p className={styles.kicker}>PUBLIC DATA</p><h2>Latest published observations</h2></div></div>
       {(['Material costs', 'Labor', 'Current market', 'Financing'] as const).map(group => (
@@ -58,14 +57,6 @@ export default async function MarketOutlookPage() {
         <div><p className={styles.kicker}>COVERAGE STILL TO CONNECT</p><h2>Planning and local pipeline</h2></div>
         <div><p>AIA architecture billings, inquiries, design contracts and sector forecasts; Dodge planning and starts; ABC backlog and confidence; local commercial permits.</p><p>Census Building Permits Survey covers residential construction. It is not a measure of local commercial project starts. <a href="https://www.census.gov/construction/bps/" target="_blank" rel="noreferrer">Source coverage ↗</a></p></div>
       </section>
-      <details className={styles.archive}>
-        <summary>Earlier curated snapshot · {MARKET_OUTLOOK_UPDATED_AT} · not automatically refreshed</summary>
-        <p>Historical context only. These values and forecasts are excluded from the current readout.</p>
-        <div className={styles.grid}>{archived.map(indicator => <article className={styles.card} key={indicator.name}><header><span className={styles.badge + ' ' + styles.watch}>Archived</span><span>{indicator.period}</span></header><h4>{indicator.name}</h4><div className={styles.value}>{indicator.value}</div><p className={styles.note}>{indicator.note}</p><footer><span>{indicator.geography}</span><a href={indicator.sourceUrl} target="_blank" rel="noreferrer">{indicator.source} ↗</a></footer></article>)}</div>
-        <h3>Earlier sector forecast</h3>
-        <div className={styles.sectorGrid}>{sectorOutlook.map(sector => <article className={styles.sectorCard} key={sector.name}><strong>{sector.name}</strong><dl><dt>2026</dt><dd>{sector.value2026}</dd><dt>2027</dt><dd>{sector.value2027}</dd></dl><p>{sector.note}</p></article>)}</div>
-        <p><a href="https://www.aia.org/resource-center/july-2026-consensus-construction-forecast" target="_blank" rel="noreferrer">Original AIA forecast ↗</a></p>
-      </details>
       <p className={styles.disclaimer}>Published observations may be revised. Market indicators support planning and do not guarantee future construction volume.</p>
     </main>
   );

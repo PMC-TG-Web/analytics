@@ -4,6 +4,7 @@ import { loadMarketOutlook } from '@/lib/loadMarketOutlook';
 import styles from './market-outlook.module.css';
 import LancasterPlans from './LancasterPlans';
 import ManheimPlans from './ManheimPlans';
+import MunicipalCoverage from './MunicipalCoverage';
 
 export const metadata: Metadata = { title: 'Market Outlook | Analytics' };
 export const dynamic = 'force-dynamic';
@@ -17,7 +18,7 @@ function periodLabel(period: string, frequency: MarketSeries['frequency']) {
 const signed = (value: number) => (value > 0 ? '+' : '') + value.toFixed(1);
 
 export default async function MarketOutlookPage() {
-  const { snapshots, error, local, localError, manheim, manheimError } = await loadMarketOutlook();
+  const { snapshots, error, local, localError, manheim, manheimError, municipal, municipalError } = await loadMarketOutlook();
   const now = new Date();
   const byId = new Map(snapshots.map(snapshot => [snapshot.id, snapshot]));
   const current = marketSeries.filter(series => marketFreshness(series, byId.get(series.id), now) === 'Current');
@@ -44,8 +45,9 @@ export default async function MarketOutlookPage() {
           <p>{costs.length ? risingCosts.length + ' of ' + costs.length + ' current cost indicators are more than 1% above a year earlier.' : 'Current cost comparisons are not yet available.'} {demand.length ? growingDemand.length + ' of ' + demand.length + ' current demand indicators are more than 1% above a year earlier.' : 'Current demand comparisons are not yet available.'}</p>
           <p>These counts describe the connected series; they are not a forecast or a weighted market index. Missing or overdue feeds are excluded.</p>
         </div>
-        <div className={styles.actionBox}><span>LOCAL DECISIONS</span><strong>Follow commercial, industrial and multifamily projects.</strong><p>Start with township-reported approvals, then look at county submissions for earlier leads. Confirm building scope, permits and timing in the source plans.</p></div>
+        <div className={styles.actionBox}><span>LOCAL DECISIONS</span><strong>Follow commercial, industrial and multifamily projects.</strong><p>Compare city and township records with countywide submissions. Confirm building scope, decisions, permits and timing in the source plans.</p></div>
       </section>
+      <MunicipalCoverage saved={municipal} error={municipalError} now={now.toISOString()} />
       <ManheimPlans saved={manheim} error={manheimError} now={now.toISOString()} />
       <LancasterPlans saved={local} error={localError} now={now.toISOString()} />
       <div className={styles.sectionHeading}><div><p className={styles.kicker}>PUBLIC DATA</p><h2>Latest published observations</h2></div></div>

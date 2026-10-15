@@ -12,11 +12,13 @@ if (args.includes('--apply')) {
   finally { await (await marketDatabase()).$disconnect(); }
 } else {
   const { fetchMarketFeeds } = await import('../src/lib/marketFeeds.ts');
-  const { fetchMarketJson } = await import('../src/lib/marketFeeds.ts');
+  const { fetchMarketJson, fetchMarketText } = await import('../src/lib/marketFeeds.ts');
   const { fetchLancaster } = await import('../src/lib/marketLancaster.ts');
   const { fetchManheim } = await import('../src/lib/marketManheim.ts');
-  const [results, local, manheim] = await Promise.all([fetchMarketFeeds(), fetchLancaster(url => fetchMarketJson(url, {})), fetchManheim(url => fetchMarketJson(url, {}))]);
+  const { fetchMunicipalFeeds } = await import('../src/lib/marketMunicipal.ts');
+  const [results, local, manheim, municipal] = await Promise.all([fetchMarketFeeds(), fetchLancaster(url => fetchMarketJson(url, {})), fetchManheim(url => fetchMarketJson(url, {})), fetchMunicipalFeeds(url => fetchMarketJson(url, {}), fetchMarketText)]);
   console.log(JSON.stringify(results.map(({ id, status, message, points }) => ({ id, status, message, observations: points.length, latest: points.at(-1) ?? null })), null, 2));
   console.log(JSON.stringify({ local: { status: local.status, message: local.message, projects: local.data?.projects.length ?? 0, sourceUpdatedAt: local.data?.sourceUpdatedAt ?? null } }));
   console.log(JSON.stringify({ manheim: { status: manheim.status, message: manheim.message, projects: manheim.data?.projects.length ?? 0, sourceUpdatedAt: manheim.data?.sourceUpdatedAt ?? null } }));
+  console.log(JSON.stringify({ municipal: municipal.map(result => ({ id: result.id, status: result.status, message: result.message, documents: result.data?.documents.length ?? 0, plans: result.data?.plans.length ?? 0, latestRecordAt: result.data?.latestRecordAt ?? null })) }));
 }

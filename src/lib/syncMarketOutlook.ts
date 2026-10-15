@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { fetchMarketFeeds, fetchMarketJson } from './marketFeeds.ts';
+import { fetchMarketFeeds, fetchMarketJson, fetchMarketText } from './marketFeeds.ts';
 import { fetchLancaster } from './marketLancaster.ts';
 import { fetchManheim } from './marketManheim.ts';
+import { fetchMunicipalFeeds } from './marketMunicipal.ts';
 import { marketDatabase, saveMarketResults } from './marketStore.ts';
 
 export async function syncMarketOutlook(options: { force?: boolean } = {}) {
@@ -13,9 +14,9 @@ export async function syncMarketOutlook(options: { force?: boolean } = {}) {
   if (!claim.count) return { ok: true, busy: true, results: [] };
   try {
     const request = (url: string) => fetchMarketJson(url, {});
-    const [results, local, manheim] = await Promise.all([fetchMarketFeeds({ now }), fetchLancaster(request, now), fetchManheim(request, now)]);
-    await saveMarketResults(results, db, token, local, manheim);
-    return { ok: results.every(result => result.status === 'ok') && local.status === 'ok' && manheim.status === 'ok', busy: false, results: results.map(({ id, status, message, points }) => ({ id, status, message, observations: points.length, latestPeriod: points.at(-1)?.period ?? null })), local: { status: local.status, message: local.message, projects: local.data?.projects.length ?? 0 }, manheim: { status: manheim.status, message: manheim.message, projects: manheim.data?.projects.length ?? 0 } };
+    const [results, local, manheim, municipal] = await Promise.all([fetchMarketFeeds({ now }), fetchLancaster(request, now), fetchManheim(request, now), fetchMunicipalFeeds(request, fetchMarketText, now)]);
+    await saveMarketResults(results, db, token, local, manheim, municipal);
+    return { ok: results.every(result => result.status === 'ok') && local.status === 'ok' && manheim.status === 'ok' && municipal.every(result => result.status === 'ok'), busy: false, results: results.map(({ id, status, message, points }) => ({ id, status, message, observations: points.length, latestPeriod: points.at(-1)?.period ?? null })), local: { status: local.status, message: local.message, projects: local.data?.projects.length ?? 0 }, manheim: { status: manheim.status, message: manheim.message, projects: manheim.data?.projects.length ?? 0 }, municipal: municipal.map(result => ({ id: result.id, status: result.status, message: result.message, documents: result.data?.documents.length ?? 0, plans: result.data?.plans.length ?? 0 })) };
   } finally {
     // Cooldown also prevents repeated manual invocations exhausting unregistered BLS quota.
     await db.marketSyncLease.updateMany({ where: { id: 'public-feeds', token }, data: { token: '', expiresAt: new Date(Date.now() + 3_600_000) } });

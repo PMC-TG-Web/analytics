@@ -65,3 +65,9 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 ## Combined release authorization (2026-10-13)
 
 - The owner explicitly authorized publishing all pending changes, including the WIP iterations. The earlier local-only hold is lifted for this release. Preserve historical checkouts and evidence; integrate current work onto origin/main and use its Netlify Git deployment.
+
+## Local/release alignment (2026-10-15)
+
+- The owner requires localhost, GitHub main and published production to stay aligned after completed releases. The active desktop checkout and port-3000 server are `C:/Users/ToddGilmore/analytics` on `main`. Do not restart the app from superseded WIP or release worktrees.
+- Older unfinished desktop edits are preserved in `C:/Users/ToddGilmore/analytics-preserved-local-20261015` and a named local stash. Preserve those and other historical worktrees/evidence; do not overwrite or publish them simply to align the active checkout.
+- The desktop's ignored `.tmp/start-current-local.mjs` launcher uses shared saved data, localhost authentication URLs and hidden child processes. Keep Next.js restart workers hidden as well; detached Windows consoles can produce recurring terminal popups. Never commit local environment files or operational evidence.

@@ -17,13 +17,13 @@ Store credentials in the local environment or Netlify Functions environment; nev
 
 ## Local review
 
-The current local application is at `http://localhost:3000/market-outlook`. The active development checkout is `C:/Users/ToddGilmore/analytics-wip-20261012`; the directory name does not mean this feature modifies the WIP page.
+The current local application is at `http://localhost:3000/market-outlook`. The active development checkout is `C:/Users/ToddGilmore/analytics` on `main`, aligned with GitHub and the published Netlify source. Older worktrees retain unfinished work and evidence; do not use them to restart the local app.
 
-The local dev server also needs the existing application's authentication and shared-database environment. Its current local launcher `.tmp/market-start-local.mjs` loads the active checkout's environment first, then fills missing settings from the original `analytics` checkout. A bare dev-server restart without that existing environment will break navigation/permissions even though the isolated market data still loads.
+The local dev server uses the existing authentication and shared-database environment, so Outlook and WIP/KPI read the same saved data as production. The ignored `.tmp/start-current-local.mjs` launcher sets development mode and localhost URLs, omits isolated-market and file-WIP overrides, and verifies HEAD matches `origin/main`. Its local preload `.tmp/hide-dev-windows.cjs` keeps Next.js restart workers hidden. Launch with `Start-Process -WindowStyle Hidden` without `-Wait`; the hidden parent stays alive with the worker. Keys belong in ignored `.env.local` and production Functions secrets.
 
-The isolated PostgreSQL preview listens only on `127.0.0.1:55432`, database `market_outlook`, role `market_preview`, with no password and loopback trust. Its cluster is under `C:/Users/ToddGilmore/analytics/.tmp/market-outlook-postgres`. Only the two market tables were created there, using the new migration SQL; no shared-database migrations ran. This disposable public-data cluster is not suitable for production or sensitive data.
+The older isolated public-data preview at `127.0.0.1:55432`, database `market_outlook`, is preserved as development evidence. Its cluster under `.tmp/market-outlook-postgres` is no longer the active app's source.
 
-If the preview database needs restarting after reboot, use PostgreSQL 17 `pg_ctl` with that data directory, `-o "-p 55432 -h 127.0.0.1"`, and a log file under the same directory. Start background processes hidden. The `.env.local` file in the active checkout contains the local database override.
+The active checkout has no `MARKET_DATABASE_URL` or `WIP_LOCAL_STORE_PATH` override. The old WIP worktree's environment remains separate; do not reuse those overrides when restarting the aligned application.
 
 From the active checkout:
 
@@ -35,16 +35,17 @@ node scripts/syncMarketOutlook.mjs --apply --force
 
 The default is a read-only fetch/validation run. `--apply` saves public data only. A remote target additionally requires `--allow-remote`; confirm the target first. `--force` bypasses the completed-run cooldown but never steals an active lease. CLI output contains status/counts, never provider credentials or raw error responses. Normal runs observe a one-hour cooldown. A killed worker's lease expires after two minutes, and a late worker cannot save after losing ownership.
 
-The local preview has been populated by explicit CLI syncs. The production Netlify schedule runs daily at 15:15 UTC (11:15 a.m. Eastern during daylight saving time, 10:15 a.m. during standard time); it is not a local Windows task. Reloading the page does not contact publishers.
+Localhost reads shared observations. The production Netlify schedule runs daily at 15:15 UTC (11:15 a.m. Eastern during daylight saving time, 10:15 a.m. during standard time); it is not a local Windows task. Reloading the page does not contact publishers.
 
 ## Interpretation and limitations
 
-- Demand and cost signals use year-over-year comparisons with a +/-1% neutral band. Higher cost is pressure; higher demand is growth. This is an explicit planning heuristic, not a forecast or model of company revenue.
+- AIA diffusion indices use the published 50-point neutral level: above 50 is growth, below 50 is decline, exactly 50 is unchanged. Comparisons use index-point differences. These indices never enter the year-over-year demand counts.
+- Other demand and cost signals use year-over-year comparisons with a +/-1% neutral band. Higher cost is pressure; higher demand is growth. This is an explicit planning heuristic, not a forecast or model of company revenue.
 - Comparisons require the exact previous month/quarter/day or 52-week interval; gaps do not silently become period-over-period changes. Rate comparisons use percentage points.
 - Current means the last successful check is within 48 hours and the observation is within the series-specific release-age threshold. A failed check retains saved values but removes directional signals until recovery.
 - BLS PPI is an index, not delivered local prices. Steel mill PPI is a broad proxy. PA unemployment covers all industries. Weekly earnings reflect pay and hours worked. Nonresidential spending is nominal and annualized. Lending standards cover large/middle-market commercial and industrial loans, not commercial real-estate lending.
 - Geography is explicit. The current connectors do not claim metro-level or local commercial-permit coverage.
-- AIA, ABC, sector forecasts and local permits remain outside automatic ingestion. The page lists these coverage gaps without displaying the earlier curated snapshot or sector forecasts.
+- ABC, sector forecasts, regional architecture detail and local permits remain outside automatic ingestion. The page lists these coverage gaps without displaying the earlier curated snapshot or sector forecasts.
 
 ## Dodge public releases
 
@@ -54,11 +55,17 @@ The daily worker also checks Dodge's public WordPress REST endpoint at `https://
 
 New publishers require no schema migration: observations and release provenance use the existing `MarketSeriesSnapshot.points` JSON. Catalog groups now drive page placement directly, including Pipeline, without consulting the old curated snapshot. Source links on Dodge cards/history open the release supporting that observation.
 
+## AIA public releases
+
+`marketAia.ts` checks the ABI landing page plus the first three newsroom pages in parallel, then fetches at most three dated monthly press releases. National billings, project inquiries and new design-contract indices come from labeled public release text, with no account, key, PDF OCR or subscription. A shared fetch supplies all three series. HTML is bounded to 1 MB and never rendered or stored.
+
+Each release requires matching publisher/canonical URL, publication metadata, dateline, reporting month and unambiguous national values in the 0–100 range. Regional/sector values cannot substitute for national indices. The latest parsed release must be at least as recent as the ABI landing page's latest reporting month. Missing or malformed releases fail the AIA batch and preserve prior observations. The bounded three-release window seeds recent trends, not a full historical dataset. Per-point source links and publication timestamps use existing snapshot JSON. No migration or new credential is required. Regional detail and sector forecasts remain outside this connector.
+
 ## Validation and release
 
 ```text
-node --test test/marketFeeds.test.mjs test/marketDodge.test.mjs test/marketOutlook.test.mjs test/permissions.test.mjs test/helpGuides.test.mjs
+node --test test/marketFeeds.test.mjs test/marketDodge.test.mjs test/marketAia.test.mjs test/marketOutlook.test.mjs test/permissions.test.mjs test/helpGuides.test.mjs
 npx tsc --noEmit
 ```
 
-Before an explicitly authorized production release, review the additive migration `20261015150000_market_outlook_feeds`, configure provider keys and scheduler variables, and use the repository's GitHub/Netlify release process and published-commit ancestry checks. Production should normally omit the local-only `MARKET_DATABASE_URL`. Verify all 13 feeds after the initial sync and retain per-source failure visibility. Do not run the repository build merely to validate this feature; it deploys migrations to the configured database.
+Before an explicitly authorized production release, review the additive migration `20261015150000_market_outlook_feeds`, configure provider keys and scheduler variables, and use the repository's GitHub/Netlify release process and published-commit ancestry checks. Production should normally omit the local-only `MARKET_DATABASE_URL`. Verify all 16 feeds after the initial sync and retain per-source failure visibility. Do not run the repository build merely to validate this feature; it deploys migrations to the configured database.

@@ -95,11 +95,11 @@ test('Dodge feeds fetch public category windows without credentials and isolate 
     if (url === dodgeReleasesUrl('nonresidential-starts')) return Response.json([{ ...starts(), content: { rendered: 'Unparseable new release' } }]);
     return Response.json({ status: 'REQUEST_FAILED' });
   } });
-  assert.equal(results.length, 13);
+  assert.equal(results.length, 16);
   assert.equal(results.find(r => r.id === 'dodge-momentum').status, 'ok');
   assert.equal(results.find(r => r.id === 'dodge-starts').status, 'error');
   assert.deepEqual(results.find(r => r.id === 'dodge-starts').points, []);
-  assert.equal(calls.length, 3);
+  assert.equal(calls.length, 7);
   assert.equal(marketSeries.find(s => s.id === 'dodge-momentum').group, 'Pipeline');
   assert.equal(marketSeries.find(s => s.id === 'dodge-starts').format, 'millions');
 });

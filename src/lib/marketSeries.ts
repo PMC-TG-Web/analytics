@@ -1,13 +1,16 @@
 /** Explicit publisher series identities. Geography and units never come from display names. */
 export type MarketSeries = {
-  id: string; card: string; name: string; provider: 'bls' | 'fred' | 'eia' | 'dodge'; series: string;
+  id: string; card: string; name: string; provider: 'bls' | 'fred' | 'eia' | 'dodge' | 'aia'; series: string;
   group: 'Pipeline' | 'Material costs' | 'Labor' | 'Current market' | 'Financing';
   geography: string; units: string; frequency: 'daily' | 'weekly' | 'monthly' | 'quarterly';
-  kind: 'cost' | 'demand' | 'context'; format: 'index' | 'jobs' | 'dollars' | 'millions' | 'percent' | 'diesel';
+  kind: 'cost' | 'demand' | 'context'; format: 'index' | 'diffusion' | 'jobs' | 'dollars' | 'millions' | 'percent' | 'diesel';
   staleDays: number; note: string; source: string; sourceUrl: string;
 };
 
 export const marketSeries: MarketSeries[] = [
+  { id: 'aia-billings', group: 'Pipeline', card: 'Architecture Billings Index (ABI)', name: 'Architecture Billings Index (ABI)', provider: 'aia', series: 'billings', geography: 'U.S.', units: 'Diffusion index · 50 = no change', frequency: 'monthly', kind: 'demand', format: 'diffusion', staleDays: 100, source: 'AIA', sourceUrl: 'https://www.aia.org/partner-aia/market-research-partnership-opportunities/aia-architecture-billings-index', note: 'Architecture firm billings; an early indicator of nonresidential construction activity, not construction spending. Above 50 indicates growth from the prior month; below 50 indicates decline. Changes are index points.' },
+  { id: 'aia-inquiries', group: 'Pipeline', card: 'Architecture project inquiries', name: 'Architecture project inquiries', provider: 'aia', series: 'inquiries', geography: 'U.S.', units: 'Diffusion index · 50 = no change', frequency: 'monthly', kind: 'demand', format: 'diffusion', staleDays: 100, source: 'AIA', sourceUrl: 'https://www.aia.org/partner-aia/market-research-partnership-opportunities/aia-architecture-billings-index', note: 'Potential new design work. An inquiry is not a signed contract or awarded construction job. Above 50 indicates growth from the prior month; below 50 indicates decline. Changes are index points.' },
+  { id: 'aia-contracts', group: 'Pipeline', card: 'New design contracts', name: 'New design contracts', provider: 'aia', series: 'contracts', geography: 'U.S.', units: 'Diffusion index · 50 = no change', frequency: 'monthly', kind: 'demand', format: 'diffusion', staleDays: 100, source: 'AIA', sourceUrl: 'https://www.aia.org/partner-aia/market-research-partnership-opportunities/aia-architecture-billings-index', note: 'Newly signed architecture design contracts; not contractor awards or company sales. Above 50 indicates growth from the prior month; below 50 indicates decline. Changes are index points.' },
   { id: 'dodge-momentum', group: 'Pipeline', card: 'Dodge Momentum Index', name: 'Dodge Momentum Index', provider: 'dodge', series: 'momentum', geography: 'U.S.', units: 'Index 2000=100 · three-month moving value', frequency: 'monthly', kind: 'demand', format: 'index', staleDays: 80, source: 'Dodge', sourceUrl: 'https://www.construction.com/category/dodge-momentum-index/', note: 'Nonresidential buildings entering planning. National pipeline indicator, not local starts or awarded work. Recent releases can revise earlier readings.' },
   { id: 'dodge-starts', group: 'Current market', card: 'Construction starts', name: 'Nonresidential building starts', provider: 'dodge', series: 'nonresidential-starts', geography: 'U.S.', units: 'Millions of dollars · seasonally adjusted annual rate', frequency: 'monthly', kind: 'demand', format: 'millions', staleDays: 100, source: 'Dodge', sourceUrl: 'https://www.construction.com/category/total-construction-starts/', note: 'Commercial, institutional and manufacturing buildings; excludes residential and nonbuilding infrastructure. Annualized project value, not monthly spending. Comparisons use saved release levels, which may be revised.' },
   { id: 'ready-mix', group: 'Material costs', card: 'Ready-mix concrete PPI', name: 'Ready-mix concrete PPI', provider: 'bls', series: 'WPU1333', geography: 'U.S.', units: 'Index 1982=100 · not seasonally adjusted', frequency: 'monthly', kind: 'cost', format: 'index', staleDays: 90, source: 'BLS', sourceUrl: 'https://data.bls.gov/timeseries/WPU1333', note: 'Producer-price benchmark, not a delivered local supplier quote.' },
@@ -73,6 +76,10 @@ export function marketFreshness(definition: MarketSeries, saved?: SavedMarketSer
 
 export function marketSignal(definition: MarketSeries, saved?: SavedMarketSeries, now = new Date()): 'strong' | 'mixed' | 'weak' | 'watch' {
   if (marketFreshness(definition, saved, now) !== 'Current' || definition.kind === 'context') return 'watch';
+  if (definition.format === 'diffusion') {
+    const latest = saved!.points.at(-1)!.value;
+    return latest > 50 ? 'strong' : latest < 50 ? 'weak' : 'mixed';
+  }
   const annual = marketChanges(saved!.points, definition.frequency).annualChange;
   if (annual == null) return 'watch';
   // Transparent planning heuristic: +/-1% year-over-year neutral band; costs invert demand direction.
@@ -81,6 +88,7 @@ export function marketSignal(definition: MarketSeries, saved?: SavedMarketSeries
 }
 
 export function formatMarketValue(definition: MarketSeries, value: number) {
+  if (definition.format === 'diffusion') return value.toFixed(1);
   if (definition.format === 'percent') return `${value.toFixed(2)}%`;
   if (definition.format === 'diesel') return `$${value.toFixed(3)}/gal`;
   if (definition.format === 'dollars') return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);

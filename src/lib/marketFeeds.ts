@@ -1,3 +1,4 @@
+import { fetchAiaReleases, type AiaSeries } from './marketAia.ts';
 import { dodgeReleasesUrl, parseDodgeReleases, type DodgeSeries } from './marketDodge.ts';
 import { marketSeries, normalizeMarketPoints, numericValue, type MarketFeedResult, type MarketPoint } from './marketSeries.ts';
 
@@ -42,7 +43,7 @@ export function parseEia(payload: unknown, series: string, now = new Date()): Ma
 }
 
 // Error messages deliberately exclude provider payloads/URLs, which can contain API keys.
-export async function fetchMarketJson(url: string, init: RequestInit, fetcher: typeof fetch = fetch): Promise<unknown> {
+async function fetchMarketBody<T>(url: string, init: RequestInit, fetcher: typeof fetch, read: (response: Response) => Promise<T>): Promise<T> {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const response = await fetcher(url, { ...init, cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(8_000) });
@@ -56,12 +57,25 @@ export async function fetchMarketJson(url: string, init: RequestInit, fetcher: t
         continue;
       }
       if (!response.ok) throw new Error('Provider HTTP failure');
-      return await response.json();
+      return await read(response);
     } catch {
       throw new Error('Source unavailable or invalid response');
     }
   }
   throw new Error('Source unavailable');
+}
+
+export function fetchMarketJson(url: string, init: RequestInit, fetcher: typeof fetch = fetch): Promise<unknown> {
+  return fetchMarketBody(url, init, fetcher, response => response.json());
+}
+
+export function fetchMarketText(url: string, fetcher: typeof fetch = fetch): Promise<string> {
+  return fetchMarketBody(url, {}, fetcher, async response => {
+    if (!response.headers.get('content-type')?.includes('text/html')) throw new Error('Publisher HTML expected');
+    const html = await response.text();
+    if (!html.length || html.length > 1_000_000) throw new Error('Publisher HTML size invalid');
+    return html;
+  });
 }
 
 export async function fetchMarketFeeds(options: { now?: Date; env?: NodeJS.ProcessEnv; fetcher?: typeof fetch } = {}): Promise<MarketFeedResult[]> {
@@ -76,11 +90,13 @@ export async function fetchMarketFeeds(options: { now?: Date; env?: NodeJS.Proce
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ seriesid: marketSeries.filter(s => s.provider === 'bls').map(s => s.series), startyear: start.slice(0, 4), endyear: String(now.getUTCFullYear()), ...(env.BLS_API_KEY?.trim() ? { registrationkey: env.BLS_API_KEY.trim() } : {}) }),
   });
+  const aia = fetchAiaReleases(url => fetchMarketText(url, options.fetcher), now);
   return Promise.all(marketSeries.map(async definition => {
     const result: MarketFeedResult = { id: definition.id, checkedAt, status: 'ok', message: null, points: [] };
     const requiredKey = definition.provider === 'fred' ? 'FRED_API_KEY' : definition.provider === 'eia' ? 'EIA_API_KEY' : null;
     if (requiredKey && !env[requiredKey]?.trim()) return { ...result, status: 'unconfigured' as const, message: `${requiredKey} is not configured` };
     try {
+      if (definition.provider === 'aia') result.points = (await aia)[definition.series as AiaSeries];
       if (definition.provider === 'bls') result.points = parseBls(await bls, definition.series, now);
       if (definition.provider === 'fred') {
         const params = new URLSearchParams({ series_id: definition.series, api_key: env.FRED_API_KEY!.trim(), file_type: 'json', observation_start: start, observation_end: end, sort_order: 'asc', limit: '10000' });

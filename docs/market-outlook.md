@@ -44,7 +44,7 @@ Localhost reads shared observations. The production Netlify schedule runs daily 
 - Comparisons require the exact previous month/quarter/day or 52-week interval; gaps do not silently become period-over-period changes. Rate comparisons use percentage points.
 - Current means the last successful check is within 48 hours and the observation is within the series-specific release-age threshold. A failed check retains saved values but removes directional signals until recovery.
 - BLS PPI is an index, not delivered local prices. Steel mill PPI is a broad proxy. PA unemployment covers all industries. Weekly earnings reflect pay and hours worked. Nonresidential spending is nominal and annualized. Lending standards cover large/middle-market commercial and industrial loans, not commercial real-estate lending.
-- Geography is explicit. The current connectors do not claim metro-level or local commercial-permit coverage.
+- Geography is explicit. Lancaster County plan submissions are connected separately from numeric indicators; they are not issued commercial permits or metro employment data.
 - ABC, sector forecasts, regional architecture detail and local permits remain outside automatic ingestion. The page lists these coverage gaps without displaying the earlier curated snapshot or sector forecasts.
 
 ## Dodge public releases
@@ -60,6 +60,16 @@ New publishers require no schema migration: observations and release provenance 
 `marketAia.ts` checks the ABI landing page plus the first three newsroom pages in parallel, then fetches at most three dated monthly press releases. National billings, project inquiries and new design-contract indices come from labeled public release text, with no account, key, PDF OCR or subscription. A shared fetch supplies all three series. HTML is bounded to 1 MB and never rendered or stored.
 
 Each release requires matching publisher/canonical URL, publication metadata, dateline, reporting month and unambiguous national values in the 0–100 range. Regional/sector values cannot substitute for national indices. The latest parsed release must be at least as recent as the ABI landing page's latest reporting month. Missing or malformed releases fail the AIA batch and preserve prior observations. The bounded three-release window seeds recent trends, not a full historical dataset. Per-point source links and publication timestamps use existing snapshot JSON. No migration or new credential is required. Regional detail and sector forecasts remain outside this connector.
+
+## Lancaster County development plans
+
+The Outlook page includes the latest Lancaster County Planning Commission SALDO review list from public ArcGIS item `dd39ce8cada34c59adbfc463532c6577`, organization `I6XnrlnguPDoEObn`, layer 0 (`SALDO_points`). `marketLancaster.ts` requests only submission ID, county file number, project name/description, municipality, proposed use, application/plan type and review meeting date. It does not ingest applicant/owner contact fields or geometry. No new API key is required.
+
+The existing daily worker fetches this list alongside the 16 numeric feeds and saves it under `lancaster-county-plan-reviews` in `MarketLocalSnapshot` using the same transaction and lease fence. The additive migration `20261015180000_market_local_snapshots` creates only this snapshot table. County submissions use `SALDO_Form_ID`; repeated parcel features with identical normalized details are deduplicated, while conflicting IDs, incomplete responses, count mismatches, schema drift and invalid dates fail the county refresh. Failed checks retain the last successful list. A successful refresh replaces the list, including a validated empty list; removed submissions are not presented as active or approved and no earlier county snapshots are displayed.
+
+This is a rolling meeting list, not a complete inventory of county development, permits, approvals, starts or bid opportunities. A `Final Plan` classification is a submission type, not an approval. County publication and meeting dates are separate from our check time. Checks become overdue after 48 hours; source updates or the latest meeting older than 60 days display a county-publication warning. The section supports municipality, proposed-use and text filters; exact source links contain only the same allowlisted fields. Reads remain PostgreSQL-only, and a county read failure does not hide the national indicators.
+
+Validate with `node --test test/marketLancaster.test.mjs` plus the existing market tests, `npx tsc --noEmit`, and desktop/mobile filter checks. The CLI dry run reports local status/counts alongside indicator results; the live worker adds a `local` summary without changing existing indicator result entries.
 
 ## Validation and release
 

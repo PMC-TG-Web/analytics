@@ -41,6 +41,17 @@ model MarketSeriesSnapshot {
   @@map("market_series_snapshots")
 }
 
+/// Latest public local-planning feed only; independent of numeric indicator history.
+model MarketLocalSnapshot {
+  id            String   @id
+  data          Json?
+  status        String
+  message       String?
+  checkedAt     DateTime @map("checked_at") @db.Timestamptz(6)
+  lastSuccessAt DateTime? @map("last_success_at") @db.Timestamptz(6)
+  @@map("market_local_snapshots")
+}
+
 model MarketSyncLease {
   id         String   @id
   token      String

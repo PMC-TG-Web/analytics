@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { marketSeries, marketChanges, marketFreshness, marketSignal, formatMarketValue, type MarketSeries, type SavedMarketSeries } from '@/lib/marketSeries';
 import { loadMarketOutlook } from '@/lib/loadMarketOutlook';
 import styles from './market-outlook.module.css';
+import LancasterPlans from './LancasterPlans';
 
 export const metadata: Metadata = { title: 'Market Outlook | Analytics' };
 export const dynamic = 'force-dynamic';
@@ -15,7 +16,7 @@ function periodLabel(period: string, frequency: MarketSeries['frequency']) {
 const signed = (value: number) => (value > 0 ? '+' : '') + value.toFixed(1);
 
 export default async function MarketOutlookPage() {
-  const { snapshots, error } = await loadMarketOutlook();
+  const { snapshots, error, local, localError } = await loadMarketOutlook();
   const now = new Date();
   const byId = new Map(snapshots.map(snapshot => [snapshot.id, snapshot]));
   const current = marketSeries.filter(series => marketFreshness(series, byId.get(series.id), now) === 'Current');
@@ -42,8 +43,9 @@ export default async function MarketOutlookPage() {
           <p>{costs.length ? risingCosts.length + ' of ' + costs.length + ' current cost indicators are more than 1% above a year earlier.' : 'Current cost comparisons are not yet available.'} {demand.length ? growingDemand.length + ' of ' + demand.length + ' current demand indicators are more than 1% above a year earlier.' : 'Current demand comparisons are not yet available.'}</p>
           <p>These counts describe the connected series; they are not a forecast or a weighted market index. Missing or overdue feeds are excluded.</p>
         </div>
-        <div className={styles.actionBox}><span>LOCAL DECISIONS</span><strong>Use Pennsylvania evidence alongside national benchmarks.</strong><p>Local commercial permits, regional architecture activity, and contractor backlog still need separate coverage.</p></div>
+        <div className={styles.actionBox}><span>LOCAL DECISIONS</span><strong>Follow Lancaster County’s development pipeline.</strong><p>Review local plan submissions below alongside Pennsylvania labor data and national benchmarks. Confirm project approvals and timing with the municipality.</p></div>
       </section>
+      <LancasterPlans saved={local} error={localError} now={now.toISOString()} />
       <div className={styles.sectionHeading}><div><p className={styles.kicker}>PUBLIC DATA</p><h2>Latest published observations</h2></div></div>
       {(['Pipeline', 'Material costs', 'Labor', 'Current market', 'Financing'] as const).map(group => (
         <section className={styles.group} key={group}>
@@ -53,8 +55,8 @@ export default async function MarketOutlookPage() {
       ))}
       <p className={styles.method}>AIA signals use the index level: above 50 is growth, below 50 is decline, and 50 is unchanged. AIA indices are excluded from the year-over-year counts above. For other series, demand growth above 1% year over year is favorable; cost growth above 1% is pressure. Changes within ±1% are broadly flat. Financing and unemployment remain context indicators. Missing comparisons and overdue data receive no directional signal.</p>
       <section className={styles.regional}>
-        <div><p className={styles.kicker}>COVERAGE STILL TO CONNECT</p><h2>Planning and local pipeline</h2></div>
-        <div><p>Sector forecasts and regional architecture detail; ABC backlog and confidence; local commercial permits.</p><p>Census Building Permits Survey covers residential construction. It is not a measure of local commercial project starts. <a href="https://www.census.gov/construction/bps/" target="_blank" rel="noreferrer">Source coverage ↗</a></p></div>
+        <div><p className={styles.kicker}>COVERAGE STILL TO CONNECT</p><h2>Permits and broader outlook</h2></div>
+        <div><p>Lancaster County issued commercial permits; sector forecasts and regional architecture detail; ABC backlog and confidence.</p><p>County plan reviews are connected above. Census Building Permits Survey covers residential construction. It is not a measure of local commercial project starts. <a href="https://www.census.gov/construction/bps/" target="_blank" rel="noreferrer">Source coverage ↗</a></p></div>
       </section>
       <p className={styles.disclaimer}>Published observations may be revised. Market indicators support planning and do not guarantee future construction volume.</p>
     </main>

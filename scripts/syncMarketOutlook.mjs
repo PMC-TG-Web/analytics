@@ -12,6 +12,9 @@ if (args.includes('--apply')) {
   finally { await (await marketDatabase()).$disconnect(); }
 } else {
   const { fetchMarketFeeds } = await import('../src/lib/marketFeeds.ts');
-  const results = await fetchMarketFeeds();
+  const { fetchMarketJson } = await import('../src/lib/marketFeeds.ts');
+  const { fetchLancaster } = await import('../src/lib/marketLancaster.ts');
+  const [results, local] = await Promise.all([fetchMarketFeeds(), fetchLancaster(url => fetchMarketJson(url, {}))]);
   console.log(JSON.stringify(results.map(({ id, status, message, points }) => ({ id, status, message, observations: points.length, latest: points.at(-1) ?? null })), null, 2));
+  console.log(JSON.stringify({ local: { status: local.status, message: local.message, projects: local.data?.projects.length ?? 0, sourceUpdatedAt: local.data?.sourceUpdatedAt ?? null } }));
 }

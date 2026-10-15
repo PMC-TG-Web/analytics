@@ -488,6 +488,7 @@ export async function middleware(request: NextRequest) {
   // Allow cron sync routes — each validates CRON_SECRET/PROCORE_SYNC_SECRET
   // internally before it can read from Procore or write synchronized data.
   if (
+    pathname === '/api/cron/market-outlook' ||
     pathname === '/api/cron/sync' ||
     pathname.startsWith('/api/cron/sync/') ||
     pathname === '/api/cron/actuals' ||

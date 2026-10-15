@@ -10,9 +10,10 @@ export type WipSalesProject = {
 };
 export type WipSalesEntry = {
   id: string; projectName: string; projectNumber: string; customer: string;
-  value: number; dateLabel: string; projectValue: number; percent: number;
+  value: number; dateLabel: string; projectValue?: number; percent: number;
 };
 export type WipScheduledSales = {
+  reportProjectCount?: number;
   months: Record<string, number>;
   projectsByMonth: Record<string, WipSalesEntry[]>;
   years: string[];

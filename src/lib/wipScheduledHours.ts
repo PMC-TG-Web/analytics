@@ -1,6 +1,7 @@
 import { allocationHours, validateWipAllocations, type WipAllocation, type WipSource } from './wipPlanning.ts';
 
 export type WipScheduledHours = {
+  reportProjectCount?: number;
   months: Record<string, number>;
   years: string[];
   planCount: number;

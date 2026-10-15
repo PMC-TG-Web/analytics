@@ -30,6 +30,24 @@ model SubcontractAllocationRevision {
   @@map("subcontract_allocation_revisions")
 }
 
+/// Public market observations keyed by the versioned catalog identity, never by display name.
+model MarketSeriesSnapshot {
+  id            String   @id
+  points        Json     @default("[]")
+  status        String
+  message       String?
+  checkedAt     DateTime @map("checked_at") @db.Timestamptz(6)
+  lastSuccessAt DateTime? @map("last_success_at") @db.Timestamptz(6)
+  @@map("market_series_snapshots")
+}
+
+model MarketSyncLease {
+  id         String   @id
+  token      String
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz(6)
+  @@map("market_sync_leases")
+}
+
 /// Immutable individual Food expenses; entry ID makes retries idempotent.
 model QboBillFoodEntry {
   id String @id

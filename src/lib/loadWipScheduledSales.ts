@@ -3,6 +3,8 @@ import { loadEstimatingDashboardProjects } from '@/lib/estimatingDashboard';
 import { readWipLocalStore, wipLocalStorePath } from '@/lib/wipLocalStore';
 import { calculateWipScheduledSales, type WipScheduledSales } from '@/lib/wipScheduledSales';
 import type { WipPlan } from '@/lib/wipPlanning';
+import { loadWipReportProjects } from '@/lib/wipReportStore';
+import { addWipReportSales } from '@/lib/wipReportTotals';
 
 export async function loadWipScheduledSales(): Promise<WipScheduledSales> {
   const companyId = process.env.PROCORE_COMPANY_ID?.trim();
@@ -15,5 +17,6 @@ export async function loadWipScheduledSales(): Promise<WipScheduledSales> {
   );
   // The estimating loader reads company-scoped synchronized mirrors, never the live API.
   const projects = Object.keys(plans).length ? await loadEstimatingDashboardProjects() : [];
-  return { ...calculateWipScheduledSales(plans, projects), excludedDraftCount: local ? Object.keys(local.drafts).length : await prisma.wipImportDraft.count({ where: { companyId, projectId: { notIn: Object.keys(plans) } } }), localOnly: !!local };
+  const draftIds = local ? Object.keys(local.drafts) : (await prisma.wipImportDraft.findMany({ where: { companyId, projectId: { notIn: Object.keys(plans) } }, select: { projectId: true } })).map(draft => draft.projectId);
+  return addWipReportSales({ ...calculateWipScheduledSales(plans, projects), excludedDraftCount: draftIds.length, localOnly: !!local }, await loadWipReportProjects(companyId, [...Object.keys(plans), ...draftIds]));
 }

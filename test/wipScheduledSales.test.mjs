@@ -45,15 +45,17 @@ test('sales loader excludes local drafts, never falls back on a local failure, a
   const queries = [];
   try {
     const api = moduleFrom('src/lib/loadWipScheduledSales.ts', {
-      '@/lib/prisma': { prisma: { wipImportDraft: { count: async () => 1 }, wipPlan: { findMany: async query => { queries.push(query); return [{ ...plan, projectId: 'project-1' }]; } } } },
+      '@/lib/prisma': { prisma: { wipPlan: { findMany: async query => { queries.push(query); return [{ ...plan, projectId: 'project-1' }]; } }, wipImportDraft: { findMany: async query => { assert.deepEqual(query.where, { companyId: 'company', projectId: { notIn: ['project-1'] } }); return [{ projectId: 'unfinished' }]; } } } },
       '@/lib/estimatingDashboard': { loadEstimatingDashboardProjects: async () => [project] },
+      '@/lib/wipReportStore': { loadWipReportProjects: async (company, occupied) => { assert.equal(company, 'company'); assert.deepEqual(occupied, ['project-1', 'unfinished']); return []; } },
+      '@/lib/wipReportTotals': { addWipReportSales: report => report },
       '@/lib/wipLocalStore': { wipLocalStorePath: () => localPath, readWipLocalStore: async (path, company) => { assert.equal(path, localPath); assert.equal(company, 'company'); if (fail) throw new Error('local failure'); return { plans: { 'project-1': plan }, drafts: { unfinished: plan } }; } },
       '@/lib/wipScheduledSales': { calculateWipScheduledSales },
     });
     const report = await api.loadWipScheduledSales();
     assert.equal(report.months['2026-10'], 40000); assert.equal(report.excludedDraftCount, 1); assert.equal(report.localOnly, true); assert.equal(queries.length, 0);
     fail = true; await assert.rejects(api.loadWipScheduledSales(), /local failure/); assert.equal(queries.length, 0);
-    localPath = null; assert.equal((await api.loadWipScheduledSales()).localOnly, false);
+    localPath = null; const shared = await api.loadWipScheduledSales(); assert.equal(shared.localOnly, false); assert.equal(shared.excludedDraftCount, 1);
     assert.deepEqual(queries, [{ where: { companyId: 'company' }, select: { projectId: true, source: true, allocations: true } }]);
   } finally { if (previous === undefined) delete process.env.PROCORE_COMPANY_ID; else process.env.PROCORE_COMPANY_ID = previous; }
 });

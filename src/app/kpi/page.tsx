@@ -2274,7 +2274,7 @@ function KPIPageContent({
       {filteredCombinedSalesYears.length > 0 && (
         <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4 }}>
           <h2 style={{ color: "#15616D", marginBottom: 8, fontSize: 14 }}>Sales by Month</h2>
-          <p style={{ color: "#6b7280", margin: "0 0 8px", fontSize: 11 }}>Scheduled revenue is the full project sales value × its saved WIP monthly percentage. Scheduled Hours uses estimated hours excluding Project Management. {wipScheduledHours.report?.localOnly ? "Local WIP workspace. " : ""}{!!wipScheduledHours.report?.excludedDraftCount && `${wipScheduledHours.report.excludedDraftCount} import drafts are excluded until saved at 100%. `}Historical jobs not imported into WIP are not included.</p>
+          <p style={{ color: "#6b7280", margin: "0 0 8px", fontSize: 11 }}>Scheduled revenue is the full project sales value × its saved WIP monthly percentage. Scheduled Hours uses estimated hours excluding Project Management. {wipScheduledHours.report?.localOnly ? "Local WIP workspace. " : ""}{!!wipScheduledHours.report?.excludedDraftCount && `${wipScheduledHours.report.excludedDraftCount} import drafts are excluded until saved at 100%. `}Legacy/report jobs add their imported monthly hours and revenue.</p>
           <div
             ref={salesByMonthScrollRef}
             onScroll={() => syncSalesScroll("table")}

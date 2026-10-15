@@ -31,7 +31,9 @@ test('loader uses only local saved plans in local mode and reads all company-sco
   const calls = [];
   try {
     const api = moduleFrom('src/lib/loadWipScheduledHours.ts', {
-      '@/lib/prisma': { prisma: { wipImportDraft: { count: async () => 1 }, wipPlan: { findMany: async query => { calls.push(query); return [plan]; } } } },
+      '@/lib/prisma': { prisma: { wipPlan: { findMany: async query => { calls.push(query); return [{ ...plan, projectId: '1' }]; } }, wipImportDraft: { findMany: async query => { assert.deepEqual(query.where, { companyId: 'company', projectId: { notIn: ['1'] } }); return [{ projectId: '2' }]; } } } },
+      '@/lib/wipReportStore': { loadWipReportProjects: async (company, occupied) => { assert.equal(company, 'company'); assert.deepEqual(occupied, ['1', '2']); return []; } },
+      '@/lib/wipReportTotals': { addWipReportHours: report => report },
       '@/lib/wipLocalStore': { wipLocalStorePath: () => local, readWipLocalStore: async (path, company) => { assert.equal(path, local); assert.equal(company, 'company'); if (failed) throw new Error('file missing'); return { plans: { '1': plan }, drafts: { '2': { allocations: [{ month: '2026-10', percent: 99 }] } } }; } },
       '@/lib/wipScheduledHours': { calculateWipScheduledHours },
     });
@@ -39,7 +41,8 @@ test('loader uses only local saved plans in local mode and reads all company-sco
     assert.equal(report.months['2026-10'], 720); assert.equal(report.excludedDraftCount, 1); assert.equal(report.localOnly, true); assert.equal(calls.length, 0);
     failed = true; await assert.rejects(api.loadWipScheduledHours(), /file missing/); assert.equal(calls.length, 0);
     local = null;
-    assert.equal((await api.loadWipScheduledHours()).localOnly, false);
+    const shared = await api.loadWipScheduledHours();
+    assert.equal(shared.localOnly, false); assert.equal(shared.excludedDraftCount, 1);
     assert.deepEqual(calls[0], { where: { companyId: 'company' }, select: { projectId: true, source: true, allocations: true } });
   } finally { if (previous === undefined) delete process.env.PROCORE_COMPANY_ID; else process.env.PROCORE_COMPANY_ID = previous; }
 });

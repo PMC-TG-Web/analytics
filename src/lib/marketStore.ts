@@ -40,5 +40,5 @@ export async function saveMarketResults(results: MarketFeedResult[], db?: Prisma
       const data = { status: result.status, message: result.message, checkedAt: new Date(result.checkedAt), lastSuccessAt: successful ? new Date(result.checkedAt) : previous?.lastSuccessAt ?? null, points: points as unknown as Prisma.InputJsonValue };
       await tx.marketSeriesSnapshot.upsert({ where: { id: result.id }, create: { id: result.id, ...data }, update: data });
     }
-  }, { timeout: 20_000 });
+  }, { timeout: 15_000 });
 }

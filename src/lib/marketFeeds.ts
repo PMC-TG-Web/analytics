@@ -1,3 +1,4 @@
+import { dodgeReleasesUrl, parseDodgeReleases, type DodgeSeries } from './marketDodge.ts';
 import { marketSeries, normalizeMarketPoints, numericValue, type MarketFeedResult, type MarketPoint } from './marketSeries.ts';
 
 type Json = Record<string, unknown>;
@@ -88,6 +89,9 @@ export async function fetchMarketFeeds(options: { now?: Date; env?: NodeJS.Proce
       if (definition.provider === 'eia') {
         const params = new URLSearchParams({ api_key: env.EIA_API_KEY!.trim(), frequency: 'weekly', 'data[0]': 'value', 'facets[series][]': definition.series, start, end, 'sort[0][column]': 'period', 'sort[0][direction]': 'asc', length: '5000' });
         result.points = parseEia(await request(`https://api.eia.gov/v2/petroleum/pri/gnd/data/?${params}`), definition.series, now);
+      }
+      if (definition.provider === 'dodge') {
+        result.points = parseDodgeReleases(await request(dodgeReleasesUrl(definition.series as DodgeSeries)), definition.series as DodgeSeries, now);
       }
       if (!result.points.length) throw new Error('Empty series');
     } catch {

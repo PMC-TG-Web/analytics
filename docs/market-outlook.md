@@ -44,13 +44,21 @@ The local preview has been populated by explicit CLI syncs. The production Netli
 - Current means the last successful check is within 48 hours and the observation is within the series-specific release-age threshold. A failed check retains saved values but removes directional signals until recovery.
 - BLS PPI is an index, not delivered local prices. Steel mill PPI is a broad proxy. PA unemployment covers all industries. Weekly earnings reflect pay and hours worked. Nonresidential spending is nominal and annualized. Lending standards cover large/middle-market commercial and industrial loans, not commercial real-estate lending.
 - Geography is explicit. The current connectors do not claim metro-level or local commercial-permit coverage.
-- AIA, Dodge, ABC, sector forecasts and local permits remain outside automatic ingestion. The page lists these coverage gaps without displaying the earlier curated snapshot or sector forecasts.
+- AIA, ABC, sector forecasts and local permits remain outside automatic ingestion. The page lists these coverage gaps without displaying the earlier curated snapshot or sector forecasts.
+
+## Dodge public releases
+
+The daily worker also checks Dodge's public WordPress REST endpoint at `https://www.construction.com/wp-json/wp/v2/posts`. No key is required. Category 4 is Dodge Momentum Index; category 5 is Total Construction Starts. Each request reads the six latest published releases in date order. These bounded windows seed recent trends and are not claimed to be complete historical datasets. The starts connector specifically extracts **nonresidential building** starts, excluding residential and nonbuilding infrastructure, and converts billion/trillion-dollar annual rates into the catalog's millions-of-dollars units.
+
+`src/lib/marketDodge.ts` validates category, publication status/date, publisher URL, title/reporting month, index base and annual-rate units. It extracts numeric observations from release text; HTML is never rendered or saved. The reporting month is resolved against the publication year with a bounded completed-month check, including December/January rollover. Each point retains the public release URL and publication timestamp. DMI explicitly revised prior-month values take precedence over older publications, including across rolling fetch windows. Any unreadable release fails that series while retaining saved observations, rather than silently showing older data as a successful new refresh. There is no fallback to curated snapshots or inferred values. No annual signal is shown until a matching year-earlier observation exists.
+
+New publishers require no schema migration: observations and release provenance use the existing `MarketSeriesSnapshot.points` JSON. Catalog groups now drive page placement directly, including Pipeline, without consulting the old curated snapshot. Source links on Dodge cards/history open the release supporting that observation.
 
 ## Validation and release
 
 ```text
-node --test test/marketFeeds.test.mjs test/marketOutlook.test.mjs test/permissions.test.mjs test/helpGuides.test.mjs
+node --test test/marketFeeds.test.mjs test/marketDodge.test.mjs test/marketOutlook.test.mjs test/permissions.test.mjs test/helpGuides.test.mjs
 npx tsc --noEmit
 ```
 
-Before an explicitly authorized production release, review the additive migration `20261015150000_market_outlook_feeds`, configure provider keys and scheduler variables, and use the repository's GitHub/Netlify release process and published-commit ancestry checks. Production should normally omit the local-only `MARKET_DATABASE_URL`. Verify all 11 feeds after the initial sync and retain per-source failure visibility. Do not run the repository build merely to validate this feature; it deploys migrations to the configured database.
+Before an explicitly authorized production release, review the additive migration `20261015150000_market_outlook_feeds`, configure provider keys and scheduler variables, and use the repository's GitHub/Netlify release process and published-commit ancestry checks. Production should normally omit the local-only `MARKET_DATABASE_URL`. Verify all 13 feeds after the initial sync and retain per-source failure visibility. Do not run the repository build merely to validate this feature; it deploys migrations to the configured database.

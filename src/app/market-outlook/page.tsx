@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import { marketIndicators } from '@/lib/marketOutlook';
 import { marketSeries, marketChanges, marketFreshness, marketSignal, formatMarketValue, type MarketSeries, type SavedMarketSeries } from '@/lib/marketSeries';
 import { loadMarketOutlook } from '@/lib/loadMarketOutlook';
 import styles from './market-outlook.module.css';
@@ -46,16 +45,16 @@ export default async function MarketOutlookPage() {
         <div className={styles.actionBox}><span>LOCAL DECISIONS</span><strong>Use Pennsylvania evidence alongside national benchmarks.</strong><p>Local commercial permits, architecture activity, and contractor backlog still need separate coverage.</p></div>
       </section>
       <div className={styles.sectionHeading}><div><p className={styles.kicker}>PUBLIC DATA</p><h2>Latest published observations</h2></div></div>
-      {(['Material costs', 'Labor', 'Current market', 'Financing'] as const).map(group => (
+      {(['Pipeline', 'Material costs', 'Labor', 'Current market', 'Financing'] as const).map(group => (
         <section className={styles.group} key={group}>
           <h3>{group}</h3>
-          <div className={styles.grid}>{marketSeries.filter(series => (marketIndicators.find(indicator => indicator.name === series.card)?.group ?? 'Labor') === group).map(series => <MarketCard key={series.id} series={series} saved={byId.get(series.id)} now={now} />)}</div>
+          <div className={styles.grid}>{marketSeries.filter(series => series.group === group).map(series => <MarketCard key={series.id} series={series} saved={byId.get(series.id)} now={now} />)}</div>
         </section>
       ))}
       <p className={styles.method}>Signal rule: demand growth above 1% year over year is favorable; cost growth above 1% is pressure. Changes within ±1% are broadly flat. Financing and unemployment remain context indicators. Missing comparisons and overdue data receive no directional signal.</p>
       <section className={styles.regional}>
         <div><p className={styles.kicker}>COVERAGE STILL TO CONNECT</p><h2>Planning and local pipeline</h2></div>
-        <div><p>AIA architecture billings, inquiries, design contracts and sector forecasts; Dodge planning and starts; ABC backlog and confidence; local commercial permits.</p><p>Census Building Permits Survey covers residential construction. It is not a measure of local commercial project starts. <a href="https://www.census.gov/construction/bps/" target="_blank" rel="noreferrer">Source coverage ↗</a></p></div>
+        <div><p>AIA architecture billings, inquiries, design contracts and sector forecasts; ABC backlog and confidence; local commercial permits.</p><p>Census Building Permits Survey covers residential construction. It is not a measure of local commercial project starts. <a href="https://www.census.gov/construction/bps/" target="_blank" rel="noreferrer">Source coverage ↗</a></p></div>
       </section>
       <p className={styles.disclaimer}>Published observations may be revised. Market indicators support planning and do not guarantee future construction volume.</p>
     </main>
@@ -81,8 +80,8 @@ function MarketCard({ series, saved, now }: { series: MarketSeries; saved?: Save
     <div className={styles.change}>{latest ? comparison.filter(Boolean).join(' · ') || 'Comparison not available' : 'No saved observations yet'}</div>
     {history.length > 1 && <svg className={styles.sparkline} viewBox="0 0 280 60" role="img" aria-label={series.name + ': last ' + history.length + ' observations; exact values in history below'}><polyline points={line} fill="none" stroke="currentColor" strokeWidth="2.5" /></svg>}
     <p className={styles.note}>{series.note}{latest?.preliminary ? ' Latest value is preliminary.' : ''}</p>
-    <dl className={styles.meta}><div><dt>Geography</dt><dd>{series.geography}</dd></div><div><dt>Units</dt><dd>{series.units}</dd></div><div><dt>Checked</dt><dd>{saved ? dateLabel(saved.checkedAt) : 'Not checked yet'}</dd></div>{saved?.status !== 'ok' && latest && <div><dt>Last success</dt><dd>{saved?.lastSuccessAt ? dateLabel(saved.lastSuccessAt) : 'Unknown'}</dd></div>}</dl>
-    <footer><span>{latest ? periodLabel(latest.period, series.frequency) : 'Awaiting release data'}</span><a href={series.sourceUrl} target="_blank" rel="noreferrer">{series.source} ↗</a></footer>
-    {history.length > 0 && <details className={styles.history}><summary>Recent history</summary><table><caption>{series.units}</caption><thead><tr><th scope="col">Period</th><th scope="col">Value</th></tr></thead><tbody>{[...history].reverse().map(point => <tr key={point.period}><td>{periodLabel(point.period, series.frequency)}{point.preliminary ? ' *' : ''}</td><td>{formatMarketValue(series, point.value)}</td></tr>)}</tbody></table><small>* Preliminary. Historical readings can be revised.</small></details>}
+    <dl className={styles.meta}><div><dt>Geography</dt><dd>{series.geography}</dd></div><div><dt>Units</dt><dd>{series.units}</dd></div><div><dt>Checked</dt><dd>{saved ? dateLabel(saved.checkedAt) : 'Not checked yet'}</dd></div>{latest?.publishedAt && <div><dt>Published</dt><dd>{dateLabel(latest.publishedAt)}</dd></div>}{saved?.status !== 'ok' && latest && <div><dt>Last success</dt><dd>{saved?.lastSuccessAt ? dateLabel(saved.lastSuccessAt) : 'Unknown'}</dd></div>}</dl>
+    <footer><span>{latest ? periodLabel(latest.period, series.frequency) : 'Awaiting release data'}</span><a href={latest?.sourceUrl ?? series.sourceUrl} target="_blank" rel="noreferrer">{series.source} ↗</a></footer>
+    {history.length > 0 && <details className={styles.history}><summary>Recent history</summary><table><caption>{series.units}</caption><thead><tr><th scope="col">Period</th><th scope="col">Value</th></tr></thead><tbody>{[...history].reverse().map(point => <tr key={point.period}><td>{periodLabel(point.period, series.frequency)}{point.preliminary ? ' *' : ''}</td><td>{point.sourceUrl ? <a href={point.sourceUrl} target="_blank" rel="noreferrer">{formatMarketValue(series, point.value)} ↗</a> : formatMarketValue(series, point.value)}</td></tr>)}</tbody></table><small>* Preliminary. Historical readings can be revised.</small></details>}
   </article>;
 }

@@ -103,7 +103,9 @@ test('batch isolates bad BLS series, never calls keyed feeds without keys', asyn
     calls.push(url);
     return Response.json({ status: 'REQUEST_SUCCEEDED', Results: { series: [{ seriesID: 'WPU1333', data: [{ year: '2026', period: 'M09', value: '1' }] }] } });
   } });
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 3);
+  assert.equal(calls.filter(url => url.includes('construction.com')).length, 2);
+  assert.equal(results.find(r => r.id === 'dodge-momentum').status, 'error');
   assert.equal(results.find(r => r.id === 'ready-mix').status, 'ok');
   assert.equal(results.find(r => r.id === 'cement').status, 'error');
   assert.equal(results.find(r => r.id === 'diesel').status, 'unconfigured');

@@ -15,7 +15,12 @@ export async function marketDatabase() {
 export function mergeMarketHistory(previous: MarketPoint[], incoming: MarketPoint[]): MarketPoint[] {
   // Re-fetching history replaces revised periods while retaining older observations.
   const points = new Map(previous.map(point => [point.period, point]));
-  for (const point of incoming) points.set(point.period, point);
+  for (const point of incoming) {
+    const saved = points.get(point.period);
+    // A rolling publisher feed must never undo a revision already saved from a newer release.
+    if (saved?.publishedAt && point.publishedAt && saved.publishedAt > point.publishedAt) continue;
+    points.set(point.period, point);
+  }
   return normalizeMarketPoints([...points.values()]);
 }
 

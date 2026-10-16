@@ -224,7 +224,7 @@ export function classifyLaborGroup(line: Pick<EstimateAmountLine, "name" | "cost
   if (/\b(project\s+management|management|supervision)\b/.test(text)) return "PM";
   if (/\b(slab\s+on\s+grade|sog|interior\s+(?:concrete|sealer))\b/.test(text)) return "Slab On Grade Labor";
   if (/\b(wall|retaining\s+wall)\b/.test(text)) return "Wall Labor";
-  if (/\b(foundation|footing|spreadfooting|pier|excavat|backfill)\b/.test(text)) return "Foundation Labor";
+  if (/\b(foundations?|footings?|footers?|spread\s*footings?|piers?|excavat\w*|backfill\w*)\b/.test(text)) return "Foundation Labor";
   if (/\b(site\s+concrete|bollard|waterstop|stone\s+grad)\b/.test(text)) return "Site Concrete Labor";
   if (/\btravel\b/.test(text)) return "Travel Labor";
   return "Other Labor";

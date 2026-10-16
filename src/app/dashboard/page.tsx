@@ -203,6 +203,8 @@ function DashboardContent() {
           hours: 0,
           count: 0,
           laborByGroup: {},
+          salesByGroup: {},
+          cogsByGroup: {},
           concreteByGroup: {},
         };
       }
@@ -218,6 +220,11 @@ function DashboardContent() {
       groups[status].cogsCost += (p.cogsCost ?? 0);
       groups[status].hours += (p.hours ?? 0);
       groups[status].count += 1;
+      for (const field of ['salesByGroup', 'cogsByGroup'] as const) {
+        for (const [group, amount] of Object.entries(p[field] || {})) {
+          groups[status][field][group] = (groups[status][field][group] || 0) + (Number(amount) || 0);
+        }
+      }
       
       // Aggregate pmcGroup hours by group
       // Prefer pmcGroup (mapped 9-category keys), fall back to pmcBreakdown (raw cost-item keys)
@@ -572,6 +579,7 @@ function DashboardContent() {
                   cogsCost = 0,
                   hours,
                   laborByGroup,
+                  salesByGroup,
                   cogsByGroup,
                 } = metrics;
               const rph = hours ? sales / hours : 0;
@@ -591,17 +599,18 @@ function DashboardContent() {
                 })
                 .sort((a, b) => (b[1] as number) - (a[1] as number));
               const groupNames = new Set([
+                ...Object.entries(salesByGroup || {}).filter(([, value]) => value !== 0).map(([groupName]) => groupName),
                 ...laborGroupEntries.map(([groupName]) => groupName),
                 ...Object.entries(cogsByGroup || {})
                   .filter(([groupName, value]) => value !== 0 && displayedPmcGroups.has(groupName.toLowerCase()))
                   .map(([groupName]) => groupName),
               ]);
               const pmcGroupEntries = [...groupNames]
-                .filter((groupName) => displayedPmcGroups.has(groupName.toLowerCase()))
                 .map((groupName) => [
                   groupName,
                   laborByGroup?.[groupName] ?? 0,
                   cogsByGroup?.[groupName] ?? 0,
+                  salesByGroup?.[groupName] ?? 0,
                 ] as const)
                 .sort((a, b) => (b[1] + b[2]) - (a[1] + a[2]));
 
@@ -696,32 +705,37 @@ function DashboardContent() {
                   <div className="mt-auto pt-4 border-t border-gray-100">
                     <div className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
                        <span className="w-1.5 h-1.5 rounded-full bg-teal-500"></span>
-                       Hours / COGS per Hr by PMC Group
+                       Sales / Hours / COGS per Hr by PMC Group
                     </div>
                     {pmcGroupEntries.length > 0 && (
-                      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-3 px-2 mb-1 text-[8px] font-black text-gray-300 uppercase tracking-widest">
+                      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-2 px-2 mb-1 text-[8px] font-black text-gray-400 uppercase tracking-widest">
                         <span></span>
+                        <span>Sales</span>
                         <span>Hrs</span>
                         <span>COGS / Hr</span>
                       </div>
                     )}
                     {pmcGroupEntries.length === 0 ? (
-                      <div className="text-xs text-gray-400 italic font-medium py-2">No hours or COGS reported</div>
+                      <div className="text-xs text-gray-400 italic font-medium py-2">No sales, hours or COGS reported</div>
                     ) : (
                       <div className="space-y-1.5">
-                        {pmcGroupEntries.map(([pmcGroup, labor, cogs]) => (
-                          <div key={pmcGroup} className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-3 items-center text-[11px] bg-gray-50 px-2 py-1.5 rounded-lg border border-transparent hover:border-gray-200 transition-colors">
-                            <span className="text-gray-500 font-bold uppercase tracking-tight truncate">{pmcGroup}</span>
+                        {pmcGroupEntries.map(([pmcGroup, labor, cogs, groupSales]) => (
+                          <div key={pmcGroup} className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-2 items-center text-[11px] bg-gray-50 px-2 py-1.5 rounded-lg border border-transparent hover:border-gray-200 transition-colors">
+                            <span className="text-gray-500 font-bold uppercase tracking-tight" title={pmcGroup}>{pmcGroup.replace(/ Labor$/, '').replace('Slab On Grade', 'SOG').replace('Site Concrete', 'Site').replace('Foundation', 'Foundations')}</span>
+                            <span className="text-teal-700 font-black tabular-nums" title="Estimate group sales">
+                              {`$${Number(groupSales).toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+                            </span>
                             <span className="text-gray-900 font-black tabular-nums" title="Hours">
                               {labor.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                             </span>
                             <span className="text-orange-600 font-black tabular-nums" title="COGS per hour">
-                              {`$${(labor > 0 ? cogs / labor : 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                              {labor > 0 ? `$${(cogs / labor).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
                             </span>
                           </div>
                         ))}
                       </div>
                     )}
+                    <p className="mt-2 text-[10px] text-gray-500">Sales follow each estimate group’s main work type. Piers and footers are Foundations. Unassigned sales and estimate adjustments have no confirmed work type.</p>
                   </div>
                 </div>
               );

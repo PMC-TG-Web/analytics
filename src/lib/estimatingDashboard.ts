@@ -1,6 +1,7 @@
 import { PrismaClient, type Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getCachedValue, setCachedValue } from "@/lib/serverReadCache";
+import { estimateSalesByGroup, reconcileEstimateGroupSales } from "@/lib/estimatingGroupSales";
 import {
   addEstimateLineAmounts,
   aggregateApprovedChangeOrders,
@@ -26,6 +27,7 @@ const estimateDashboardLineSelect = {
   proposalId: true,
   name: true,
   groupId: true,
+  groupName: true,
   costCode: true,
   uom: true,
   quantity: true,
@@ -140,6 +142,7 @@ export type EstimatingDashboardProject = {
   laborCost: number;
   cogsCost: number;
   pmcGroup: Record<string, number>;
+  salesByGroup: Record<string, number>;
   cogsByGroup: Record<string, number>;
   pmcBreakdown: Record<string, number>;
   concreteGroup: Record<string, number>;
@@ -177,6 +180,7 @@ type DashboardSummary = {
     hours: number;
     count: number;
     laborByGroup: Record<string, number>;
+    salesByGroup: Record<string, number>;
     cogsByGroup: Record<string, number>;
     concreteByGroup: Record<string, number>;
   }>;
@@ -358,6 +362,15 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
     return selectedByBoard.get(boardId)?.proposalId === line.proposalId;
   });
 
+  const salesLinesByBoard = new Map<string, EstimateDashboardLine[]>();
+  for (const line of selectedLines) {
+    const boardId = canonicalBidBoardId(line.bidBoardProjectId);
+    const lines = salesLinesByBoard.get(boardId) ?? [];
+    lines.push(line);
+    salesLinesByBoard.set(boardId, lines);
+  }
+  const salesByBoard = new Map([...salesLinesByBoard].map(([boardId, lines]) => [boardId, estimateSalesByGroup(lines)]));
+
   // A generic mix name such as "4000 PSI Concrete" inherits its placement
   // category from the production labor in the same Procore estimate group.
   const scopeLaborWeights = new Map<string, Record<string, number>>();
@@ -509,6 +522,7 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
       laborCost: totals.laborCost,
       cogsCost: totals.cogsCost,
       pmcGroup: totals.laborByGroup,
+      salesByGroup: reconcileEstimateGroupSales(salesByBoard.get(boardId) ?? {}, bidBoardSales ?? (totals.lineCount > 0 ? totals.sales : proposalSales)),
       cogsByGroup: totals.cogsByGroup,
       pmcBreakdown: totals.laborByGroup,
       concreteGroup: totals.concreteByGroup,
@@ -610,6 +624,7 @@ export function buildEstimatingDashboardSummary(projects: EstimatingDashboardPro
       hours: 0,
       count: 0,
       laborByGroup: {},
+      salesByGroup: {},
       cogsByGroup: {},
       concreteByGroup: {},
     };
@@ -631,6 +646,9 @@ export function buildEstimatingDashboardSummary(projects: EstimatingDashboardPro
     }
     for (const [group, cogs] of Object.entries(project.cogsByGroup)) {
       statusGroup.cogsByGroup[group] = (statusGroup.cogsByGroup[group] ?? 0) + cogs;
+    }
+    for (const [group, sales] of Object.entries(project.salesByGroup)) {
+      statusGroup.salesByGroup[group] = (statusGroup.salesByGroup[group] ?? 0) + sales;
     }
     for (const [group, yards] of Object.entries(project.concreteGroup)) {
       statusGroup.concreteByGroup[group] = (statusGroup.concreteByGroup[group] ?? 0) + yards;

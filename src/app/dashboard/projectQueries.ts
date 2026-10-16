@@ -74,6 +74,7 @@ export type Project = {
   laborSales?: number;
   laborCost?: number;
   cogsCost?: number;
+  salesByGroup?: Record<string, number>;
   dateUpdated?: any;
   dateCreated?: any;
   projectArchived?: boolean;
@@ -106,6 +107,7 @@ export type DashboardSummary = {
     hours: number; 
     count: number;
     laborByGroup?: Record<string, number>;
+    salesByGroup?: Record<string, number>;
     cogsByGroup?: Record<string, number>;
     concreteByGroup?: Record<string, number>;
   }>;

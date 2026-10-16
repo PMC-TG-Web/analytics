@@ -86,6 +86,7 @@ export async function loadQboDirectCosts(companyId: string, projectId: string, m
   const ruleItems = ruleSources.map(source => { const rule=rulesByKey.get(source.lineKey); return { ...source,sourceSignature:catalogSourceSignature(source),ignored:rule?.ignored || false,unitCost:source.allowPrice ? rule?.unitCost?.toString() || null : null,reason:rule?.reason || '',revision:rule?.revision || 0 }; });
   return {
     ruleItems,
+    ignoredLineKeys: [...ignored].sort(),
     schemaVersion: 3, scope: 'productivity_and_timecards', pricingSource: 'cost_catalog', catalogCheckedAt: catalog?.fetchedAt || null, generatedAt: new Date().toISOString(),
     companyId, projectId, projectName: project.projectName, projectNumber: project.projectNumber, month,
     vendorName: DIRECT_COST_VENDOR, food: { saved: foodTotal, logCount: foodLogCount, entries: foodEntries.map(entry => ({ id: entry.id, spentOn: entry.spentOn, note: entry.note, amount: entry.amount.toFixed(2), createdBy: entry.createdBy, createdAt: entry.createdAt.toISOString() })) },

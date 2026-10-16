@@ -1,0 +1,221 @@
+--- a/src/direct-cost-bill.js
++++ b/src/direct-cost-bill.js
+@@ -176,11 +176,13 @@
+     PrivateNote: `PMC Procore Direct Costs | Company ${draft.companyId} | Project ${draft.projectId} | ${draft.month} | ${withLabor ? 'Productivity and timecard labor.' : 'Productivity only; timecards excluded.'} ${catalogPricing ? `Current Cost Catalog pricing.${draft.lines.some(line => line.sourceType === 'manual_food') ? ' Food uses entered monthly total.' : ''} ` : ''}${offsetLines.length ? 'Material/labor category offsets included.' : 'Category offsets excluded.'}`,
+     Line,
+   };
+-  const fingerprint = crypto.createHash('sha256').update(JSON.stringify({ key, payload, source })).digest('hex');
++  const ignoredLineKeys = [...new Set(draft.ignoredLineKeys || (draft.ruleItems || []).filter(rule => rule.ignored).map(rule => rule.lineKey))].sort();
++  if (ignoredLineKeys.some(key => typeof key !== 'string' || !key || source.some(row => row.lineKey === key))) throw new Error('Skipped source keys must be valid and excluded from automatic lines.');
++  const fingerprint = crypto.createHash('sha256').update(JSON.stringify({ key, payload, source, ...(ignoredLineKeys.length ? {ignoredLineKeys} : {}) })).digest('hex');
+   // A reviewed replacement after confirmed deletion gets a new reserved number
+   // and a fresh QBO idempotency key; retries of that replacement stay stable.
+   const createRequestId = crypto.createHash('sha256').update(JSON.stringify([identity, billNumber])).digest('hex');
+-  return { screedingLineKeys: source.filter(s => mapping.items?.[s.lineKey]?.offsetClass).map(s => s.lineKey), identity, fingerprint, requestId: `pc-${createRequestId.slice(0, 40)}`, payload, source, grossTotal: Number(total) / 100, offsetTotal: offsetLines.length ? -Number(total) / 100 : 0, total: offsetLines.length ? 0 : Number(total) / 100, environment: mapping.environment, realmId: mapping.realmId };
++  return { ignoredLineKeys, screedingLineKeys: source.filter(s => mapping.items?.[s.lineKey]?.offsetClass).map(s => s.lineKey), identity, fingerprint, requestId: `pc-${createRequestId.slice(0, 40)}`, payload, source, grossTotal: Number(total) / 100, offsetTotal: offsetLines.length ? -Number(total) / 100 : 0, total: offsetLines.length ? 0 : Number(total) / 100, environment: mapping.environment, realmId: mapping.realmId };
+ }
+ 
+ export async function validateBillReferences(reader, mapping, prepared) {
+--- a/src/direct-cost-bill-service.js
++++ b/src/direct-cost-bill-service.js
+@@ -78,7 +78,7 @@
+       }
+     }
+     if (!qboPricePolicy && prepared.closedMonthPrices) prepared = applyQboPrices(prepared);
+-    if (qboPricePolicy && receipt && result.action !== 'reconcile') {
++    if ((qboPricePolicy || prepared.ignoredLineKeys?.length || Object.keys(receipt?.skippedSourceBindings || {}).length) && receipt && result.action !== 'reconcile') {
+       if (operation === 'status') prepared = applySavedQboDescriptions(applyQboPrices(prepared,receipt.qboPrices || {},receipt.qboOffsetAdjustments || []),receipt);
+       else if (operation === 'prepare' || operation === 'post' || operation.startsWith('reconcile-')) {
+         try {
+@@ -88,7 +88,7 @@
+         } catch(e) {
+           // A confirmed legacy replacement remains usable even if the old receipt
+           // cannot bind source IDs. Its saved SyncToken still gates the writer.
+-          if(receipt.reconciliationPending && /ownership|Saved source history|ENOENT/.test(e.message)) {
++          if(receipt.reconciliationPending && !prepared.ignoredLineKeys?.length && !Object.keys(receipt.skippedSourceBindings || {}).length && /ownership|Saved source history|ENOENT/.test(e.message)) {
+             prepared=applyQboPrices(prepared,receipt.qboPrices || {},receipt.qboOffsetAdjustments || []);
+           } else {
+             if(operation==='post')throw e;
+--- a/src/qbo-managed-bill.js
++++ b/src/qbo-managed-bill.js
+@@ -66,7 +66,7 @@
+  return !labor && code==='03-300-40-30' && ['line dragon','boom pump rental w/operator','trailer pump (includes 3 hr)'].includes(name);
+ }
+ export async function managedState(claim,receipt,current,prepared) {
+- if(receipt.managedLines?.length && receipt.sourceBindings) return {lines:receipt.managedLines,bindings:receipt.sourceBindings,sourceKeys:receipt.sourceKeys || Object.keys(receipt.sourceBindings)};
++ if(receipt.managedLines?.length && receipt.sourceBindings) return {lines:[...receipt.managedLines,...(receipt.skippedLines || [])],bindings:{...(receipt.skippedSourceBindings || {}),...receipt.sourceBindings},sourceKeys:[...new Set([...(receipt.sourceKeys || Object.keys(receipt.sourceBindings)),...Object.keys(receipt.skippedSourceBindings || {})])]};
+  const saved=await savedPrepared(claim,receipt);
+  if(receipt.managedLines?.length) return {lines:receipt.managedLines,bindings:bindBillSources(saved,{Line:receipt.managedLines}),sourceKeys:(saved.source || []).map(s=>s.lineKey)};
+  // Legacy receipts: retain unique source ownership across manual price/class
+@@ -153,7 +153,12 @@
+  if(!(receipt.reconciliationPending && String(current.SyncToken)===String(receipt.syncToken)) && receipt.privateNote!==undefined && (current.PrivateNote || '')!==receipt.privateNote)throw new Error('Bill notes changed; reconciliation is required.');
+  const state=await managedState(claim,receipt,current,prepared);
+  const activeSourceKeys=new Set((prepared.source || []).map(source=>source.lineKey));
++ const ignoredKeys=new Set(prepared.ignoredLineKeys || []);
+  const removedKeys=(state.sourceKeys || []).filter(key=>!activeSourceKeys.has(key));
++ for(const key of ignoredKeys) {
++  const id=state.bindings[key];
++  if(id && Object.entries(state.bindings).some(([other,bound])=>String(bound)===String(id) && activeSourceKeys.has(other))) throw new Error('A skipped source shares a QBO line with an active source; separate the lines through reconciliation before updating.');
++ }
+  let preservedManagedIds=new Set();
+  if(removedKeys.length) {
+   const saved=await savedPrepared(claim,receipt);
+@@ -165,9 +170,11 @@
+    // Older successful attempts omitted source names; their receipt-bound
+    // managed line supplies the saved description without guessing ownership.
+    const named=source && !normalizedEquipmentName(source) ? {...source,description:state.lines.find(line=>String(line.Id)===id)?.Description} : source;
+-   return !activeSourceKeys.has(key) && manualOnlyEquipmentSource(named);
++   return !activeSourceKeys.has(key) && (ignoredKeys.has(key) || Object.hasOwn(receipt.skippedSourceBindings || {},key) || manualOnlyEquipmentSource(named));
+   })).map(([id])=>id));
+  }
++ const skippedSourceBindings=Object.fromEntries(Object.entries(state.bindings).filter(([,id])=>preservedManagedIds.has(String(id))));
++ const skippedLines=state.lines.filter(line=>preservedManagedIds.has(String(line.Id))).map(line=>(current.Line || []).find(live=>String(live.Id)===String(line.Id)) || line);
+  const reviewed=receipt.reconciliationPending && String(current.SyncToken)===String(receipt.syncToken);
+  const currentById=new Map((current.Line || []).map(l=>[String(l.Id),l]));
+  const screeders=new Set(prepared.screedingLineKeys || []), keyById=new Map(Object.entries(state.bindings).map(([k,v])=>[String(v),k]));
+@@ -223,5 +230,5 @@
+   const matches=current.Line.filter(old=>managedIds.has(String(old.Id)) && old.AccountBasedExpenseLineDetail?.AccountRef?.value===d.AccountRef.value && old.AccountBasedExpenseLineDetail.ClassRef?.value===d.ClassRef?.value);
+   if(matches.length===1 && currentById.has(String(matches[0].Id)))line.Id=String(matches[0].Id);
+  }
+- return {...updated,expectedQboVersion:String(current.SyncToken),preservedLines:additions,autoMerge:true,currentQboBill:current,fingerprint:hash({source:updated.fingerprint,payload:updated.payload,version:current.SyncToken,additions})};
+-}
++ return {...updated,skippedSourceBindings,skippedLines,expectedQboVersion:String(current.SyncToken),preservedLines:additions,autoMerge:true,currentQboBill:current,fingerprint:hash({source:updated.fingerprint,payload:updated.payload,version:current.SyncToken,additions})};
++}
+--- a/src/qbo-manual-offsets.js
++++ b/src/qbo-manual-offsets.js
+@@ -21,6 +21,11 @@
+ 
+ export function retainOffsetAdjustments(prepared, state, current, preservedItemIds = new Set()) {
+   const templates = prepared.payload.Line.filter(l => l.AccountBasedExpenseLineDetail);
++  // A skipped line may own the last offset in its category. Retain that family
++  // from receipt evidence even when the new automatic draft has none.
++  if (preservedItemIds.size) for (const line of state.lines.filter(line => line.AccountBasedExpenseLineDetail)) {
++    if (!templates.some(template => family(template) === family(line))) templates.push(line);
++  }
+   const families = new Set(templates.map(family));
+   const offsets = current.Line.filter(l => l.AccountBasedExpenseLineDetail && families.has(family(l)));
+   // A retained QBO class may differ from the source's configured class. Locate
+@@ -35,6 +40,7 @@
+   const balanced = cents(current.TotalAmt) === 0 && current.Line.reduce((sum, l) => sum + cents(l.Amount), 0) === 0
+     && current.Line.every(l => l.ItemBasedExpenseLineDetail || (l.AccountBasedExpenseLineDetail && families.has(family(l))));
+   if (!balanced) {
++    if (preservedItemIds.size && offsets.length) throw new Error('Skipped QBO charges need balanced offsets before an automatic update; reconciliation is required.');
+     if (offsets.some(l => !knownIds.has(String(l.Id)))) throw new Error('Split QBO offsets do not balance; reconciliation is required.');
+     return { adjustments: [], managedIds: [] };
+   }
+--- a/src/monthly-bill-sync.js
++++ b/src/monthly-bill-sync.js
+@@ -35,7 +35,7 @@
+     // Full replacement of month-to-date lines, including offsets. Never append daily totals.
+     const bill = alreadyMatches ? current : await updateBill(revision, current);
+     if (String(bill?.Id) !== String(receipt.billId) || bill.SyncToken == null || bill.DocNumber !== prepared.payload.DocNumber) throw new Error('Unexpected update result; reconcile before retrying.');
+-    const next = { sourceBindings: bindBillSources(prepared,bill,additions), sourceKeys: (prepared.source || []).map(s=>s.lineKey), qboOffsetAdjustments: prepared.qboOffsetAdjustments || [], qboPrices: prepared.qboPrices || receipt.qboPrices || {}, privateNote: bill.PrivateNote, preservedLines: additions, managedLines: managedBillLines(bill, additions), fingerprint: prepared.fingerprint, contentFingerprint: prepared.contentFingerprint, requestId: revision.requestId, billId: String(bill.Id), syncToken: bill.SyncToken, docNumber: bill.DocNumber, total: bill.TotalAmt, postedAt: receipt.postedAt, updatedAt: new Date().toISOString() };
++    const next = { skippedSourceBindings: prepared.skippedSourceBindings || {}, skippedLines: prepared.skippedLines || [], sourceBindings: bindBillSources(prepared,bill,additions), sourceKeys: (prepared.source || []).map(s=>s.lineKey), qboOffsetAdjustments: prepared.qboOffsetAdjustments || [], qboPrices: prepared.qboPrices || receipt.qboPrices || {}, privateNote: bill.PrivateNote, preservedLines: additions, managedLines: managedBillLines(bill, additions), fingerprint: prepared.fingerprint, contentFingerprint: prepared.contentFingerprint, requestId: revision.requestId, billId: String(bill.Id), syncToken: bill.SyncToken, docNumber: bill.DocNumber, total: bill.TotalAmt, postedAt: receipt.postedAt, updatedAt: new Date().toISOString() };
+     const temp = path.join(claim, `receipt-${revision.requestId}.tmp`);
+     const output = await open(temp, 'wx', 0o600);
+     try { await output.writeFile(JSON.stringify(next, null, 2)); await output.sync(); } finally { await output.close(); }
+--- a/test/qbo-managed-bill.test.js
++++ b/test/qbo-managed-bill.test.js
+@@ -255,3 +255,63 @@
+   copy=>copy.prepared.screedingLineKeys=[]
+  ]) {const copy=structuredClone(f);mutate(copy);await assert.rejects(mergeQboBill(copy),/reconciliation/);}
+ });
++
++test('skip preserves exact live quantity, rate, class and last category offset across updates and resume',async()=>{
++ const directory=await mkdtemp(path.join(os.tmpdir(),'qbo-skip-test-'));
++ try {
++  const f=fixture(),claim=path.join(directory,f.prepared.identity);await mkdir(claim);
++  // The remaining automatic line is in another offset category.
++  const other=item('3',100);other.ItemBasedExpenseLineDetail.ItemRef={value:'11',name:'other.L'};
++  const laborOffset=offset(-100);laborOffset.Id='4';laborOffset.Description='Labor offset';laborOffset.AccountBasedExpenseLineDetail.AccountRef={value:'333',name:'Labor -'};
++  f.prepared.payload.Line[1].AccountBasedExpenseLineDetail.AccountRef.name='Direct Costs -';
++  f.receipt.managedLines=structuredClone([...f.prepared.payload.Line,other,laborOffset]);
++  f.receipt.sourceBindings.other='3';f.receipt.sourceKeys.push('other');
++  const saved={...structuredClone(f.prepared),source:[{lineKey:'source',qboItemName:'screed.LS'},{lineKey:'other',qboItemName:'other.L'}]};
++  await writeFile(path.join(claim,'attempt.json'),JSON.stringify(saved));
++  f.current.Line=structuredClone(f.receipt.managedLines);
++  f.current.Line[0].ItemBasedExpenseLineDetail.Qty=2;f.current.Line[0].ItemBasedExpenseLineDetail.UnitPrice=1615;f.current.Line[0].Amount=3230;
++  f.current.Line[1].Amount=-3230;
++  f.prepared.source=[{lineKey:'other',qboItemName:'other.L'}];f.prepared.payload.Line=[other,laborOffset];f.prepared.ignoredLineKeys=['source'];
++  await writeFile(path.join(claim,'receipt.json'),JSON.stringify(f.receipt));
++  let merged=await mergeQboBill({...f,claim});
++  assert.deepEqual(merged.preservedLines,[f.current.Line[0]]);
++  assert.equal(merged.payload.Line.find(l=>l.Id==='2').Amount,-3230);
++  assert.equal(merged.total+merged.preservedLines[0].Amount,0);
++  let writes=0;
++  const savedReceipt=await syncMonthlyBill({directory,prepared:merged,readBill:async()=>f.current,updateBill:async p=>{writes++;return f.current={...f.current,...p.payload,SyncToken:'3'};}});
++  assert.deepEqual(savedReceipt.skippedSourceBindings,{source:'1'});
++  assert.equal(savedReceipt.sourceBindings.other,'3');
++  f.receipt=savedReceipt;
++  merged=await mergeQboBill({...f,claim});assert.equal(merged.preservedLines.length,1);
++  assert.equal(merged.preservedLines[0].Amount,3230);
++  assert.equal(merged.total+3230,0);
++  assert.equal((await syncMonthlyBill({directory,prepared:merged,readBill:async()=>f.current,updateBill:async()=>{throw Error('Unexpected duplicate write');}})).alreadyPosted,true);
++  // A later automatic quantity change still preserves the skipped charge exactly.
++  f.prepared.payload.Line[0].ItemBasedExpenseLineDetail.Qty=2;f.prepared.payload.Line[0].Amount=200;
++  f.prepared.payload.Line[1].Amount=-200;
++  merged=await mergeQboBill({...f,claim});
++  const next=await syncMonthlyBill({directory,prepared:merged,readBill:async()=>f.current,updateBill:async p=>{writes++;return f.current={...f.current,...p.payload,SyncToken:'4'};}});
++  f.receipt=next;
++  assert.equal(f.current.Line.find(l=>l.Id==='1').Amount,3230);
++  assert.equal(f.current.Line.find(l=>l.Id==='1').ItemBasedExpenseLineDetail.Qty,2);
++  assert.equal(f.current.Line.find(l=>l.Id==='2').Amount,-3230);
++  assert.equal(f.current.Line.find(l=>l.Id==='3').Amount,200);
++  // Resume the same bound line, never append a second one.
++  f.prepared.ignoredLineKeys=[];f.prepared.source.unshift({lineKey:'source',qboItemName:'screed.LS'});
++  f.prepared.payload.Line.unshift(item(undefined,1615,2));f.prepared.payload.Line.push({...offset(-3230),AccountBasedExpenseLineDetail:{...offset().AccountBasedExpenseLineDetail,AccountRef:{value:'331',name:'Direct Costs -'}}});
++  merged=await mergeQboBill({...f,claim});assert.equal(merged.payload.Line[0].Id,'1');assert.deepEqual(merged.preservedLines,[]);assert.deepEqual(merged.skippedSourceBindings,{});
++  assert.equal(writes,1);
++ } finally {await rm(directory,{recursive:true,force:true});}
++});
++
++test('skip keeps an intentionally deleted QB line absent and rejects mixed ownership',async()=>{
++ const dir=await mkdtemp(path.join(os.tmpdir(),'qbo-skip-test-'));
++ try {
++  const f=fixture();await writeFile(path.join(dir,'attempt.json'),JSON.stringify(f.prepared));
++  f.prepared.ignoredLineKeys=['source'];f.prepared.source=[];f.prepared.payload.Line=[];
++  f.current.Line=[offset(0)];
++  const merged=await mergeQboBill({...f,claim:dir});assert.deepEqual(merged.preservedLines,[]);assert.equal(merged.payload.Line.length,0);
++  f.receipt.sourceBindings.other='1';f.receipt.sourceKeys.push('other');f.prepared.source=[{lineKey:'other'}];
++  await assert.rejects(mergeQboBill({...f,claim:dir}),/shares a QBO line/);
++ }finally{await rm(dir,{recursive:true,force:true});}
++});
+--- a/test/direct-cost-bill.test.js
++++ b/test/direct-cost-bill.test.js
+@@ -164,3 +164,11 @@
+   assert.deepEqual(grouped.itemSourceKeys,[['6',key]]);assert.equal(grouped.source.length,2);
+   assert.equal(grouped.source[0].sourceLogs[0].id,grouped.source[1].sourceLogs[0].id,'Numeric IDs from separate datasets are not duplicates');
+ });
++
++test('skip rules reach the writer and participate in review fingerprint without becoming bill items',()=>{
++ const d=draft();d.ruleItems=[{lineKey:'manual-source',ignored:true}];
++ const before=prepared();const skipped=buildDirectCostBill(d,mapping,'2026-09-16');
++ assert.deepEqual(skipped.ignoredLineKeys,['manual-source']);assert.notEqual(skipped.fingerprint,before.fingerprint);
++ assert.deepEqual(skipped.payload,before.payload);
++ d.ignoredLineKeys=['6'];assert.throws(()=>buildDirectCostBill(d,mapping,'2026-09-16'),/excluded from automatic/);
++});
+--- a/test/direct-cost-bill-service.test.js
++++ b/test/direct-cost-bill-service.test.js
+@@ -113,3 +113,22 @@
+   review=await service({...target,operation:'prepare'});assert.equal(review.action,'current');
+  }finally{await rm(directory,{recursive:true,force:true});}
+ });
++
++test('skip preservation does not depend on enabling screeder price policy',async()=>{
++ const directory=await mkdtemp(path.join(os.tmpdir(),'qbo-service-test-'));
++ try {
++  const mapping={companyId:'2',projectId:'3',environment:'sandbox',realmId:'1',vendorId:'4',customerId:'5',customerName:'Project',items:{'6':{itemId:'7',itemName:'2508 - SC-03-300-20-20.M',uom:'cy'},'10':{itemId:'8',itemName:'2508 - SC-03-300-20-20.M',uom:'cy'}},offsets:{customerAssignment:'none',material:{accountId:'8',accountName:'Direct Costs -',classId:null}}};
++  await writeFile(path.join(directory,'project-mapping.json'),JSON.stringify(mapping));
++  const line={procoreLineItemId:'6',description:'Concrete',costCode:'03-300-20-20',costType:'Materials',uom:'cy',quantity:'1',unitCost:'100',amount:'100.00',sourceLogs:[{id:'9',date:'2026-09-16',quantity:'1'}]};
++  const draft={schemaVersion:1,scope:'productivity_logs',vendorName:'PMC Procore Direct Costs',companyId:'2',projectId:'3',projectNumber:'2508 - SC',month:'2026-09',issues:[],total:'200.00',lines:[line,{...line,procoreLineItemId:'10',description:'Manual item',sourceLogs:[{id:'11',date:'2026-09-16',quantity:'1'}]}]};
++  const saved=buildDirectCostBill(draft,mapping,'2026-09-01','Project 001');
++  const claim=path.join(directory,'posted',saved.identity);await mkdir(claim,{recursive:true});
++  const current={...structuredClone(saved.payload),Id:'100',SyncToken:'0',TotalAmt:0,Balance:0};current.Line.forEach((l,i)=>l.Id=String(i+1));
++  await writeFile(path.join(claim,'attempt.json'),JSON.stringify(saved));
++  await writeFile(path.join(claim,'receipt.json'),JSON.stringify({billId:'100',docNumber:'Project 001',syncToken:'0',fingerprint:saved.fingerprint,sourceKeys:saved.source.map(s=>s.lineKey),sourceBindings:Object.fromEntries(saved.source.map((s,i)=>[s.lineKey,String(i+1)])),managedLines:current.Line}));
++  let reads=0;
++  const service=createDirectCostBillService({directory,environment:'sandbox',realmId:'1',companyId:'2',writesEnabled:true,connect:async()=>({reader:{request:async()=>{reads++;return {Bill:current};}}})});
++  const review=await service({operation:'prepare',companyId:'2',projectId:'3',month:'2026-09',draft:{...draft,total:'100.00',lines:[line],ignoredLineKeys:['10']}});
++  assert.equal(reads,1);assert.deepEqual(review.issues,[]);assert.equal(review.preservedLineCount,1);assert.equal(review.offsetLines[0].amount,-200);
++ }finally{assert.match(path.relative(path.resolve(os.tmpdir()),path.resolve(directory)),/^qbo-service-test-[^\\/]+$/);await rm(directory,{recursive:true,force:true});}
++});

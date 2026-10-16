@@ -72,6 +72,7 @@ test('Food entries are optional even with daily logs; zero omits Food without re
 
 test('ignored purchase lines are excluded before pricing and remain available to restore',async()=>{
  const d=await load(null,[{lineKey:'11',ignored:true,unitCost:null,revision:1,reason:'Handled separately'}]);
+ assert.equal(Array.from(d.ignoredLineKeys).join(','),'11');
  assert.equal(d.total,'0.00');assert.equal(d.lines.length,0);assert.equal(d.issues.length,0);assert.equal(d.ruleItems.find(i=>i.lineKey==='11').ignored,true);
  assert.equal((await load(null)).total,'7.00');
 });

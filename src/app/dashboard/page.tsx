@@ -735,7 +735,7 @@ function DashboardContent() {
                         ))}
                       </div>
                     )}
-                    <p className="mt-2 text-[10px] text-gray-500">Sales follow each estimate group’s main work type. Piers and footers are Foundations. Unassigned sales and estimate adjustments have no confirmed work type.</p>
+                    <p className="mt-2 text-[10px] text-gray-500">Sales split by work type’s share of production hours within each estimate group. Piers and footers are Foundations. Unassigned sales and estimate adjustments have no confirmed work type.</p>
                   </div>
                 </div>
               );

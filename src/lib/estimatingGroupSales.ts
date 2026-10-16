@@ -43,10 +43,21 @@ export function estimateSalesByGroup(lines: GroupLine[]): Record<string, number>
     }
     const production = [...weights].filter(([group]) => productionGroups.has(group));
     const candidates = production.length ? production : [...weights];
-    candidates.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-    const tied = candidates.length > 1 && candidates[0][1] === candidates[1][1];
-    const category = tied ? 'Unassigned sales' : candidates[0]?.[0] ?? (names.size === 1 ? [...names][0] : 'Unassigned sales');
-    if (sales !== 0) totals[category] = (totals[category] ?? 0) + sales;
+    if (sales === 0) continue;
+    if (candidates.length) {
+      candidates.sort((a, b) => a[0].localeCompare(b[0]));
+      const totalHours = candidates.reduce((sum, [, hours]) => sum + hours, 0);
+      let allocated = 0;
+      candidates.forEach(([category, hours], index) => {
+        // Preserve the group's full signed value, including any floating-point remainder.
+        const share = index === candidates.length - 1 ? sales - allocated : sales * (hours / totalHours);
+        totals[category] = (totals[category] ?? 0) + share;
+        allocated += share;
+      });
+    } else {
+      const category = names.size === 1 ? [...names][0] : 'Unassigned sales';
+      totals[category] = (totals[category] ?? 0) + sales;
+    }
   }
   return totals;
 }

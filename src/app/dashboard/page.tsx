@@ -557,7 +557,7 @@ function DashboardContent() {
             <h2 className="text-teal-800 text-2xl font-black uppercase tracking-tight italic">Status Breakdown</h2>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6">
             {Object.entries(displayStatusGroups)
               .sort(([a], [b]) => {
                 const order = ["Estimating", "Bid Submitted", "Accepted", "In Progress", "Complete", "Delayed", "Lost"];
@@ -615,7 +615,7 @@ function DashboardContent() {
                 .sort((a, b) => (b[1] + b[2]) - (a[1] + a[2]));
 
               return (
-                <div key={status} className="bg-white rounded-3xl p-6 shadow-md border border-gray-100 flex flex-col hover:shadow-lg transition-shadow">
+                <div key={status} className="bg-white rounded-3xl p-4 shadow-md border border-gray-100 flex flex-col hover:shadow-lg transition-shadow">
                   <div className="flex justify-between items-start mb-4">
                     <h3 className="font-black text-xl text-teal-800 uppercase tracking-tight">{status}</h3>
                     <div className="px-2 py-1 bg-gray-50 rounded text-[9px] font-black text-gray-400 uppercase tracking-widest leading-none">Status Metrics</div>
@@ -707,21 +707,23 @@ function DashboardContent() {
                        <span className="w-1.5 h-1.5 rounded-full bg-teal-500"></span>
                        Sales / Hours / COGS per Hr by PMC Group
                     </div>
-                    {pmcGroupEntries.length > 0 && (
-                      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-2 px-2 mb-1 text-[8px] font-black text-gray-400 uppercase tracking-widest">
-                        <span></span>
-                        <span>Sales</span>
-                        <span>Hrs</span>
-                        <span>COGS / Hr</span>
-                      </div>
-                    )}
                     {pmcGroupEntries.length === 0 ? (
                       <div className="text-xs text-gray-400 italic font-medium py-2">No sales, hours or COGS reported</div>
                     ) : (
-                      <div className="space-y-1.5">
+                      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto_auto] gap-x-1 gap-y-1.5">
+                        <div className="col-span-5 grid grid-cols-subgrid items-center px-1 text-[8px] font-black text-gray-400 uppercase tracking-widest">
+                          <span></span>
+                          <span title="Share of this status card's total sales">Distro</span>
+                          <span>Sales</span>
+                          <span>Hrs</span>
+                          <span>COGS / Hr</span>
+                        </div>
                         {pmcGroupEntries.map(([pmcGroup, labor, cogs, groupSales]) => (
-                          <div key={pmcGroup} className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-2 items-center text-[11px] bg-gray-50 px-2 py-1.5 rounded-lg border border-transparent hover:border-gray-200 transition-colors">
-                            <span className="text-gray-500 font-bold uppercase tracking-tight" title={pmcGroup}>{pmcGroup.replace(/ Labor$/, '').replace('Slab On Grade', 'SOG').replace('Site Concrete', 'Site').replace('Foundation', 'Foundations')}</span>
+                          <div key={pmcGroup} className="col-span-5 grid grid-cols-subgrid items-center text-[10px] bg-gray-50 px-1 py-1.5 rounded-lg border border-transparent hover:border-gray-200 transition-colors">
+                            <span className="text-gray-500 font-bold uppercase tracking-tight break-words" title={pmcGroup}>{pmcGroup.replace(/ Labor$/, '').replace('Slab On Grade', 'SOG').replace('Site Concrete', 'Site').replace('Foundation', 'Foundations')}</span>
+                            <span className="text-gray-500 font-bold tabular-nums" title="Share of status sales">
+                              {sales !== 0 ? `${(Number(groupSales) / Number(sales) * 100).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%` : '—'}
+                            </span>
                             <span className="text-teal-700 font-black tabular-nums" title="Estimate group sales">
                               {`$${Number(groupSales).toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
                             </span>

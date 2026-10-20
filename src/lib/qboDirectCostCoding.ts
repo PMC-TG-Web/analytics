@@ -1,4 +1,22 @@
+import type { CatalogPrice } from './qboCostCatalog';
+
 // Bill-only coding overrides. Procore source records remain unchanged.
+export function applyCatalogLaborCoding<T extends { costCode?: string | null; costType?: string | null; wbsCode?: string | null; uom?: string | null; directCostCodingIssue?: string }>(source: T, catalog: CatalogPrice[]): T & { sourceCostType?: string; sourceWbsCode?: string } {
+  const sourceCostType = source.costType?.trim() || '';
+  const sourceWbsCode = source.wbsCode?.trim() || '';
+  const hourly = (unit: string | null | undefined) => /^(h|hr|hrs|hour|hours)$/i.test(unit?.trim() || '');
+  // Legacy project budgets use generic Other/Commitments assignments. Only an
+  // exact, exclusively hourly-labor catalog code can establish their bill type.
+  if (source.directCostCodingIssue || !/^(other|o|commitments|c)$/i.test(sourceCostType) || !hourly(source.uom)) return source;
+  const code = source.costCode?.trim().replace(/\.[A-Z]+$/i, '') || '';
+  if (!code || (sourceWbsCode && sourceWbsCode !== `${code}.${/^(other|o)$/i.test(sourceCostType) ? 'O' : 'C'}`)) return source;
+  const matches = catalog.filter(item => item.costCode === code);
+  if (!matches.length || !matches.every(item => item.type === 'LABOR' && hourly(item.uom))) return source;
+  // Rate validation remains in catalog matching; missing/conflicting rates do
+  // not become a guessed price. Preserve original source coding as evidence.
+  return { ...source, costType: 'Labor', sourceCostType, ...(sourceWbsCode ? { sourceWbsCode } : {}) };
+}
+
 export function isFoodCost(source: { description: string | null; costCode?: string | null; costType?: string | null }) {
   const name = (source.description || '').normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ').replace(/^co\s*\d+\s*[-\u2013\u2014]\s*/, '');
   const foodCode = (source.costCode || '').trim().replace(/\.[A-Z]+$/i, '') === '01-300-10-80';

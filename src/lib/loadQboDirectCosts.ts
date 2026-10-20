@@ -10,7 +10,7 @@ import { loadQboDirectCostLaborRates } from './loadQboDirectCostLaborRates';
 import { loadQboCostCatalog } from './loadQboCostCatalog';
 import { catalogSnapshotIssue, type BillCatalogSnapshot } from './qboCostCatalog';
 import { purchasePriceFallback, mappedCatalogPrice, duplicateCatalogSourceIds } from './qboCatalogMapping';
-import { applyDirectCostCoding, isFoodCost } from './qboDirectCostCoding';
+import { applyCatalogLaborCoding, applyDirectCostCoding, isFoodCost } from './qboDirectCostCoding';
 import { foodTotalLine } from './qboFoodTotal';
 import { loadEstimatingCostCodeCatalog } from './estimatingCostCodeCrosswalk';
 
@@ -46,7 +46,7 @@ export async function loadQboDirectCosts(companyId: string, projectId: string, m
   const crosswalk = loadEstimatingCostCodeCatalog();
   const aliasByLine = new Map(aliases.map(a => [a.source_line_item_id, a.target_line_item_id]));
   const activeLineIds = new Set(logs.filter(log => log.status?.toLowerCase() === 'approved' && Number(log.quantityUsed) > 0 && !/billing file/i.test(log.lineItemHolderTitle || '')).map(log => aliasByLine.get(log.lineItemId || '') || log.lineItemId));
-  const codedItems = items.map(applyDirectCostCoding);
+  const codedItems = items.map(item => applyCatalogLaborCoding(applyDirectCostCoding(item), catalogIssue ? [] : catalog!.items));
   const foodIds = new Set(codedItems.filter(item => item.procoreId && isFoodCost(item)).map(item => item.procoreId!));
   const knownItems = new Map(codedItems.map(item => [item.procoreId, item]));
   const isFoodLog = (log: typeof logs[number]) => {

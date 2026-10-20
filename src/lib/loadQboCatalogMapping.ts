@@ -2,20 +2,20 @@ import { prisma } from './prisma';
 import { loadQboCostCatalog } from './loadQboCostCatalog';
 import { catalogSnapshotIssue } from './qboCostCatalog';
 import { catalogMappingCandidates, catalogSourceSignature } from './qboCatalogMapping';
-import { applyDirectCostCoding, isFoodCost } from './qboDirectCostCoding';
+import { applyCatalogLaborCoding, applyDirectCostCoding, isFoodCost } from './qboDirectCostCoding';
 
 export async function loadQboCatalogMapping(companyId: string, projectId: string, lineItemId: string) {
   if (![companyId, projectId, lineItemId].every(id => /^\d+$/.test(id))) throw new Error('Choose a valid project and PO line.');
   const [items, catalog, mapping] = await Promise.all([
     prisma.purchaseOrderLineItemContractDetail.findMany({ where: { procoreCompanyId: companyId, procoreProjectId: projectId, procoreId: lineItemId }, take: 2,
-      select: { description: true, costCode: true, costType: true, uom: true } }),
+      select: { description: true, costCode: true, costType: true, wbsCode: true, uom: true } }),
     loadQboCostCatalog(companyId),
     prisma.qboCostCatalogMapping.findUnique({ where: { companyId_projectId_lineItemId: { companyId, projectId, lineItemId } } }),
   ]);
   if (items.length !== 1) throw new Error('This PO line is unavailable or ambiguous in the selected project.');
   const issue = catalogSnapshotIssue(catalog, companyId);
   if (issue) throw new Error(issue);
-  const source = applyDirectCostCoding(items[0]);
+  const source = applyCatalogLaborCoding(applyDirectCostCoding(items[0]), catalog!.items);
   if (isFoodCost(source)) throw new Error('Food uses the entered monthly total, not a catalog item.');
   return { source, sourceSignature: catalogSourceSignature(source), revision: mapping?.revision || 0, selectedItemId: mapping?.catalogItemId || null, candidates: catalogMappingCandidates(source, catalog!.items), checkedAt: catalog!.fetchedAt };
 }

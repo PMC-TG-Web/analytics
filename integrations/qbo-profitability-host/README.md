@@ -1,0 +1,11 @@
+# Explicit QBO profitability project links
+
+The read-only profitability generator runs in the separate `QBO_1` directory. `explicit-project-links.patch` versions its implementation and regression tests. Apply from that directory with `git apply --ignore-space-change --check <patch>` followed by `git apply --ignore-space-change <patch>`. Back up the affected source files first. If already installed, `git apply --ignore-space-change --reverse --check <patch>` succeeds instead. Never overwrite newer host work when a check fails.
+
+The generator reads `analytics/config/qboProfitabilityProjectLinks.json` from the sibling Analytics checkout. A different layout must set `PROJECT_PROFITABILITY_PROJECT_LINKS_FILE` to the versioned file's absolute path. Install that file before running the updated generator. Missing or invalid configuration stops the refresh and preserves the previous imported snapshot.
+
+Each reviewed link is scoped to QBO environment/realm and Procore company, and binds exact QBO customer and Procore project IDs. Labels are documentation only. Explicit links take precedence over name/number matching and reserve the target against another customer's name match. Duplicate/conflicting links, missing source projects and missing target projects fail before snapshot replacement. Existing eligible-status rules still apply. Unlinked projects keep their existing matching rules.
+
+The initial owner-confirmed link is QBO `9144` (Giorgia Mushroom Building Slab) to Procore `598134326697272` (Giorgio Mushroom Building Slab). No other project mappings are changed. The host's existing billing mapping independently confirms the same IDs; this reporting configuration does not change billing or create/edit QuickBooks or Procore business records.
+
+Run `node --test` in `QBO_1` (including `test/profitability-project-links.test.js`). The refresh worker starts a fresh report subprocess for each run, so no billing-host restart is needed. Run the existing read-only refresh workflow, then verify the new immutable snapshot contains exactly one row with the real QBO customer ID, `explicit-id` match method, and matching cost/detail totals. Historical snapshots remain unchanged. Check in and push the configuration and patch with the Analytics release so the link survives future refreshes and machine synchronization.

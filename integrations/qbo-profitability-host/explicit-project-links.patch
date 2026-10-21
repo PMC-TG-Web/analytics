@@ -1,0 +1,214 @@
+diff --git a/src/project-profitability.js b/src/project-profitability.js
+--- a/src/project-profitability.js
++++ b/src/project-profitability.js
+@@ -339,13 +339,21 @@
+  * status. QBO-only zero-activity projects must not be included until the separate
+  * restricted Projects API supplies their actual status.
+  */
+-export function buildProjectUniverse(activityRows, customerById, procoreProjects) {
++export function buildProjectUniverse(activityRows, customerById, procoreProjects, projectLinks = new Map()) {
+   const rowsByCustomerId = new Map(
+     (Array.isArray(activityRows) ? activityRows : [])
+       .map((row) => [String(row.qboCustomerId), row]),
+   );
+
+   const availableProcoreProjects = Array.isArray(procoreProjects) ? procoreProjects : [];
++  for (const [customerId, projectId] of projectLinks) {
++    if (!isQboProject(customerById.get(customerId))) {
++      throw new Error(`Explicit profitability link has no QBO project: ${customerId}`);
++    }
++    if (!availableProcoreProjects.some((project) => String(project.id) === projectId)) {
++      throw new Error(`Explicit profitability link has no Procore project: ${projectId}`);
++    }
++  }
+   const eligibleProcoreProjects = availableProcoreProjects.filter(isEligibleProcoreProject);
+   const matchedRows = [...rowsByCustomerId.values()].flatMap((row) => {
+     if (row.recordType !== 'project') {
+@@ -358,7 +366,7 @@
+       }];
+     }
+
+-    const match = matchProcoreProject(row, eligibleProcoreProjects);
++    const match = matchProcoreProject(row, eligibleProcoreProjects, projectLinks);
+     if (!match.project) return [];
+     return [{
+       ...row,
+@@ -384,7 +392,7 @@
+       parentCustomerId: customer.ParentRef?.value,
+       active: customer.Active,
+     });
+-    const match = matchProcoreProject(candidate, eligibleProcoreProjects);
++    const match = matchProcoreProject(candidate, eligibleProcoreProjects, projectLinks);
+     const projectId = String(match.project?.id || '').trim();
+     if (!projectId || matchedProcoreProjectIds.has(projectId)) continue;
+
+@@ -445,7 +453,15 @@
+   return normalized.replace(/\badd$/, 'addition');
+ }
+
+-export function matchProcoreProject(qboRow, procoreProjects) {
++export function matchProcoreProject(qboRow, procoreProjects, projectLinks = new Map()) {
++  const linkedProjectId = projectLinks.get(String(qboRow.qboCustomerId));
++  if (linkedProjectId) {
++    const project = procoreProjects.find((entry) => String(entry.id) === linkedProjectId);
++    return { project: project || null, method: 'explicit-id' };
++  }
++  // A reviewed identity cannot be claimed by another customer's similar name.
++  const reservedProjectIds = new Set(projectLinks.values());
++  procoreProjects = procoreProjects.filter((project) => !reservedProjectIds.has(String(project.id)));
+   const names = new Set([
+     normalizeMatchValue(qboRow.projectName),
+     normalizeMatchValue(String(qboRow.fullyQualifiedName || '').split(':').at(-1)),
+@@ -466,3 +482,25 @@
+
+   return { project: null, method: 'unmatched' };
+ }
++
++export function scopedProfitabilityProjectLinks(payload, scope) {
++  if (payload?.version !== 1 || !Array.isArray(payload.links)) {
++    throw new Error('Invalid profitability project-link configuration.');
++  }
++  const byScope = new Map();
++  for (const link of payload.links) {
++    if (!['production', 'sandbox'].includes(link?.environment)
++      || !['realmId', 'companyId', 'qboCustomerId', 'procoreProjectId']
++        .every((field) => typeof link[field] === 'string' && /^\d+$/.test(link[field]))) {
++      throw new Error('Profitability project links require an environment and explicit numeric IDs.');
++    }
++    const key = JSON.stringify([link.environment, link.realmId, link.companyId]);
++    const entries = byScope.get(key) || new Map();
++    if (entries.has(link.qboCustomerId) || [...entries.values()].includes(link.procoreProjectId)) {
++      throw new Error('Duplicate or conflicting profitability project links.');
++    }
++    entries.set(link.qboCustomerId, link.procoreProjectId);
++    byScope.set(key, entries);
++  }
++  return byScope.get(JSON.stringify([scope.environment, scope.realmId, scope.companyId])) || new Map();
++}
+diff --git a/src/report-project-profitability.js b/src/report-project-profitability.js
+--- a/src/report-project-profitability.js
++++ b/src/report-project-profitability.js
+@@ -2,6 +2,7 @@
+
+ import { mkdir, readFile, writeFile } from 'node:fs/promises';
+ import path from 'node:path';
++import { fileURLToPath } from 'node:url';
+ import { IntuitClient } from './intuit-client.js';
+ import { refreshAccessToken } from './oauth.js';
+ import { ProcoreClient } from './procore-client.js';
+@@ -14,6 +15,7 @@
+   extractProfitAndLossColumns,
+   extractProfitAndLossTotal,
+   summarizeDirectCostLines,
++  scopedProfitabilityProjectLinks,
+ } from './project-profitability.js';
+ import {
+   buildProjectBillingProgress,
+@@ -39,6 +41,13 @@
+ const INCLUDE_QBO_COST_DRILLTHROUGH = !['0', 'false', 'no', 'off'].includes(
+   String(process.env.PROJECT_PROFITABILITY_INCLUDE_QBO_COST_DRILLTHROUGH || '').trim().toLowerCase(),
+ );
++
++async function loadProjectLinks(scope) {
++  const configured = process.env.PROJECT_PROFITABILITY_PROJECT_LINKS_FILE?.trim();
++  const file = configured || fileURLToPath(new URL('../../analytics/config/qboProfitabilityProjectLinks.json', import.meta.url));
++  // Fail closed: a missing or invalid reviewed-link file must not publish false zero costs.
++  return scopedProfitabilityProjectLinks(JSON.parse(await readFile(file, 'utf8')), scope);
++}
+
+ async function loadIntuitClient() {
+   const tokenPath = getTokenFilePath();
+@@ -393,6 +402,11 @@
+
+   const windows = buildSixMonthWindows(START_DATE, END_DATE);
+   const intuit = await loadIntuitClient();
++  const projectLinks = await loadProjectLinks({
++    environment: process.env.INTUIT_ENVIRONMENT || 'sandbox',
++    realmId: String(intuit.realmId),
++    companyId: String(process.env.PROCORE_COMPANY_ID || ''),
++  });
+   const customers = await listAllCustomers(intuit);
+   const customerById = new Map(customers.map((customer) => [String(customer.Id), customer]));
+
+@@ -472,7 +486,7 @@
+   const activityCustomerIds = new Set(
+     activityRows.map((row) => String(row.qboCustomerId)),
+   );
+-  const matchedRows = buildProjectUniverse(activityRows, customerById, procoreProjects);
++  const matchedRows = buildProjectUniverse(activityRows, customerById, procoreProjects, projectLinks);
+   const qboCostDrillthroughByCustomerId = INCLUDE_QBO_COST_DRILLTHROUGH
+     ? await readQboProjectCostDrillthrough(
+         intuit,
+diff --git a/test/profitability-project-links.test.js b/test/profitability-project-links.test.js
+new file mode 100644
+--- /dev/null
++++ b/test/profitability-project-links.test.js
+@@ -0,0 +1,68 @@
++import assert from 'node:assert/strict';
++import test from 'node:test';
++import { buildProjectUniverse, scopedProfitabilityProjectLinks } from '../src/project-profitability.js';
++
++const scope = { environment: 'production', realmId: '100', companyId: '200' };
++const link = { ...scope, qboCustomerId: '300', procoreProjectId: '400' };
++const config = { version: 1, links: [link] };
++const customers = new Map([['300', { Id: '300', DisplayName: 'Giorgia Slab', Job: true, Active: true }]]);
++const projects = [{ id: '400', name: 'Giorgio Slab', projectNumber: '2606-GMBS', status: 'Complete' }];
++const activity = [{ qboCustomerId: '300', projectName: 'Giorgia Slab', recordType: 'project', actualCost: 125.5 }];
++const links = () => scopedProfitabilityProjectLinks(config, scope);
++
++test('explicit IDs link different names without a zero placeholder or changed costs', () => {
++  const rows = buildProjectUniverse(activity, customers, projects, links());
++  assert.equal(rows.length, 1);
++  assert.equal(rows[0].qboCustomerId, '300');
++  assert.equal(rows[0].procoreProjectId, '400');
++  assert.equal(rows[0].procoreMatchMethod, 'explicit-id');
++  assert.equal(rows[0].actualCost, 125.5);
++});
++
++test('explicit identity survives renamed projects and overrides misleading exact names', () => {
++  const alternatives = [{ id: '500', name: 'Giorgia Slab', status: 'Complete' }, { ...projects[0], name: 'Renamed' }];
++  const rows = buildProjectUniverse(activity, customers, alternatives, links());
++  assert.equal(rows.find((row) => row.qboCustomerId === '300').procoreProjectId, '400');
++});
++
++test('a second QBO customer cannot claim a project reserved by an explicit link', () => {
++  const rows = buildProjectUniverse([...activity, {
++    qboCustomerId: '301', projectName: 'Giorgio Slab', recordType: 'project', actualCost: 999,
++  }], customers, projects, links());
++  assert.equal(rows.length, 1);
++  assert.equal(rows[0].actualCost, 125.5);
++});
++
++test('zero-activity explicit links retain the real QBO ID for future refreshes', () => {
++  const rows = buildProjectUniverse([], customers, projects, links());
++  assert.equal(rows.length, 1);
++  assert.equal(rows[0].qboCustomerId, '300');
++  assert.equal(rows[0].procoreMatchMethod, 'explicit-id');
++  assert.equal(rows[0].actualCost, 0);
++});
++
++test('links never cross environment, QBO realm, or Procore company boundaries', () => {
++  for (const changed of [{ environment: 'sandbox' }, { realmId: '101' }, { companyId: '201' }]) {
++    assert.equal(scopedProfitabilityProjectLinks(config, { ...scope, ...changed }).size, 0);
++  }
++});
++
++test('invalid and conflicting IDs fail before a replacement snapshot is generated', () => {
++  for (const payload of [
++    {}, { version: 1, links: [{ ...link, qboCustomerId: 'Giorgia' }] },
++    { version: 1, links: [link, link] },
++    { version: 1, links: [link, { ...link, procoreProjectId: '401' }] },
++    { version: 1, links: [link, { ...link, qboCustomerId: '301' }] },
++  ]) assert.throws(() => scopedProfitabilityProjectLinks(payload, scope));
++  assert.throws(() => buildProjectUniverse(activity, new Map(), projects, links()), /no QBO project/);
++  assert.throws(() => buildProjectUniverse(activity, customers, [], links()), /no Procore project/);
++});
++
++test('explicit links preserve the existing project-status eligibility rule', () => {
++  assert.deepEqual(buildProjectUniverse(activity, customers, [{ ...projects[0], status: 'Lost' }], links()), []);
++});
++
++test('other projects retain the existing name-matching behavior', () => {
++  const rows = buildProjectUniverse([{ ...activity[0], projectName: 'Giorgio Slab' }], customers, projects);
++  assert.equal(rows[0].procoreMatchMethod, 'exact-name');
++});

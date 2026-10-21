@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "links": [
+    {
+      "environment": "production",
+      "realmId": "9341456600007692",
+      "companyId": "598134325805519",
+      "qboCustomerId": "9144",
+      "procoreProjectId": "598134326697272",
+      "note": "Owner confirmed QBO Giorgia Mushroom Building Slab is Procore Giorgio Mushroom Building Slab (2606 - GMBS)."
+    }
+  ]
+}

@@ -20,6 +20,13 @@ export async function GET(request: NextRequest) {
     }
     const companyId = process.env.PROCORE_COMPANY_ID?.trim();
     if (!companyId) return json({ error: 'The Procore company is not configured.' }, 503);
+    if (request.nextUrl.searchParams.get('view') === 'projects') {
+      const projects = await prisma.pmcProject.findMany({ where: { companyId },
+        select: { procoreProjectId: true, projectName: true, projectNumber: true },
+        orderBy: [{ projectName: 'asc' }, { procoreProjectId: 'asc' }],
+      });
+      return json({ projects: projects.map(p => ({ projectId: p.procoreProjectId, projectName: p.projectName, projectNumber: p.projectNumber || '' })) });
+    }
     return json(await loadProjectUsageReport(companyId, from, through));
   } catch (error) {
     console.error('[project-usage-report] Read failed', { errorType: error instanceof Error ? error.name : 'UnknownError' });

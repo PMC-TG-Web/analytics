@@ -22,7 +22,21 @@ export type ProjectUsageReport = UsagePeriod & {
   companyId: string; loadedAt: string; latestMirrorUpdate: string | null;
   projects: UsageSummary[]; labor: UsageLine[]; materials: UsageLine[]; other: UsageLine[]; review: UsageLine[];
   excluded: { deleted: number; billingLogs: number };
+  projectFilter?: { id: string; name: string };
 };
+
+/** Filter every report section by explicit project ID; null means all, including missing-ID review rows. */
+export function filterProjectUsageReport(report: ProjectUsageReport, projectId: string | null): ProjectUsageReport {
+  if (projectId === null) return report;
+  const projects = report.projects.filter(p => p.projectId === projectId);
+  return { ...report, projects,
+    projectFilter: { id: projectId, name: projects[0]?.projectName || `Project ${projectId}` },
+    labor: report.labor.filter(r => r.projectId === projectId),
+    materials: report.materials.filter(r => r.projectId === projectId),
+    other: report.other.filter(r => r.projectId === projectId),
+    review: report.review.filter(r => r.projectId === projectId),
+  };
+}
 
 export function usagePeriod(from = '', through = ''): UsagePeriod {
   for (const value of [from, through]) {

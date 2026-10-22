@@ -14,7 +14,9 @@ function setup({ actor = 'user@example.test', allowed = true, company = 'configu
     'next/server': { NextResponse: { json: (body, init) => Response.json(body, init) } },
     '@/lib/requestUser': { getRequestUserEmail: async () => actor },
     '@/lib/permissions': { hasDatabasePageAccess: async (_db, email, permission) => { assert.equal(email, actor); assert.equal(permission, 'reporting'); return allowed; } },
-    '@/lib/prisma': { prisma: {} }, '@/lib/projectUsageReport': { usagePeriod },
+    '@/lib/prisma': { prisma: { pmcProject: { findMany: async options => {
+      calls.push(options); return [{ procoreProjectId: 'p1', projectName: 'Example', projectNumber: '001' }];
+    } } } }, '@/lib/projectUsageReport': { usagePeriod },
     '@/lib/loadProjectUsageReport': { loadProjectUsageReport: async (...args) => { calls.push(args); if (fail) throw new Error('private credentials'); return { projects: [] }; } },
   };
   const module = { exports: {} };
@@ -30,10 +32,20 @@ test('Reporting page, help and API have matching permission boundaries', () => {
 });
 test('report data requires authenticated database Reporting access', async () => {
   for (const [options, status] of [[{ actor: null }, 401], [{ allowed: false }, 403]]) {
-    const route = setup(options); const response = await route.GET(req());
-    assert.equal(response.status, status); assert.deepEqual(route.calls, []);
-    assert.equal(response.headers.get('Cache-Control'), 'private, no-store');
+    for (const query of ['', '?view=projects']) {
+      const route = setup(options); const response = await route.GET(req(query));
+      assert.equal(response.status, status); assert.deepEqual(route.calls, []);
+      assert.equal(response.headers.get('Cache-Control'), 'private, no-store');
+    }
   }
+});
+test('project options load only configured-company identities without loading usage', async () => {
+  const route = setup(); const response = await route.GET(req('?view=projects&companyId=attacker'));
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { projects: [{ projectId: 'p1', projectName: 'Example', projectNumber: '001' }] });
+  assert.equal(route.calls.length, 1);
+  assert.deepEqual(route.calls[0].where, { companyId: 'configured' });
+  assert.equal(response.headers.get('Cache-Control'), 'private, no-store');
 });
 test('configured company and validated period are passed to the read-only loader', async () => {
   const route = setup(); const response = await route.GET(req('?from=2026-10-01&through=2026-10-22&companyId=attacker'));

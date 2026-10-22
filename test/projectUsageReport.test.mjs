@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as XLSX from 'xlsx';
-import { buildProjectUsageReport, usagePeriod } from '../src/lib/projectUsageReport.ts';
+import { buildProjectUsageReport, filterProjectUsageReport, usagePeriod } from '../src/lib/projectUsageReport.ts';
 import { createProjectUsageWorkbook } from '../src/lib/projectUsageWorkbook.ts';
 
 const projects = [
@@ -13,6 +13,34 @@ const record = (id, extra = {}) => ({ id, sourceId: id, companyId: 'company', pr
   quantity: 10, costCode: '03-300-20-20', description: 'Concrete', worker: null, holderId: 'po1', lineItemId: 'line1',
   costType: 'M', uom: 'CY', holderTitle: 'Materials', metadataMatches: 1, ...extra });
 const build = (rows, period = usagePeriod()) => buildProjectUsageReport('company', period, projects, rows);
+
+test('project filter scopes every section by exact ID without changing the all-project source report', () => {
+  const report = build([
+    record('a'), record('b', { projectId: 'other' }),
+    record('c', { source: 'Timecard' }), record('d', { source: 'Timecard', projectId: 'other' }),
+    record('e', { costType: 'E' }), record('f', { costType: 'E', projectId: 'other' }),
+    record('g', { metadataMatches: 0 }), record('h', { metadataMatches: 0, projectId: 'other' }),
+    record('i', { projectId: null }),
+  ]);
+  assert.equal(filterProjectUsageReport(report, null), report);
+  const filtered = filterProjectUsageReport(report, 'other');
+  for (const key of ['projects', 'labor', 'materials', 'other', 'review']) {
+    assert.equal(filtered[key].length, 1, key);
+    assert.ok(filtered[key].every(row => row.projectId === 'other'));
+  }
+  assert.equal(report.projects.length, 3);
+  assert.equal(filtered.projectFilter.id, 'other');
+  assert.equal(filterProjectUsageReport(report, '').review[0].projectId, '');
+  const missing = filterProjectUsageReport(report, 'no-match');
+  assert.equal(missing.projects.length, 0); assert.equal(missing.labor.length, 0);
+  const workbook = createProjectUsageWorkbook(filtered);
+  for (const name of ['Projects', 'Labor', 'Materials', 'Other quantities', 'Review']) {
+    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[name], { range: 4 });
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]['Procore project ID'], 'other');
+  }
+  assert.match(workbook.Sheets['Report notes'].B6.v, /Selected project.*other/);
+});
 
 test('all canonical projects remain distinct, with zero usage and unmatched external IDs retained', () => {
   const result = build([record('1'), record('2', { projectId: 'unlisted' }), record('3', { companyId: 'another-company', quantity: 999 })]);

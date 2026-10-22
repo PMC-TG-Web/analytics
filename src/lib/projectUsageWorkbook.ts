@@ -7,7 +7,7 @@ export function createProjectUsageWorkbook(report: ProjectUsageReport) {
   workbook.Props = { Title: 'Project labor and material usage', CreatedDate: new Date(report.loadedAt) };
   function sheet(name: string, headers: string[], rows: (string | number | Date | null)[][], widths: number[], numeric: number[] = []) {
     if (rows.length > 1_048_568) throw new Error('Select a shorter date range to stay within the Excel row limit.');
-    const data = [['Project labor and material usage'],
+    const data = [[report.projectFilter ? `Project labor and material usage: ${report.projectFilter.name}` : 'Project labor and material usage'],
       [`Work dates: ${report.from || 'All saved dates'} to ${report.through || 'Latest saved date'}`],
       [`Report loaded: ${report.loadedAt}. Source: saved Procore timecards and productivity logs.`], [], headers, ...rows];
     const ws = XLSX.utils.aoa_to_sheet(data, { cellDates: true });
@@ -38,7 +38,7 @@ export function createProjectUsageWorkbook(report: ProjectUsageReport) {
   detail('Other quantities', report.other);
   detail('Review', report.review);
   sheet('Report notes', ['Subject', 'Definition'], [
-    ['Scope', 'All projects in the configured company, including projects without usage. Records absent from the project directory are retained by Procore project ID.'],
+    ['Scope', report.projectFilter ? `Selected project: ${report.projectFilter.name}. Procore project ID: ${report.projectFilter.id || 'Missing ID'}. All data sheets use this project filter.` : 'All projects in the configured company, including projects without usage. Records absent from the project directory are retained by Procore project ID.'],
     ['Company ID', report.companyId],
     ['Labor', 'Timecard hours and daily-log labor hours are separate sources. They can overlap; this report does not assume they represent different hours.'],
     ['Subcontractors', 'Subcontractor hours are already included in the two source columns. Do not add them again.'],
@@ -48,14 +48,15 @@ export function createProjectUsageWorkbook(report: ProjectUsageReport) {
     ['Review', 'Missing project IDs, quantities, coding, or usable units are listed for review and excluded from labor/material totals.'],
     ['Zero', 'Zero means no included saved quantity for this scope, not proof of no work or complete source synchronization.'],
     ['Period', 'Inclusive source work dates in UTC. Blank boundaries include all available history on that side.'],
-    ['Latest included mirror update', report.latestMirrorUpdate || 'No included source records'],
+    ['Latest mirror update (all projects)', report.latestMirrorUpdate || 'No included source records'],
     ['Freshness', 'Loaded time is the report read time. Latest mirror update is not proof that every project has synchronized.'],
-    ['Deleted entries excluded', report.excluded.deleted], ['Billing File logs excluded', report.excluded.billingLogs],
+    ['Deleted entries excluded (all projects)', report.excluded.deleted], ['Billing File logs excluded (all projects)', report.excluded.billingLogs],
     ['Precision', 'Quantities are rounded to four decimals after aggregation. Dollar costs are not part of this report.'],
   ], [34, 120]);
   return workbook;
 }
 
 export function downloadProjectUsageWorkbook(report: ProjectUsageReport) {
-  XLSX.writeFile(createProjectUsageWorkbook(report), `project-labor-material-${report.from || 'all'}-${report.through || 'to-date'}.xlsx`, { compression: true });
+  const project = report.projectFilter ? `-${report.projectFilter.id.replace(/[^a-zA-Z0-9_-]/g, '_') || 'missing-id'}` : '';
+  XLSX.writeFile(createProjectUsageWorkbook(report), `project-labor-material${project}-${report.from || 'all'}-${report.through || 'to-date'}.xlsx`, { compression: true });
 }

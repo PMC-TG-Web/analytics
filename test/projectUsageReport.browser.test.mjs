@@ -30,6 +30,7 @@ test('report preview, full workbook download, date changes, errors and mobile la
   const { browser, page } = await open(); const errors = []; page.on('pageerror', e => errors.push(e.message));
   let mode = 'success';
   await page.route('**/api/reporting/project-usage?*', route => {
+    if (new URL(route.request().url()).searchParams.get('view') === 'projects') return route.fulfill({ json: { projects: fixture().projects } });
     if (mode === 'error') return route.fulfill({ status: 503, json: { error: 'Unable to load saved records. Please retry.' } });
     const report = fixture(); if (mode === 'empty') report.projects = [];
     return route.fulfill({ json: report });
@@ -38,6 +39,9 @@ test('report preview, full workbook download, date changes, errors and mobile la
     await page.goto(`${base}/reporting`, { waitUntil: 'networkidle' });
     await page.getByRole('heading', { name: 'Project labor & materials' }).waitFor();
     const download = page.getByRole('button', { name: 'Download Excel' });
+    const projectFilter = page.getByLabel('Project', { exact: true });
+    await projectFilter.selectOption('project:p1');
+    await projectFilter.selectOption('all');
     assert.equal(await download.isDisabled(), true);
     await page.getByRole('button', { name: 'Run report', exact: true }).click();
     await page.getByRole('button', { name: 'Test concrete project', exact: true }).waitFor();
@@ -50,6 +54,19 @@ test('report preview, full workbook download, date changes, errors and mobile la
     assert.equal(saved.SheetNames.length, 6);
     assert.equal(saved.Sheets.Projects['!ref'], 'A1:J7', 'preview search must not narrow the workbook');
     assert.equal(saved.Sheets.Materials.I6.v, 30);
+    await projectFilter.selectOption('project:p1');
+    assert.equal(await page.getByRole('article').filter({ hasText: 'Projects' }).locator('strong').innerText(), '1');
+    const [projectFile] = await Promise.all([page.waitForEvent('download'), download.click()]);
+    const projectWorkbook = XLSX.read(await readFile(await projectFile.path()), { type: 'buffer' });
+    assert.equal(projectWorkbook.Sheets.Projects['!ref'], 'A1:J6');
+    assert.equal(projectWorkbook.Sheets.Projects.E6.v, 'p1');
+    assert.equal(projectWorkbook.Sheets.Materials.C6.v, 'p1');
+    await projectFilter.selectOption('project:p2');
+    assert.equal(await page.getByRole('article').filter({ hasText: 'Timecard hours' }).locator('strong').innerText(), '0');
+    assert.equal(await page.getByRole('button', { name: 'Second project', exact: true }).count(), 1);
+    assert.equal(await page.getByRole('heading', { name: /usage details/ }).count(), 0);
+    await projectFilter.selectOption('all');
+    assert.equal(await page.getByRole('button', { name: 'Test concrete project', exact: true }).count(), 1);
     await page.getByLabel('From work date', { exact: true }).fill('2026-10-01');
     assert.equal(await download.isDisabled(), true);
     await page.getByRole('button', { name: 'All dates', exact: true }).click();

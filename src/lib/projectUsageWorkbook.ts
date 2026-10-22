@@ -50,6 +50,7 @@ export function createProjectUsageWorkbook(report: ProjectUsageReport) {
     ['Rebar entries not converted', 'A positive count means the rebar tonnage is partial: these source entries lack usable or unambiguous size, length or unit. See Materials for affected items; original quantities remain available.'],
     ['Units', 'Uses saved purchase-order units and existing field-analytics corrections for concrete and fiber. Explicit labor/subcontractor LS entries follow the existing hours convention.'],
     ['Other quantities', 'Equipment, subcontract and other non-material cost types remain separate from materials.'],
+    ['Legacy PO coding', 'Some POs assign Labor to every item. Recognized concrete in CY and named sealer/curing products in piece units are reported as materials; equipment/service quantities remain Other quantities. Legacy Project Management EA quantities follow the existing hours policy. Notes preserve the classification reason and original coding. Unrecognized non-hour labor quantities remain in Review.'],
     ['Review', 'Missing project IDs, quantities, coding, or usable units are listed for review and excluded from labor/material totals.'],
     ['Zero', 'Zero means no included saved quantity for this scope, not proof of no work or complete source synchronization.'],
     ['Period', 'Inclusive source work dates in UTC. Blank boundaries include all available history on that side.'],

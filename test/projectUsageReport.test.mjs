@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import { buildProjectUsageReport, filterProjectUsageReport, usagePeriod } from '../src/lib/projectUsageReport.ts';
 import { createProjectUsageWorkbook } from '../src/lib/projectUsageWorkbook.ts';
 import { calculateRebarUsageTons } from '../src/lib/rebarUsage.ts';
+import { classifyProjectUsageItem } from '../src/lib/projectUsageClassification.ts';
 
 const projects = [
   { procoreProjectId: '598134326634438', projectName: 'Same project name', projectNumber: '001', customer: 'Customer', status: 'Active' },
@@ -14,6 +15,51 @@ const record = (id, extra = {}) => ({ id, sourceId: id, companyId: 'company', pr
   quantity: 10, costCode: '03-300-20-20', description: 'Concrete', worker: null, holderId: 'po1', lineItemId: 'line1',
   costType: 'M', uom: 'CY', holderTitle: 'Materials', metadataMatches: 1, ...extra });
 const build = (rows, period = usagePeriod()) => buildProjectUsageReport('company', period, projects, rows);
+
+test('legacy Labor-coded concrete and products retain actual quantities while PM EA follows the existing hour policy', () => {
+  const report = build([
+    record('concrete', { description: 'Slab On Grade Concrete - SOG', costCode: '03-300-20-10', costType: 'Labor', quantity: 3563 }),
+    record('ready-mix', { description: 'Ready Mix Concrete For Foundations', costCode: '03-300-00-10', costType: 'L', uom: 'cubic yards', quantity: 43.5 }),
+    record('sealer', { description: 'L&M Curing Compound 5 Gal.', costCode: '03-300-00-10', costType: 'Labor', uom: 'EA', quantity: 5 }),
+    record('pm', { description: 'Project Management', costCode: '01-300-10-20', costType: 'Labor', uom: 'EA', quantity: 18 }),
+    record('pump', { description: 'Boom Pump Rental w/Operator', costCode: '03-300-20-10', costType: 'Labor', uom: 'EA', quantity: 1 }),
+    record('telehandler', { description: 'Telehandler 8000 lb (In-House) - SOG', costType: 'Labor', uom: 'EA', quantity: 8 }),
+    record('telebelt', { description: 'Telebelt (4 hr minimum)', costType: 'Labor', uom: 'EA', quantity: 9 }),
+    record('scrubber', { description: 'Auto scrubber rental', costType: 'Labor', uom: 'DAYS', quantity: 1 }),
+    record('zero', { description: 'Labor Continuous Footing', costType: 'Labor', uom: 'EA', quantity: 0 }),
+    record('missing', { description: 'Travel_API_Test', metadataMatches: 0 }),
+  ]);
+  const project = report.projects.find(p => p.projectId === projects[0].procoreProjectId);
+  assert.equal(project.concreteCy, 3606.5);
+  assert.equal(project.dailyLogHours, 18);
+  assert.equal(report.materials.length, 3);
+  assert.equal(report.other.length, 5);
+  assert.equal(report.review.length, 1);
+  assert.equal(report.review[0].description, 'Travel_API_Test');
+  assert.equal(report.materials.find(r => r.quantity === 3563).costCode, '03-300-20-10');
+  assert.match(report.materials.find(r => r.quantity === 3563).note, /Saved cost type: Labor/);
+  assert.equal([...report.labor, ...report.materials, ...report.other, ...report.review].reduce((n, r) => n + r.entries, 0), 10);
+  const workbook = createProjectUsageWorkbook(filterProjectUsageReport(report, project.projectId));
+  assert.equal(workbook.Sheets.Projects.K6.v, 3606.5);
+  assert.equal(workbook.Sheets.Projects.G6.v, 18);
+});
+
+test('reporting exceptions are bounded by item name, units, exact PM code and unique metadata', () => {
+  for (const [description, uom] of [['Concrete finishing labor', 'CY'], ['Slab On Grade Concrete', 'HR'], ['Unknown concrete activity', 'CY'], ['L&M Curing Compound', 'HR'], ['L&M Curing Compound installation', 'EA']]) {
+    assert.equal(classifyProjectUsageItem(record('x', { description, uom, costType: 'Labor' })), null);
+  }
+  assert.equal(classifyProjectUsageItem(record('x', { description: 'Project Management', costCode: 'other', costType: 'Labor', uom: 'EA' })), null);
+  for (const description of ['TK-Floor Hardner and Densifier 55 gal', 'Aussie Built Earth Binder sealer', 'Aussie Built Stabilised Earth sealer', 'TK Cure n Seal', 'CO1 - V-Seal 102 5 gal']) {
+    assert.equal(classifyProjectUsageItem(record('x', { description, costType: 'Labor', uom: 'EA' })).kind, 'materials');
+  }
+  const report = build([
+    record('unmatched', { description: 'Slab On Grade Concrete', costType: 'Labor', metadataMatches: 0 }),
+    record('conflicting', { description: 'Project Management', costCode: '01-300-10-20', costType: 'Labor', uom: 'EA', metadataMatches: 2 }),
+    record('unknown', { description: 'Unknown labor', costType: 'Labor', uom: 'EA', quantity: 10 }),
+    record('deleted', { description: 'Slab On Grade Concrete', costType: 'Labor', deletedAt: '2026-10-22' }),
+  ]);
+  assert.equal(report.review.length, 3); assert.equal(report.materials.length, 0); assert.equal(report.labor.length, 0);
+});
 
 test('rebar conversions require explicit, unambiguous dimensions and exclude accessories', () => {
   for (const label of ["#4 Rebar - 20' Pc", '#4 rebar 20’', "#4x20' rebar", "#9 - #4 Rebar - 20' Pc - SOG"]) {

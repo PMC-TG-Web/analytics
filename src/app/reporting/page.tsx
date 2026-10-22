@@ -97,7 +97,10 @@ export default function ReportingPage() {
         ].map(([label, value]) => <article key={label} className="rounded-xl border border-slate-200 bg-white p-5"><p className="text-sm text-slate-600">{label}</p><strong className="mt-2 block text-2xl text-slate-900">{value}</strong></article>)}
       </section>
       <p className="text-sm text-slate-600">Timecard and daily-log hours may overlap. Subcontractor hours are included and identified in the workbook. Material quantities remain separate by item and unit.</p>
-      {report.review.length > 0 && <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{number(report.review.length)} grouped items need review because their project, quantity, coding, or units are unresolved. See the Review sheet in Excel; these items are excluded from labor and material totals.</p>}
+      {report.review.length > 0 && <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+        <p>{number(report.review.length)} grouped {report.review.length === 1 ? 'item remains' : 'items remain'} outside the totals. Open a project’s Items to review or the Excel Review sheet for details.</p>
+        <ul className="mt-2 list-inside list-disc">{[...new Set(report.review.map(r => r.note))].map(note => <li key={note}>{note} ({report.review.filter(r => r.note === note).length})</li>)}</ul>
+      </div>}
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-5">
           <div><h2 className="font-semibold text-slate-900">Projects</h2><p className="mt-1 text-xs text-slate-500">{report.from || 'All saved dates'} through {report.through || 'latest saved date'} · Loaded {new Date(report.loadedAt).toLocaleString()}</p></div>

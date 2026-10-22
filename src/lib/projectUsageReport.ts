@@ -1,6 +1,7 @@
 import { isSubcontractorProductivity, isSubcontractorTimecard } from './qboSubcontractorExclusions.js';
 import { classifyProductivityCompletionLine, normalizeProductivityCompletionUom } from './productivityWeightedCompletion.ts';
 import { calculateRebarUsageTons, isRebarUsage } from './rebarUsage.ts';
+import { classifyProjectUsageItem } from './projectUsageClassification.ts';
 
 export type UsagePeriod = { from: string; through: string };
 export type UsageProject = { procoreProjectId: string; projectName: string; projectNumber: string | null; customer: string | null; status: string | null };
@@ -93,10 +94,14 @@ export function buildProjectUsageReport(companyId: string, period: UsagePeriod, 
     let laborType = '';
     const subcontractor = row.source === 'Timecard' ? isSubcontractorTimecard({ partyName: row.worker }) : isSubcontractorProductivity(row.description);
     const labor = /^(l|labor|labour)$/i.test(clean(row.costType));
+    const itemClassification = row.source === 'Daily log' && row.metadataMatches === 1 ? classifyProjectUsageItem(row) : null;
     if (!row.projectId) note = 'Missing Procore project ID.';
     else if (row.quantity == null || !Number.isFinite(row.quantity)) note = 'Missing or invalid quantity.';
     else if (row.source === 'Timecard') { kind = 'labor'; unit = 'HR'; }
-    else if (row.metadataMatches !== 1) note = 'Missing or conflicting purchase-order line metadata.';
+    else if (row.metadataMatches !== 1) note = 'Purchase-order line not found or has conflicting coding.';
+    else if (itemClassification) {
+      kind = itemClassification.kind; unit = itemClassification.unit; note = itemClassification.note;
+    }
     else if ((labor || subcontractor) && (/^(h|hr|hrs|hour|hours)$/i.test(unit) || /^ls$/i.test(unit))) {
       kind = 'labor';
       if (unit === 'LS') note = 'Legacy labor LS quantities are recorded as hours, consistent with field analytics.';
@@ -129,7 +134,7 @@ export function buildProjectUsageReport(companyId: string, period: UsagePeriod, 
     if (kind === 'materials') {
       // Some pump services share concrete coding/units; they are not placed concrete.
       const pump = /\b(?:pumps?|pumping)\b/i.test([row.description, row.logDescription].filter(Boolean).join(' / '));
-      if (unit === 'CY' && classifyProductivityCompletionLine(row) === 'concrete' && !pump) {
+      if (unit === 'CY' && classifyProductivityCompletionLine({ ...row, uom: unit }) === 'concrete' && !pump) {
         summary.concreteCy += row.quantity!;
         group.concreteCy += row.quantity!;
       }

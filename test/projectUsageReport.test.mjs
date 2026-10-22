@@ -16,6 +16,41 @@ const record = (id, extra = {}) => ({ id, sourceId: id, companyId: 'company', pr
   costType: 'M', uom: 'CY', holderTitle: 'Materials', metadataMatches: 1, ...extra });
 const build = (rows, period = usagePeriod()) => buildProjectUsageReport('company', period, projects, rows);
 
+test('placed concrete survives Other and Concrete PO cost types in project totals and Excel', () => {
+  const report = build([
+    record('slab', { description: 'Slab On Grade Concrete - SOG', costType: 'Other', quantity: 1913 }),
+    record('site', { description: 'Site Concrete - Site', costCode: '03-300-30-20', costType: 'Other', quantity: 108 }),
+    record('bollards', { description: 'Bollards Concrete', costCode: '05-100-10-20', costType: 'Other', quantity: 10 }),
+    record('con-type', { projectId: 'other', description: 'Ready Mix Concrete For Slabs On Grade', costType: 'Concrete', quantity: 170 }),
+    record('con-short', { projectId: 'other', description: 'non-taxable SOG concrete', costType: 'CON', quantity: 4 }),
+    record('generic', { projectId: 'other', description: 'Concrete - Site', costCode: '03-300-30-20', costType: 'O', quantity: 10 }),
+    record('fiber', { description: 'Fiber - SOG', costType: 'Other', quantity: 1752 }),
+    record('pump', { description: 'Boom Pump', costType: 'Concrete', quantity: 999 }),
+    record('unresolved', { description: 'Site Concrete', costType: 'Other', metadataMatches: 0, quantity: 999 }),
+    record('conflict', { description: 'Site Concrete', costType: 'Other', metadataMatches: 2, quantity: 999 }),
+    record('deleted', { description: 'Site Concrete', costType: 'Other', deletedAt: '2026-10-22', quantity: 999 }),
+    record('billing', { description: 'Site Concrete', costType: 'Other', holderTitle: 'Billing File', quantity: 999 }),
+  ]);
+  const filtered = filterProjectUsageReport(report, projects[0].procoreProjectId);
+  assert.equal(filtered.projects[0].concreteCy, 2031);
+  assert.equal(filtered.projects[0].dailyLogHours, 0);
+  assert.equal(filtered.materials.reduce((sum, r) => sum + r.concreteCy, 0), 2031);
+  assert.equal(report.projects.find(p => p.projectId === 'other').concreteCy, 184);
+  assert.equal(filtered.review.reduce((sum, r) => sum + r.entries, 0), 2);
+  assert.match(filtered.materials[0].note, /Saved cost type: Other/);
+  const saved = XLSX.read(XLSX.write(createProjectUsageWorkbook(filtered), { type: 'buffer', bookType: 'xlsx' }), { type: 'buffer' });
+  assert.equal(saved.Sheets.Projects.K6.v, 2031);
+  assert.equal(XLSX.utils.sheet_to_json(saved.Sheets.Materials, { range: 4 }).reduce((s, r) => s + r['Concrete (CY)'], 0), 2031);
+});
+
+test('Other concrete inference requires matching material code, name and explicit cubic-yard unit', () => {
+  for (const extra of [
+    { description: 'Fiber - SOG' }, { description: 'Concrete testing' }, { description: 'Site Concrete labor' },
+    { description: 'Unknown activity' }, { uom: 'EA' }, { uom: 'HR' }, { costCode: '03-300-20-10' },
+    { costType: null }, { costType: 'Equipment' }, { costType: 'Subcontractors' },
+  ]) assert.equal(classifyProjectUsageItem(record('x', { costType: 'Other', description: 'Slab On Grade Concrete', ...extra })), null);
+});
+
 test('legacy Labor-coded concrete and products retain actual quantities while PM EA follows the existing hour policy', () => {
   const report = build([
     record('concrete', { description: 'Slab On Grade Concrete - SOG', costCode: '03-300-20-10', costType: 'Labor', quantity: 3563 }),

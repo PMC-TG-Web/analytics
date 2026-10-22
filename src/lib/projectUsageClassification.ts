@@ -1,5 +1,6 @@
 import { isVendorPumpingOrTrailer } from './qboDirectCostExclusions.js';
 import { projectManagementPrice } from './qboProjectManagementRate.js';
+import { classifyProductivityCompletionLine } from './productivityWeightedCompletion.ts';
 
 type Item = { description: string | null; costType: string | null; costCode: string | null; uom: string | null; quantity: number | null };
 type Classification = { kind: 'labor' | 'materials' | 'other'; unit: string; note: string };
@@ -19,13 +20,21 @@ export function classifyProjectUsageItem(item: Item): Classification | null {
   if (isVendorPumpingOrTrailer(name) || /^(?:telehandler\b|auto\s*scrubber rental$)/i.test(name)) {
     return { kind: 'other', unit, note: `Equipment/service quantity; retained in its recorded unit, not labor hours or concrete CY. Saved cost type: ${item.costType || 'missing'}.` };
   }
+  // Some concrete PO lines carry Other or the dedicated Concrete cost type.
+  // Require the concrete material code, explicit CY unit and material description
+  // together. A cost-type label alone must not discard recorded placed concrete.
+  const concreteMaterialCode = /^(?:03-300-(?:00|10|20|30)-20|05-100-10-20)$/.test(item.costCode?.trim() || '');
+  const cubicYards = /^(cy|cu\.?\s*yd|cubic\s*yards?)$/i.test(unit);
+  const concrete = /^(?:ready[ -]?mix concrete\b|(?:slab on grade|foundation|wall|site|bollards) concrete\b|concrete set and fill bollards\b|(?:non[ -]?taxable\s+)?sog concrete\b|concrete$)/i.test(name)
+    && !/\b(?:labor|placing|placement|finishing|cutting|sealer|curing|equipment|rental|fiber|fibre|washout|testing)\b/i.test(name);
+  if (/^(?:o|other|con|concrete)$/i.test(item.costType?.trim() || '') && concreteMaterialCode && cubicYards && concrete
+    && classifyProductivityCompletionLine(item) === 'concrete') {
+    return { kind: 'materials', unit: 'CY', note: `Concrete material identified by material code, description and cubic-yard unit. Saved cost type: ${item.costType}; original cost code retained.` };
+  }
   if (!labor) return null;
   if (/^(ea|each)$/i.test(unit) && projectManagementPrice(item)) {
     return { kind: 'labor', unit: 'HR', note: 'Legacy Project Management EA quantities are hours under the existing project-management policy. Original unit: EA.' };
   }
-  const cubicYards = /^(cy|cu\.?\s*yd|cubic\s*yards?)$/i.test(unit);
-  const concrete = /^(?:ready[ -]?mix concrete\b|(?:slab on grade|foundation|wall|site|bollards) concrete\b|concrete set and fill bollards\b)/i.test(name)
-    && !/\b(?:labor|placing|placement|finishing|cutting|sealer|curing|equipment|rental)\b/i.test(name);
   if (cubicYards && concrete) return { kind: 'materials', unit: 'CY', note: 'Concrete material identified by item description and cubic-yard unit. Saved cost type: Labor; original cost code retained.' };
   // Explicit product names from saved PO descriptions and the material catalog.
   // Do not use a broad "concrete" or "seal" substring to reinterpret labor/services.

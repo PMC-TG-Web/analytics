@@ -45,7 +45,7 @@ export function createProjectUsageWorkbook(report: ProjectUsageReport) {
     ['Labor', 'Timecard hours and daily-log labor hours are separate sources. They can overlap; this report does not assume they represent different hours.'],
     ['Subcontractors', 'Subcontractor hours are already included in the two source columns. Do not add them again.'],
     ['Materials', 'Quantity used, grouped by project, purchase-order line, description, cost code and unit. Different materials and units are not added together. Delivered quantities are not included.'],
-    ['Concrete (CY)', 'Concrete quantity used, in cubic yards, using the existing concrete cost-code classification and unit corrections. Fiber and pump services are excluded.'],
+    ['Concrete (CY)', 'Concrete quantity put in place from saved productivity logs, in cubic yards. Concrete items coded Other or Concrete are included when the material cost code, concrete description and explicit CY unit agree. Existing material-unit corrections apply. Fiber and pump services are excluded.'],
     ['Rebar (tons)', 'US short tons (2,000 lb). Piece quantities use explicit bar size, length and the standard weight per foot from Estimating Tools. Recorded pounds or linear feet are converted when supported. Chairs, dowels, wire mesh and accessories are excluded.'],
     ['Rebar entries not converted', 'A positive count means the rebar tonnage is partial: these source entries lack usable or unambiguous size, length or unit. See Materials for affected items; original quantities remain available.'],
     ['Units', 'Uses saved purchase-order units and existing field-analytics corrections for concrete and fiber. Explicit labor/subcontractor LS entries follow the existing hours convention.'],

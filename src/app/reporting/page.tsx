@@ -1,325 +1,101 @@
-"use client";
+'use client';
 
-import React, { useEffect, useState, useCallback } from "react";
+import { useState } from 'react';
+import { usagePeriod, type ProjectUsageReport } from '@/lib/projectUsageReport';
 
-// ── Types ────────────────────────────────────────────────────────────────────
+const number = (value: number) => value.toLocaleString('en-US', { maximumFractionDigits: 4 });
 
-type ReportType = "timecards" | "productivity";
-
-interface ReportRow {
-  project_name: string;
-  customer: string;
-  procore_project_id: string;
-  work_date: string;
-  cost_code: string;
-  display_name: string;
-  budgeted_qty: number;
-  // timecards
-  labor_qty?: number;
-  labor_qty_to_date?: number;
-  // productivity
-  production_qty?: number;
-  production_qty_to_date?: number;
-  delta: number;
-  pct_complete: number | null;
-}
-
-interface ProjectOption {
-  procoreId: string;
-  projectName: string;
-}
-
-// ── Column definitions ───────────────────────────────────────────────────────
-
-interface ColDef {
-  key: keyof ReportRow;
-  label: string;
-  types: ReportType[]; // which report types show this column
-  align?: "left" | "right";
-  format?: (v: unknown) => string;
-}
-
-const ALL_COLUMNS: ColDef[] = [
-  { key: "project_name",           label: "Project",             types: ["timecards", "productivity"], align: "left"  },
-  { key: "customer",               label: "Customer",            types: ["timecards", "productivity"], align: "left"  },
-  { key: "procore_project_id",     label: "Procore ID",          types: ["timecards", "productivity"], align: "left"  },
-  { key: "work_date",              label: "Date",                types: ["timecards", "productivity"], align: "left"  },
-  { key: "cost_code",              label: "Cost Code",           types: ["timecards", "productivity"], align: "left"  },
-  { key: "display_name",           label: "Description",         types: ["timecards", "productivity"], align: "left"  },
-  { key: "budgeted_qty",           label: "Budgeted Qty",        types: ["timecards", "productivity"], align: "right", format: fmtNum },
-  { key: "labor_qty",              label: "Labor Qty",           types: ["timecards"],                 align: "right", format: fmtNum },
-  { key: "labor_qty_to_date",      label: "Labor To Date",       types: ["timecards"],                 align: "right", format: fmtNum },
-  { key: "production_qty",         label: "Production Qty",      types: ["productivity"],              align: "right", format: fmtNum },
-  { key: "production_qty_to_date", label: "Production To Date",  types: ["productivity"],              align: "right", format: fmtNum },
-  { key: "delta",                  label: "Delta",               types: ["timecards", "productivity"], align: "right", format: fmtNum },
-  { key: "pct_complete",           label: "% Complete",          types: ["timecards", "productivity"], align: "right", format: (v) => v == null ? "—" : `${v}%` },
-];
-
-function fmtNum(v: unknown): string {
-  if (v == null) return "—";
-  const n = Number(v);
-  return isNaN(n) ? String(v) : n.toLocaleString(undefined, { maximumFractionDigits: 2 });
-}
-
-// ── Component ────────────────────────────────────────────────────────────────
-
-export default function LaborReportPage() {
-  const [reportType, setReportType] = useState<ReportType>("timecards");
-  const [projects, setProjects] = useState<ProjectOption[]>([]);
-  const [projectId, setProjectId] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [visibleCols, setVisibleCols] = useState<Set<keyof ReportRow>>(() => {
-    const defaults = new Set<keyof ReportRow>(
-      ALL_COLUMNS.filter((c) => c.types.includes("timecards")).map((c) => c.key)
-    );
-    return defaults;
-  });
-
-  const [rows, setRows] = useState<ReportRow[]>([]);
+export default function ReportingPage() {
+  const [from, setFrom] = useState('');
+  const [through, setThrough] = useState('');
+  const [report, setReport] = useState<ProjectUsageReport | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [ran, setRan] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState<string | null>(null);
+  const changed = report && (report.from !== from || report.through !== through);
+  const projects = report?.projects.filter(p => `${p.projectName} ${p.projectNumber} ${p.customer} ${p.projectId}`.toLowerCase().includes(search.toLowerCase())) || [];
 
-  // Load project list for dropdown
-  useEffect(() => {
-    fetch("/api/projects?pageSize=500&includeArchived=false")
-      .then((r) => r.json())
-      .then((data) => {
-        const list: ProjectOption[] = (data.projects ?? data ?? [])
-          .filter((p: Record<string, unknown>) => p.procoreId)
-          .map((p: Record<string, unknown>) => ({
-            procoreId: String(p.procoreId),
-            projectName: String(p.projectName ?? p.procoreId),
-          }))
-          .sort((a: ProjectOption, b: ProjectOption) => a.projectName.localeCompare(b.projectName));
-        setProjects(list);
-      })
-      .catch(() => {});
-  }, []);
-
-  // When report type changes, reset visible columns to defaults for that type
-  const handleTypeChange = (t: ReportType) => {
-    setReportType(t);
-    setVisibleCols(new Set(ALL_COLUMNS.filter((c) => c.types.includes(t)).map((c) => c.key)));
-    setRows([]);
-    setRan(false);
-  };
-
-  const toggleCol = (key: keyof ReportRow) => {
-    setVisibleCols((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-      return next;
-    });
-  };
-
-  const runReport = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    setRows([]);
+  async function run() {
+    setError('');
+    try { usagePeriod(from, through); } catch (e) { setError((e as Error).message); return; }
+    setLoading(true); setReport(null); setSelected(null);
     try {
-      const url = new URL("/api/labor-report", window.location.origin);
-      url.searchParams.set("type", reportType);
-      if (projectId) url.searchParams.set("projectId", projectId);
-      if (dateFrom)  url.searchParams.set("dateFrom", dateFrom);
-      if (dateTo)    url.searchParams.set("dateTo", dateTo);
+      const response = await fetch(`/api/reporting/project-usage?${new URLSearchParams({ from, through })}`, { cache: 'no-store' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Unable to load the report. Please retry.');
+      setReport(data);
+    } catch (e) { setError(e instanceof Error ? e.message : 'Unable to load the report. Please retry.'); }
+    finally { setLoading(false); }
+  }
+  async function download() {
+    if (!report || changed) return;
+    setDownloading(true); setError('');
+    try { (await import('@/lib/projectUsageWorkbook')).downloadProjectUsageWorkbook(report); }
+    catch { setError('Unable to create the Excel file. Please try again.'); }
+    finally { setDownloading(false); }
+  }
 
-      const res = await fetch(url.toString());
-      if (!res.ok) throw new Error(`Server error ${res.status}`);
-      const data = await res.json();
-      setRows(data.rows ?? []);
-      setRan(true);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Unknown error");
-    } finally {
-      setLoading(false);
-    }
-  }, [reportType, projectId, dateFrom, dateTo]);
-
-  // Columns applicable to the current report type
-  const availableCols = ALL_COLUMNS.filter((c) => c.types.includes(reportType));
-  const activeCols    = availableCols.filter((c) => visibleCols.has(c.key));
-
-  return (
-    <div className="p-6 max-w-full">
-      <h1 className="text-2xl font-bold mb-6">Labor Report Builder</h1>
-
-      {/* ── Filters ── */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 mb-5 shadow-sm">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-
-          {/* Report type */}
-          <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">
-              Report Type
-            </label>
-            <select
-              value={reportType}
-              onChange={(e) => handleTypeChange(e.target.value as ReportType)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="timecards">Timecards</option>
-              <option value="productivity">Productivity Log</option>
-            </select>
-          </div>
-
-          {/* Project */}
-          <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">
-              Project
-            </label>
-            <select
-              value={projectId}
-              onChange={(e) => setProjectId(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">All Projects</option>
-              {projects.map((p) => (
-                <option key={p.procoreId} value={p.procoreId}>
-                  {p.projectName}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Date From */}
-          <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">
-              Date From
-            </label>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          {/* Date To */}
-          <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">
-              Date To
-            </label>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-        </div>
-
-        {/* Column toggles */}
-        <div className="mt-4">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Columns</p>
-          <div className="flex flex-wrap gap-2">
-            {availableCols.map((col) => (
-              <button
-                key={col.key}
-                onClick={() => toggleCol(col.key)}
-                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-                  visibleCols.has(col.key)
-                    ? "bg-blue-600 text-white border-blue-600"
-                    : "bg-white text-gray-600 border-gray-300 hover:border-blue-400"
-                }`}
-              >
-                {col.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-4">
-          <button
-            onClick={runReport}
-            disabled={loading}
-            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold px-6 py-2 rounded-lg text-sm transition-colors"
-          >
-            {loading ? "Running…" : "Run Report"}
-          </button>
-        </div>
+  return <main className="mx-auto max-w-[1600px] space-y-6 p-4 sm:p-8">
+    <header>
+      <p className="text-sm font-semibold uppercase tracking-wide text-blue-700">Reporting</p>
+      <h1 className="mt-1 text-3xl font-bold text-slate-900">Project labor &amp; materials</h1>
+      <p className="mt-2 max-w-3xl text-sm text-slate-600">Actual labor hours and material quantities used across all projects. Preview the saved records, then download an Excel workbook with project totals and item details.</p>
+    </header>
+    <section aria-label="Report settings" className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-wrap items-end gap-4">
+        <div><label htmlFor="report-from" className="mb-1 block text-sm font-medium">From work date</label><input id="report-from" type="date" value={from} disabled={loading} onChange={e => setFrom(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2" /></div>
+        <div><label htmlFor="report-through" className="mb-1 block text-sm font-medium">Through work date</label><input id="report-through" type="date" value={through} disabled={loading} onChange={e => setThrough(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2" /></div>
+        <button onClick={() => { setFrom(''); setThrough(''); }} disabled={loading} className="rounded-lg border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50">All dates</button>
+        <button onClick={run} disabled={loading} className="rounded-lg bg-blue-700 px-5 py-2 font-semibold text-white hover:bg-blue-800 disabled:opacity-50">{loading ? 'Loading report…' : 'Run report'}</button>
+        <button onClick={download} disabled={!report || !!changed || loading || downloading} className="rounded-lg bg-emerald-700 px-5 py-2 font-semibold text-white hover:bg-emerald-800 disabled:opacity-40">{downloading ? 'Creating Excel…' : 'Download Excel'}</button>
       </div>
-
-      {/* ── Error ── */}
-      {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
-          {error}
+      <p className="mt-3 text-sm text-slate-500">All projects are included. Leave dates blank for all saved history. Downloads include every project, regardless of the preview search.</p>
+      {changed && <p role="status" className="mt-3 text-sm font-medium text-amber-800">Dates changed. Run the report again before downloading.</p>}
+    </section>
+    {error && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-800">{error}</div>}
+    {loading && <p role="status" className="p-8 text-center text-slate-600">Reading saved timecards and material usage…</p>}
+    {!report && !loading && <section className="rounded-xl border border-dashed border-slate-300 p-8 text-slate-600">
+      <h2 className="font-semibold text-slate-900">One workbook for all projects</h2>
+      <p className="mt-2 text-sm">Projects, Labor, Materials, Other quantities, Review, and Report notes. Material rows retain their individual items and units. Run the report to get started.</p>
+    </section>}
+    {report && <>
+      <section className="grid gap-4 sm:grid-cols-3" aria-label="Report totals">
+        {[
+          ['Projects', number(report.projects.length)],
+          ['Timecard hours', number(report.projects.reduce((n, p) => n + p.timecardHours, 0))],
+          ['Daily-log labor hours', number(report.projects.reduce((n, p) => n + p.dailyLogHours, 0))],
+        ].map(([label, value]) => <article key={label} className="rounded-xl border border-slate-200 bg-white p-5"><p className="text-sm text-slate-600">{label}</p><strong className="mt-2 block text-2xl text-slate-900">{value}</strong></article>)}
+      </section>
+      <p className="text-sm text-slate-600">Timecard and daily-log hours may overlap. Subcontractor hours are included and identified in the workbook. Material quantities remain separate by item and unit.</p>
+      {report.review.length > 0 && <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{number(report.review.length)} grouped items need review because their project, quantity, coding, or units are unresolved. See the Review sheet in Excel; these items are excluded from labor and material totals.</p>}
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-5">
+          <div><h2 className="font-semibold text-slate-900">Projects</h2><p className="mt-1 text-xs text-slate-500">{report.from || 'All saved dates'} through {report.through || 'latest saved date'} · Loaded {new Date(report.loadedAt).toLocaleString()}</p></div>
+          <label className="text-sm text-slate-600">Search preview<input value={search} onChange={e => setSearch(e.target.value)} placeholder="Project, number, or customer" className="ml-2 max-w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
         </div>
-      )}
-
-      {/* ── Results ── */}
-      {ran && !loading && (
-        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
-            <span className="text-sm font-semibold text-gray-700">
-              {rows.length.toLocaleString()} row{rows.length !== 1 ? "s" : ""}
-            </span>
-            <span className="text-xs text-gray-400">
-              {reportType === "timecards" ? "Timecards" : "Productivity Log"}
-            </span>
-          </div>
-
-          {rows.length === 0 ? (
-            <div className="p-8 text-center text-gray-400 text-sm">No data for the selected filters.</div>
-          ) : (
-            <div className="overflow-x-auto custom-scrollbar">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
-                    {activeCols.map((col) => (
-                      <th
-                        key={col.key}
-                        className={`px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap ${
-                          col.align === "right" ? "text-right" : "text-left"
-                        }`}
-                      >
-                        {col.label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row, i) => (
-                    <tr
-                      key={i}
-                      className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${
-                        i % 2 === 0 ? "" : "bg-gray-50/50"
-                      }`}
-                    >
-                      {activeCols.map((col) => {
-                        const raw = row[col.key];
-                        const display = col.format ? col.format(raw) : (raw ?? "—");
-                        const isNegative = col.key === "delta" && Number(raw) < 0;
-                        return (
-                          <td
-                            key={col.key}
-                            className={`px-4 py-2 whitespace-nowrap ${
-                              col.align === "right" ? "text-right tabular-nums" : ""
-                            } ${isNegative ? "text-red-600 font-medium" : "text-gray-800"}`}
-                          >
-                            {String(display)}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-
-      {!ran && !loading && (
-        <div className="text-center text-gray-400 text-sm mt-12">
-          Select your filters and click <strong>Run Report</strong> to get started.
-        </div>
-      )}
-    </div>
-  );
+        <div className="overflow-x-auto"><table className="w-full text-sm">
+          <thead className="bg-slate-50 text-left text-slate-600"><tr>{['Project', 'Status', 'Timecard hours', 'Daily-log hours', 'Material items', 'Review'].map(label => <th key={label} className="whitespace-nowrap px-5 py-3">{label}</th>)}</tr></thead>
+          <tbody>{projects.map(p => <tr key={p.projectId} className="border-t border-slate-100 hover:bg-slate-50">
+            <td className="px-5 py-3"><button onClick={() => setSelected(selected === p.projectId ? null : p.projectId)} className="text-left font-semibold text-blue-700 hover:underline" aria-expanded={selected === p.projectId}>{p.projectName}</button><p className="mt-1 text-xs text-slate-500">{[p.projectNumber, p.customer].filter(Boolean).join(' · ')}</p></td>
+            <td className="px-5 py-3 text-slate-600">{p.status || '—'}</td>
+            <td className="px-5 py-3 tabular-nums">{number(p.timecardHours)}</td><td className="px-5 py-3 tabular-nums">{number(p.dailyLogHours)}</td>
+            <td className="px-5 py-3 tabular-nums">{p.materialLines}</td><td className="px-5 py-3 tabular-nums">{p.reviewLines || '—'}</td>
+          </tr>)}</tbody>
+        </table></div>
+        {projects.length === 0 && <p className="p-8 text-center text-slate-500">{report.projects.length ? 'No projects match your search.' : 'No saved projects or usage records were found.'}</p>}
+      </section>
+      {selected !== null && <section className="rounded-xl border border-slate-200 bg-white p-5">
+        <h2 className="font-semibold">{report.projects.find(p => p.projectId === selected)?.projectName}: usage details</h2>
+        {(['labor', 'materials', 'other', 'review'] as const).map(kind => {
+          const lines = report[kind].filter(row => row.projectId === selected);
+          return <div key={kind} className="mt-5"><h3 className="mb-2 font-medium">{{ labor: 'Labor hours', materials: 'Material quantities used', other: 'Other quantities', review: 'Items to review' }[kind]}</h3>
+            {!lines.length ? <p className="text-sm text-slate-500">No included records.</p> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-slate-50 text-left"><tr>{['Item / worker', 'Cost code', 'Source', 'Quantity', 'Unit', 'Note'].map(h => <th key={h} className="p-3">{h}</th>)}</tr></thead><tbody>{lines.map((r, i) => <tr key={i} className="border-t border-slate-100"><td className="p-3">{[r.description, r.worker].filter(Boolean).join(' / ') || 'Unassigned'}</td><td className="whitespace-nowrap p-3">{r.costCode || '—'}</td><td className="whitespace-nowrap p-3">{r.source}</td><td className="p-3 tabular-nums">{r.note === 'Missing or invalid quantity.' ? '—' : number(r.quantity)}</td><td className="p-3">{r.unit || '—'}</td><td className="p-3 text-slate-600">{r.note || r.laborType}</td></tr>)}</tbody></table></div>}
+          </div>;
+        })}
+      </section>}
+      <p className="text-xs text-slate-500">Saved data only. A zero does not confirm that no work occurred or that synchronization is complete. Deleted records and Billing File logs are excluded.</p>
+    </>}
+  </main>;
 }

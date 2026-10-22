@@ -54,12 +54,12 @@ export const reportGuides = [
     checks: ['Check source dates and refresh status before treating a signal as current. Failed refreshes retain earlier observations.', 'Pennsylvania unemployment covers all industries. Steel mill prices are not rebar quotes. Local commercial permits and ABC coverage are still pending. AIA uses a 50-point growth/decline threshold and index-point comparisons; these indices are excluded from the year-over-year counts. Dodge release links identify the source of each observation; annual comparisons require a matching saved month.'],
   }),
   defineGuide('reporting', {
-    purpose: 'Build a timecard or productivity-log report to trace field records for a project and date range.',
-    steps: [{ title: 'Choose the report type', body: 'Select Timecards for labor or Productivity Log for recorded production.' }, { title: 'Set the scope', body: 'Choose a project or All Projects and enter Date From and Date To.' }, { title: 'Run and inspect', body: 'Generate the report, review its rows, and use available output controls when sharing results.' }],
-    data: ['Stored projects populate the selector. The reporting service reads available timecards or productivity logs.', 'The selected record type and dates determine coverage; related timecards and production logs are not the same record.'],
-    terms: [['Timecards', 'Recorded employee labor and hours.'], ['Productivity Log', 'Field activities and quantities; read each line’s unit.'], ['All Projects', 'A broader population that can take longer to load.']],
-    example: 'To investigate a week’s work, run Timecards for that project and week, then a separate Productivity Log report for the same dates.',
-    checks: ['Check project, date range, and synchronization when results are empty.', 'Do not add unlike production units together or interpret production quantities as hours.'],
+    purpose: 'Download actual labor hours and material quantities used for all projects as an Excel workbook.',
+    steps: [{ title: 'Choose work dates', body: 'Leave dates blank for all saved history or enter an inclusive date range. All projects are included.' }, { title: 'Run and inspect', body: 'Run report, search the project preview, and select a project to inspect its labor and material items.' }, { title: 'Download Excel', body: 'Download Excel exports the complete loaded report, including projects hidden by the preview search. Rerun after changing dates.' }],
+    data: ['Reads synchronized timecards, productivity quantity-used records, and purchase-order metadata from the configured company. Project identity uses explicit Procore IDs.', 'The workbook contains Projects, Labor, Materials, Other quantities, Review, and Report notes. Deleted records and Billing File logs are excluded.'],
+    terms: [['Timecard / daily-log hours', 'Separate recorded sources that may overlap. Subcontractor hours are included and identified separately; do not add them twice.'], ['Materials', 'Used quantities by project, purchase-order item, cost code and unit. Unlike items and units are not added together.'], ['Review', 'Records with unresolved project, quantity, metadata or units, excluded from labor and material totals.'], ['All projects', 'Includes projects without usage and source project IDs absent from the project directory.']],
+    example: 'A project with 80 timecard hours, 10 daily-log labor hours, 30 CY of concrete and 200 EA of rebar retains each measure separately in Excel.',
+    checks: ['A zero means no included saved records, not proof of no work or complete synchronization. Loaded time is the report read time.', 'Check Review and Other quantities before relying on totals. Material quantities are not dollar costs or delivered quantities.'],
   }),
 ];
 

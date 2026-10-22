@@ -81,6 +81,7 @@ export const PATH_PERMISSION_RULES = [
 ];
 
 const API_PERMISSION_RULES = [
+  { prefix: '/api/reporting', permission: 'reporting' },
   { prefix: '/api/accounting/billing-analytics', permission: 'analytics' },
   { prefix: '/api/wip', permission: 'wip' },
   { prefix: '/api/analytics/commitment-productivity/reviews', permission: 'analytics' },

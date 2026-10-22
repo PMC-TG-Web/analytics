@@ -43,12 +43,43 @@ test('placed concrete survives Other and Concrete PO cost types in project total
   assert.equal(XLSX.utils.sheet_to_json(saved.Sheets.Materials, { range: 4 }).reduce((s, r) => s + r['Concrete (CY)'], 0), 2031);
 });
 
-test('Other concrete inference requires matching material code, name and explicit cubic-yard unit', () => {
+test('Other concrete inference requires matching material code, name and compatible unit', () => {
   for (const extra of [
-    { description: 'Fiber - SOG' }, { description: 'Concrete testing' }, { description: 'Site Concrete labor' },
-    { description: 'Unknown activity' }, { uom: 'EA' }, { uom: 'HR' }, { costCode: '03-300-20-10' },
+    { description: 'Concrete testing' }, { description: 'Site Concrete labor' },
+    { description: 'Unknown activity' }, { uom: 'HR' }, { costCode: '03-300-20-10' },
     { costType: null }, { costType: 'Equipment' }, { costType: 'Subcontractors' },
   ]) assert.equal(classifyProjectUsageItem(record('x', { costType: 'Other', description: 'Slab On Grade Concrete', ...extra })), null);
+});
+
+test('all-project audit restores coded materials and explicit hours without counting fees, rentals or accessories as concrete/rebar', () => {
+  const rows = [
+    record('ea-concrete', { costType: 'Concrete', description: 'CO6 - 4000 psi Foundation Concrete', costCode: '03-300-00-20', uom: 'EA', quantity: 26 }),
+    record('other-concrete', { costType: 'Other', description: 'Site Concrete', costCode: '03-300-30-20', uom: 'EA', quantity: 37 }),
+    record('fee', { costType: 'Materials', description: 'CO1 - Light Load - Rohrers', uom: 'EA' }),
+    record('bollards', { costType: 'Concrete', description: 'Bollards', costCode: '05-100-10-20', uom: 'EA' }),
+    record('bar', { costType: 'Other', description: "#4 Rebar - 20' Pc", costCode: '03-200-10-20', uom: 'EA', quantity: 14 }),
+    record('shorthand', { costType: 'Other', description: "#5 non-taxable, 20' pc", costCode: '03-200-30-20', uom: 'EA', quantity: 10 }),
+    record('partial', { costType: 'Other', description: '#4 Rebar By The Piece', costCode: '03-200-10-20', uom: 'EA' }),
+    record('epoxy', { costType: 'Other', description: 'Rebar anchor epoxy', costCode: '03-150-10-85', uom: 'EA' }),
+    record('forms', { costType: 'Other', description: 'Wall Forms', costCode: '03-100-20-20', uom: 'SF' }),
+    record('rental', { costType: 'Materials', description: 'Support posts rental (8)', costCode: '03-100-30-20', uom: 'MONTHS' }),
+    record('food', { costType: 'Materials', description: 'Food', costCode: '03-150-10-85', uom: 'EA' }),
+    record('hours', { costType: 'Other', description: 'Travel Labor', costCode: '01-300-10-30', uom: 'HOURS', quantity: 22.5 }),
+    record('ambiguous', { costType: 'Other', description: 'Day 1', costCode: '03-150-10-85', uom: 'EA' }),
+    record('unknown-unit', { costType: 'Other', description: '#4 Rebar', costCode: '03-200-10-20', uom: '' }),
+  ];
+  const report = build(rows), p = report.projects.find(p => p.projectId === projects[0].procoreProjectId);
+  assert.equal(p.concreteCy, 63); assert.equal(p.rebarTons, 0.1978); assert.equal(p.rebarUnconvertedEntries, 1);
+  assert.equal(p.dailyLogHours, 22.5); assert.equal(report.review.length, 2);
+  assert.equal(report.materials.find(r => r.description === 'Bollards').unit, 'EA');
+  assert.equal(report.materials.find(r => r.description === 'Rebar anchor epoxy').rebarUnconvertedEntries, 0);
+  assert.deepEqual(report.other.map(r => r.description).sort(), ['CO1 - Light Load - Rohrers', 'Food', 'Support posts rental (8)']);
+  assert.equal(['labor', 'materials', 'other', 'review'].reduce((s, k) => s + report[k].reduce((n, r) => n + r.entries, 0), 0), rows.length);
+  const workbook = createProjectUsageWorkbook(filterProjectUsageReport(report, p.projectId));
+  assert.equal(workbook.Sheets.Projects.K6.v, 63); assert.equal(workbook.Sheets.Projects.L6.v, 0.1978);
+  assert.equal(calculateRebarUsageTons(10, 'EA', ["#5 non-taxable, 20' pc"]), null, 'No rebar code means no shorthand inference');
+  assert.equal(classifyProjectUsageItem(record('installation', { costType: 'Other', description: 'Rebar installation', costCode: '03-200-10-20', uom: 'EA' })).kind, 'review');
+  for (const description of ['#4 Rebar anchor epoxy 20 ft', '#4 Rebar adhesive 20 ft']) assert.equal(calculateRebarUsageTons(10, 'EA', [description]), null);
 });
 
 test('legacy Labor-coded concrete and products retain actual quantities while PM EA follows the existing hour policy', () => {

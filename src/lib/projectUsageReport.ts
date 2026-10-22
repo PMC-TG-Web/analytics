@@ -1,6 +1,6 @@
 import { isSubcontractorProductivity, isSubcontractorTimecard } from './qboSubcontractorExclusions.js';
 import { classifyProductivityCompletionLine, normalizeProductivityCompletionUom } from './productivityWeightedCompletion.ts';
-import { calculateRebarUsageTons, isRebarUsage } from './rebarUsage.ts';
+import { calculateRebarUsageTons, isRebarUsage, rebarUsageDescription } from './rebarUsage.ts';
 import { classifyProjectUsageItem } from './projectUsageClassification.ts';
 
 export type UsagePeriod = { from: string; through: string };
@@ -138,8 +138,9 @@ export function buildProjectUsageReport(companyId: string, period: UsagePeriod, 
         summary.concreteCy += row.quantity!;
         group.concreteCy += row.quantity!;
       }
-      if (isRebarUsage([row.description, row.logDescription].filter(Boolean).join(' / '))) {
-        const tons = calculateRebarUsageTons(row.quantity!, row.uom || '', [row.description, row.logDescription]);
+      const rebarDescription = rebarUsageDescription([row.description, row.logDescription].filter(Boolean).join(' / '), row.costCode);
+      if (isRebarUsage(rebarDescription)) {
+        const tons = calculateRebarUsageTons(row.quantity!, row.uom || '', [rebarDescription]);
         if (tons === null) { summary.rebarUnconvertedEntries++; group.rebarUnconvertedEntries++; }
         else { summary.rebarTons += tons; group.rebarTons += tons; }
       }

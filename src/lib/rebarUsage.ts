@@ -1,8 +1,16 @@
 import { rebarWeightPerFoot } from './rebarSpecifications.ts';
 
+/** Only explicit bar shorthand on a rebar material code supplies the missing noun. */
+export function rebarUsageDescription(description: string, costCode?: string | null) {
+  if (/^03-200-(?:10|20|30|40)-20$/.test(costCode?.trim() || '')) {
+    return description.replace(/(^|\/\s*)(#[3-8])\s+(non[ -]taxable,?\s+\d+(?:\.\d+)?['’′]\s+pc\b)/gi, '$1$2 Rebar $3');
+  }
+  return description;
+}
+
 export function isRebarUsage(description: string) {
   return /\b(?:rebar|reinforcing bars?|reinforcement bars?)\b/i.test(description)
-    && !/\b(?:chairs?|dowels?|wire|meshes?|wwf|spacers?|sleeves?|fabrication)\b/i.test(description);
+    && !/\b(?:chairs?|dowels?|wire|meshes?|wwf|spacers?|sleeves?|fabrication|epoxy|adhesive|anchors?)\b/i.test(description);
 }
 
 /** US short tons. Missing/conflicting dimensions never imply a standard stick length. */

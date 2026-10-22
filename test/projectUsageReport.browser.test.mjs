@@ -23,7 +23,9 @@ function fixture() {
     { procoreProjectId: 'p1', projectName: 'Test concrete project', projectNumber: '001', customer: 'Customer A', status: 'Active' },
     { procoreProjectId: 'p2', projectName: 'Second project', projectNumber: '002', customer: 'Customer B', status: 'Complete' },
   ], [record, { ...record, id: 'two', sourceId: 'two', source: 'Daily log', quantity: 30, costType: 'M', uom: 'CY',
-    metadataMatches: 1, description: 'Concrete', costCode: '03-300-20-20', worker: null, holderId: 'po1', lineItemId: 'li1' }]);
+    metadataMatches: 1, description: 'Concrete', costCode: '03-300-20-20', worker: null, holderId: 'po1', lineItemId: 'li1' },
+    { ...record, id: 'three', sourceId: 'three', source: 'Daily log', quantity: 165, costType: 'M', uom: 'EA',
+      metadataMatches: 1, description: "#4 Rebar 20'", costCode: 'rebar', worker: null, holderId: 'po1', lineItemId: 'li2' }]);
 }
 
 test('report preview, full workbook download, date changes, errors and mobile layout', { skip: !enabled, timeout: 120_000 }, async () => {
@@ -45,6 +47,9 @@ test('report preview, full workbook download, date changes, errors and mobile la
     assert.equal(await download.isDisabled(), true);
     await page.getByRole('button', { name: 'Run report', exact: true }).click();
     await page.getByRole('button', { name: 'Test concrete project', exact: true }).waitFor();
+    const summaryRow = page.getByRole('row').filter({ has: page.getByRole('button', { name: 'Test concrete project', exact: true }) });
+    assert.equal(await summaryRow.getByRole('cell').nth(4).innerText(), '30');
+    assert.equal(await summaryRow.getByRole('cell').nth(5).innerText(), '1.1022');
     await page.getByLabel('Search preview').fill('Test concrete');
     assert.equal(await page.getByRole('button', { name: 'Second project', exact: true }).count(), 0);
     await page.getByRole('button', { name: 'Test concrete project', exact: true }).click();
@@ -52,15 +57,17 @@ test('report preview, full workbook download, date changes, errors and mobile la
     const [file] = await Promise.all([page.waitForEvent('download'), download.click()]);
     const saved = XLSX.read(await readFile(await file.path()), { type: 'buffer' });
     assert.equal(saved.SheetNames.length, 6);
-    assert.equal(saved.Sheets.Projects['!ref'], 'A1:J7', 'preview search must not narrow the workbook');
+    assert.equal(saved.Sheets.Projects['!ref'], 'A1:M7', 'preview search must not narrow the workbook');
     assert.equal(saved.Sheets.Materials.I6.v, 30);
     await projectFilter.selectOption('project:p1');
     assert.equal(await page.getByRole('article').filter({ hasText: 'Projects' }).locator('strong').innerText(), '1');
     const [projectFile] = await Promise.all([page.waitForEvent('download'), download.click()]);
     const projectWorkbook = XLSX.read(await readFile(await projectFile.path()), { type: 'buffer' });
-    assert.equal(projectWorkbook.Sheets.Projects['!ref'], 'A1:J6');
+    assert.equal(projectWorkbook.Sheets.Projects['!ref'], 'A1:M6');
     assert.equal(projectWorkbook.Sheets.Projects.E6.v, 'p1');
     assert.equal(projectWorkbook.Sheets.Materials.C6.v, 'p1');
+    assert.equal(projectWorkbook.Sheets.Projects.K6.v, 30);
+    assert.equal(projectWorkbook.Sheets.Projects.L6.v, 1.1022);
     await projectFilter.selectOption('project:p2');
     assert.equal(await page.getByRole('article').filter({ hasText: 'Timecard hours' }).locator('strong').innerText(), '0');
     assert.equal(await page.getByRole('button', { name: 'Second project', exact: true }).count(), 1);

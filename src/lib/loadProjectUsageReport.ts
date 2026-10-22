@@ -39,7 +39,7 @@ export async function loadProjectUsageReport(companyId: string, from: string, th
         SELECT p.id, p."procoreId" AS "sourceId", p."procoreCompanyId" AS "companyId", p."procoreProjectId" AS "projectId",
           'Daily log'::text AS source, TO_CHAR(p.date, 'YYYY-MM-DD') AS date,
           p."updatedAt", p."procoreDeletedAt" AS "deletedAt", p.status, p."quantityUsed" AS quantity,
-          li."costCode", COALESCE(li.description, p."lineItemDescription") AS description, NULL::text AS worker,
+          li."costCode", COALESCE(li.description, p."lineItemDescription") AS description, p."lineItemDescription" AS "logDescription", NULL::text AS worker,
           COALESCE(a.target_holder_id, p."lineItemHolderId") AS "holderId", COALESCE(a.target_line_item_id, p."lineItemId") AS "lineItemId",
           li."costType", li.uom, p."lineItemHolderTitle" AS "holderTitle", li.matches AS "metadataMatches"
         FROM latest p

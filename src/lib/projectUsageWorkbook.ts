@@ -22,16 +22,18 @@ export function createProjectUsageWorkbook(report: ProjectUsageReport) {
     }
     XLSX.utils.book_append_sheet(workbook, ws, name);
   }
-  sheet('Projects', ['Project', 'Project number', 'Customer', 'Status', 'Procore project ID', 'Timecard hours', 'Daily-log labor hours', 'Subcontractor hours (included)', 'Material items', 'Items to review'],
-    report.projects.map(p => [p.projectName, p.projectNumber, p.customer, p.status, p.projectId, p.timecardHours, p.dailyLogHours, p.subcontractorHours, p.materialLines, p.reviewLines]),
-    [48, 20, 32, 20, 25, 22, 25, 32, 18, 20], [5, 6, 7, 8, 9]);
+  sheet('Projects', ['Project', 'Project number', 'Customer', 'Status', 'Procore project ID', 'Timecard hours', 'Daily-log labor hours', 'Subcontractor hours (included)', 'Material items', 'Items to review', 'Concrete (CY)', 'Rebar (tons)', 'Rebar entries not converted'],
+    report.projects.map(p => [p.projectName, p.projectNumber, p.customer, p.status, p.projectId, p.timecardHours, p.dailyLogHours, p.subcontractorHours, p.materialLines, p.reviewLines, p.concreteCy, p.rebarTons, p.rebarUnconvertedEntries]),
+    [48, 20, 32, 20, 25, 22, 25, 32, 18, 20, 20, 20, 30], [5, 6, 7, 8, 9, 10, 11, 12]);
   function detail(name: string, rows: UsageLine[]) {
-    sheet(name, ['Project', 'Project number', 'Procore project ID', 'Source', 'Labor type', 'Cost code', 'Description', 'Worker', 'Quantity used / hours', 'Unit', 'Source entries', 'First work date', 'Last work date', 'Purchase order ID', 'Line item ID', 'Note'],
+    const material = name === 'Materials';
+    sheet(name, ['Project', 'Project number', 'Procore project ID', 'Source', 'Labor type', 'Cost code', 'Description', 'Worker', 'Quantity used / hours', 'Unit', 'Source entries', 'First work date', 'Last work date', 'Purchase order ID', 'Line item ID', 'Note', ...(material ? ['Concrete (CY)', 'Rebar (tons)', 'Rebar entries not converted'] : [])],
       rows.map(r => [r.projectName, r.projectNumber, r.projectId, r.source, r.laborType, r.costCode, r.description, r.worker,
         r.note === 'Missing or invalid quantity.' ? null : r.quantity, r.unit, r.entries,
         Date.parse(`${r.firstDate}T00:00:00Z`) / 86_400_000 + 25569,
-        Date.parse(`${r.lastDate}T00:00:00Z`) / 86_400_000 + 25569, r.holderId, r.lineItemId, r.note]),
-      [48, 20, 25, 18, 20, 20, 58, 28, 25, 14, 18, 20, 20, 25, 25, 85], [8, 10]);
+        Date.parse(`${r.lastDate}T00:00:00Z`) / 86_400_000 + 25569, r.holderId, r.lineItemId, r.note,
+        ...(material ? [r.concreteCy, r.rebarTons, r.rebarUnconvertedEntries] : [])]),
+      [48, 20, 25, 18, 20, 20, 58, 28, 25, 14, 18, 20, 20, 25, 25, 85, ...(material ? [20, 20, 30] : [])], [8, 10, ...(material ? [16, 17, 18] : [])]);
   }
   detail('Labor', report.labor);
   detail('Materials', report.materials);
@@ -43,6 +45,9 @@ export function createProjectUsageWorkbook(report: ProjectUsageReport) {
     ['Labor', 'Timecard hours and daily-log labor hours are separate sources. They can overlap; this report does not assume they represent different hours.'],
     ['Subcontractors', 'Subcontractor hours are already included in the two source columns. Do not add them again.'],
     ['Materials', 'Quantity used, grouped by project, purchase-order line, description, cost code and unit. Different materials and units are not added together. Delivered quantities are not included.'],
+    ['Concrete (CY)', 'Concrete quantity used, in cubic yards, using the existing concrete cost-code classification and unit corrections. Fiber and pump services are excluded.'],
+    ['Rebar (tons)', 'US short tons (2,000 lb). Piece quantities use explicit bar size, length and the standard weight per foot from Estimating Tools. Recorded pounds or linear feet are converted when supported. Chairs, dowels, wire mesh and accessories are excluded.'],
+    ['Rebar entries not converted', 'A positive count means the rebar tonnage is partial: these source entries lack usable or unambiguous size, length or unit. See Materials for affected items; original quantities remain available.'],
     ['Units', 'Uses saved purchase-order units and existing field-analytics corrections for concrete and fiber. Explicit labor/subcontractor LS entries follow the existing hours convention.'],
     ['Other quantities', 'Equipment, subcontract and other non-material cost types remain separate from materials.'],
     ['Review', 'Missing project IDs, quantities, coding, or usable units are listed for review and excluded from labor/material totals.'],

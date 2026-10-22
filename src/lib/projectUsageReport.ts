@@ -1,5 +1,6 @@
 import { isSubcontractorProductivity, isSubcontractorTimecard } from './qboSubcontractorExclusions.js';
-import { normalizeProductivityCompletionUom } from './productivityWeightedCompletion.ts';
+import { classifyProductivityCompletionLine, normalizeProductivityCompletionUom } from './productivityWeightedCompletion.ts';
+import { calculateRebarUsageTons, isRebarUsage } from './rebarUsage.ts';
 
 export type UsagePeriod = { from: string; through: string };
 export type UsageProject = { procoreProjectId: string; projectName: string; projectNumber: string | null; customer: string | null; status: string | null };
@@ -10,14 +11,17 @@ export type UsageRecord = {
   costCode: string | null; description: string | null; worker: string | null;
   holderId: string | null; lineItemId: string | null; costType: string | null;
   uom: string | null; holderTitle: string | null; metadataMatches: number;
+  logDescription?: string | null;
 };
 type ProjectIdentity = { projectId: string; projectName: string; projectNumber: string; customer: string; status: string };
 export type UsageLine = ProjectIdentity & {
   source: string; costCode: string; description: string; worker: string;
   holderId: string; lineItemId: string; unit: string; quantity: number; entries: number;
   firstDate: string; lastDate: string; laborType: string; note: string;
+  concreteCy: number; rebarTons: number; rebarUnconvertedEntries: number;
 };
-export type UsageSummary = ProjectIdentity & { timecardHours: number; dailyLogHours: number; subcontractorHours: number; materialLines: number; reviewLines: number };
+export type UsageSummary = ProjectIdentity & { timecardHours: number; dailyLogHours: number; subcontractorHours: number; materialLines: number; reviewLines: number;
+  concreteCy: number; rebarTons: number; rebarUnconvertedEntries: number };
 export type ProjectUsageReport = UsagePeriod & {
   companyId: string; loadedAt: string; latestMirrorUpdate: string | null;
   projects: UsageSummary[]; labor: UsageLine[]; materials: UsageLine[]; other: UsageLine[]; review: UsageLine[];
@@ -60,7 +64,8 @@ export function buildProjectUsageReport(companyId: string, period: UsagePeriod, 
   function project(projectId: string | null) {
     const key = projectId || '';
     if (!summaries.has(key)) summaries.set(key, { projectId: key, projectName: key ? `Project ${key} (not in project directory)` : 'Missing project ID',
-      projectNumber: '', customer: '', status: '', timecardHours: 0, dailyLogHours: 0, subcontractorHours: 0, materialLines: 0, reviewLines: 0 });
+      projectNumber: '', customer: '', status: '', timecardHours: 0, dailyLogHours: 0, subcontractorHours: 0, materialLines: 0, reviewLines: 0,
+      concreteCy: 0, rebarTons: 0, rebarUnconvertedEntries: 0 });
     return summaries.get(key)!;
   }
   for (const row of projects) Object.assign(project(row.procoreProjectId), {
@@ -116,11 +121,24 @@ export function buildProjectUsageReport(companyId: string, period: UsagePeriod, 
     const key = JSON.stringify(values);
     let group = groups[kind].get(key);
     if (!group) {
-      group = { ...values, quantity: 0, entries: 0, firstDate: row.date, lastDate: row.date };
+      group = { ...values, quantity: 0, entries: 0, firstDate: row.date, lastDate: row.date, concreteCy: 0, rebarTons: 0, rebarUnconvertedEntries: 0 };
       groups[kind].set(key, group);
     }
     group.quantity += Number.isFinite(row.quantity) ? row.quantity! : 0;
     group.entries++;
+    if (kind === 'materials') {
+      // Some pump services share concrete coding/units; they are not placed concrete.
+      const pump = /\b(?:pumps?|pumping)\b/i.test([row.description, row.logDescription].filter(Boolean).join(' / '));
+      if (unit === 'CY' && classifyProductivityCompletionLine(row) === 'concrete' && !pump) {
+        summary.concreteCy += row.quantity!;
+        group.concreteCy += row.quantity!;
+      }
+      if (isRebarUsage([row.description, row.logDescription].filter(Boolean).join(' / '))) {
+        const tons = calculateRebarUsageTons(row.quantity!, row.uom || '', [row.description, row.logDescription]);
+        if (tons === null) { summary.rebarUnconvertedEntries++; group.rebarUnconvertedEntries++; }
+        else { summary.rebarTons += tons; group.rebarTons += tons; }
+      }
+    }
     if (row.date < group.firstDate) group.firstDate = row.date;
     if (row.date > group.lastDate) group.lastDate = row.date;
   }
@@ -129,11 +147,14 @@ export function buildProjectUsageReport(companyId: string, period: UsagePeriod, 
     report[kind] = [...groups[kind].values()].sort((a, b) => compare(a, b) || a.costCode.localeCompare(b.costCode) || a.description.localeCompare(b.description));
     for (const line of report[kind]) {
       line.quantity = round(line.quantity);
+      line.concreteCy = round(line.concreteCy);
+      line.rebarTons = round(line.rebarTons);
       if (kind === 'materials') project(line.projectId).materialLines++;
       if (kind === 'review') project(line.projectId).reviewLines++;
     }
   }
   report.projects = [...summaries.values()].sort(compare).map(row => ({ ...row,
-    timecardHours: round(row.timecardHours), dailyLogHours: round(row.dailyLogHours), subcontractorHours: round(row.subcontractorHours) }));
+    timecardHours: round(row.timecardHours), dailyLogHours: round(row.dailyLogHours), subcontractorHours: round(row.subcontractorHours),
+    concreteCy: round(row.concreteCy), rebarTons: round(row.rebarTons) }));
   return report;
 }

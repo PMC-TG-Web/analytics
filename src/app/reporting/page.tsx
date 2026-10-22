@@ -104,11 +104,13 @@ export default function ReportingPage() {
           <label className="text-sm text-slate-600">Search preview<input value={search} onChange={e => setSearch(e.target.value)} placeholder="Project, number, or customer" className="ml-2 max-w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
         </div>
         <div className="overflow-x-auto"><table className="w-full text-sm">
-          <thead className="bg-slate-50 text-left text-slate-600"><tr>{['Project', 'Status', 'Timecard hours', 'Daily-log hours', 'Material items', 'Review'].map(label => <th key={label} className="whitespace-nowrap px-5 py-3">{label}</th>)}</tr></thead>
+          <thead className="bg-slate-50 text-left text-slate-600"><tr>{['Project', 'Status', 'Timecard hours', 'Daily-log hours', 'Concrete (CY)', 'Rebar (tons)', 'Material items', 'Review'].map(label => <th key={label} className="whitespace-nowrap px-5 py-3">{label}</th>)}</tr></thead>
           <tbody>{projects.map(p => <tr key={p.projectId} className="border-t border-slate-100 hover:bg-slate-50">
             <td className="px-5 py-3"><button onClick={() => setSelected(selected === p.projectId ? null : p.projectId)} className="text-left font-semibold text-blue-700 hover:underline" aria-expanded={selected === p.projectId}>{p.projectName}</button><p className="mt-1 text-xs text-slate-500">{[p.projectNumber, p.customer].filter(Boolean).join(' · ')}</p></td>
             <td className="px-5 py-3 text-slate-600">{p.status || '—'}</td>
             <td className="px-5 py-3 tabular-nums">{number(p.timecardHours)}</td><td className="px-5 py-3 tabular-nums">{number(p.dailyLogHours)}</td>
+            <td className="px-5 py-3 tabular-nums">{number(p.concreteCy)}</td>
+            <td className="px-5 py-3 tabular-nums">{number(p.rebarTons)}{p.rebarUnconvertedEntries > 0 && <span className="mt-1 block text-xs text-amber-800">Partial: {p.rebarUnconvertedEntries} entries not converted</span>}</td>
             <td className="px-5 py-3 tabular-nums">{p.materialLines}</td><td className="px-5 py-3 tabular-nums">{p.reviewLines || '—'}</td>
           </tr>)}</tbody>
         </table></div>
@@ -123,7 +125,7 @@ export default function ReportingPage() {
           </div>;
         })}
       </section>}
-      <p className="text-xs text-slate-500">Saved data only. A zero does not confirm that no work occurred or that synchronization is complete. Deleted records and Billing File logs are excluded.</p>
+      <p className="text-xs text-slate-500">Concrete is quantity used in cubic yards. Rebar is calculated in US tons (2,000 lb) from recorded weight or bar size and length; incomplete dimensions are flagged. Saved data only. A zero does not confirm that no work occurred or that synchronization is complete. Deleted records and Billing File logs are excluded.</p>
     </>}
   </main>;
 }

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import * as XLSX from 'xlsx';
 import { buildProjectUsageReport, filterProjectUsageReport, usagePeriod } from '../src/lib/projectUsageReport.ts';
 import { createProjectUsageWorkbook } from '../src/lib/projectUsageWorkbook.ts';
+import { calculateRebarUsageTons } from '../src/lib/rebarUsage.ts';
 
 const projects = [
   { procoreProjectId: '598134326634438', projectName: 'Same project name', projectNumber: '001', customer: 'Customer', status: 'Active' },
@@ -13,6 +14,46 @@ const record = (id, extra = {}) => ({ id, sourceId: id, companyId: 'company', pr
   quantity: 10, costCode: '03-300-20-20', description: 'Concrete', worker: null, holderId: 'po1', lineItemId: 'line1',
   costType: 'M', uom: 'CY', holderTitle: 'Materials', metadataMatches: 1, ...extra });
 const build = (rows, period = usagePeriod()) => buildProjectUsageReport('company', period, projects, rows);
+
+test('rebar conversions require explicit, unambiguous dimensions and exclude accessories', () => {
+  for (const label of ["#4 Rebar - 20' Pc", '#4 rebar 20’', "#4x20' rebar", "#9 - #4 Rebar - 20' Pc - SOG"]) {
+    assert.equal(calculateRebarUsageTons(165, 'ea', [label]), 1.1022, label);
+  }
+  assert.equal(calculateRebarUsageTons(10, 'EA', ["#5 non taxable rebar - 20' pc"]), 0.1043);
+  assert.equal(calculateRebarUsageTons(100, 'LF', ['#4 Rebar']), 0.0334);
+  assert.equal(calculateRebarUsageTons(2000, 'LB', ['Rebar']), 1);
+  assert.equal(calculateRebarUsageTons(-165, 'EA', ["#4 Rebar 20'"]), -1.1022);
+  for (const description of ['#4 Rebar By The Piece', '#9 Rebar 20 ft', '#4 Rebar chairs 20 ft', '#4 Rebar dowels 20 ft',
+    '#4 Rebar wire mesh 20 ft', '#4 Rebar 20 ft / #5 Rebar 20 ft', '#4 Rebar 20 ft / #4 Rebar 10 ft', '#4 Rebar 20 ft 6 in', '#4 Rebar 20 1/2 ft']) {
+    assert.equal(calculateRebarUsageTons(10, 'EA', [description]), null, description);
+  }
+  assert.equal(calculateRebarUsageTons(10, 'bundle', ["#4 Rebar 20'"]), null);
+  assert.equal(calculateRebarUsageTons(10, 'EA', ['Rebar material', "#4 Rebar 20'"]), 0.0668);
+});
+
+test('project concrete CY and rebar tons use material usage, retain incomplete counts, and export numeric columns', () => {
+  const report = build([
+    record('concrete', { quantity: 50, uom: 'EA' }),
+    record('fiber', { quantity: 100, description: 'Fiber' }),
+    record('bar', { quantity: 165, costCode: '03-200-30-20', description: 'Rebar material', logDescription: "#4 Rebar 20'", uom: 'EA' }),
+    record('missing', { quantity: 10, costCode: '03-200-30-20', description: '#4 Rebar By The Piece', uom: 'EA' }),
+    record('chair', { quantity: 500, costCode: '03-200-30-20', description: 'Rebar chairs', uom: 'EA' }),
+    record('deleted', { quantity: 999, deletedAt: '2026-10-22' }),
+    record('billing', { quantity: 999, holderTitle: 'Billing File' }),
+    record('equipment', { quantity: 999, costType: 'E' }),
+    record('pump', { quantity: 999, description: 'Boom Pump' }),
+  ]);
+  const summary = report.projects.find(p => p.projectId === projects[0].procoreProjectId);
+  assert.equal(summary.concreteCy, 50); assert.equal(summary.rebarTons, 1.1022); assert.equal(summary.rebarUnconvertedEntries, 1);
+  assert.equal(report.projects.find(p => p.projectId === 'other').concreteCy, 0);
+  const filtered = filterProjectUsageReport(report, summary.projectId);
+  const saved = XLSX.read(XLSX.write(createProjectUsageWorkbook(filtered), { type: 'buffer', bookType: 'xlsx' }), { type: 'buffer' });
+  const row = XLSX.utils.sheet_to_json(saved.Sheets.Projects, { range: 4 })[0];
+  assert.equal(row['Concrete (CY)'], 50); assert.equal(row['Rebar (tons)'], 1.1022); assert.equal(row['Rebar entries not converted'], 1);
+  const material = XLSX.utils.sheet_to_json(saved.Sheets.Materials, { range: 4 });
+  assert.equal(material.reduce((n, r) => n + r['Rebar (tons)'], 0), 1.1022);
+  assert.equal(material.reduce((n, r) => n + r['Concrete (CY)'], 0), 50);
+});
 
 test('project filter scopes every section by exact ID without changing the all-project source report', () => {
   const report = build([
@@ -120,6 +161,6 @@ test('Excel round trip preserves all sheets, numbers, dates, text IDs, filters a
   assert.equal(material.G6.v, '=1+1'); assert.equal(material.G6.t, 's'); assert.equal(material.G6.f, undefined);
   assert.equal(material.I6.t, 'n'); assert.equal(material.I6.v, 10);
   assert.equal(material.L6.t, 'd'); assert.equal(material.L6.v.toISOString().slice(0, 10), '2026-10-22');
-  assert.equal(material['!autofilter'].ref, 'A5:P6');
-  assert.equal(saved.Sheets.Projects['!ref'], 'A1:J7');
+  assert.equal(material['!autofilter'].ref, 'A5:S6');
+  assert.equal(saved.Sheets.Projects['!ref'], 'A1:M7');
 });

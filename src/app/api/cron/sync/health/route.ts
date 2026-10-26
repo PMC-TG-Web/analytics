@@ -29,6 +29,7 @@ type StateRow = {
   failed_projects: number;
   max_failure_count: number;
   due_projects: number;
+  overdue_two_hours: number;
   oldest_success: Date | null;
   newest_success: Date | null;
   oldest_due: Date | null;
@@ -48,6 +49,7 @@ async function loadHealth(companyId: string) {
           COUNT(*) FILTER (WHERE failure_count > 0)::int AS failed_projects,
           MAX(failure_count)::int AS max_failure_count,
           COUNT(*) FILTER (WHERE next_run_at <= NOW())::int AS due_projects,
+          COUNT(*) FILTER (WHERE next_run_at < NOW() - INTERVAL '2 hours')::int AS overdue_two_hours,
           MIN(last_success_at) AS oldest_success,
           MAX(last_success_at) AS newest_success,
           MIN(next_run_at) FILTER (WHERE next_run_at <= NOW()) AS oldest_due

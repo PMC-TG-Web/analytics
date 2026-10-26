@@ -391,6 +391,7 @@ export async function getSyncQueueStats(companyId: string, dataset: string) {
   const rows = await prisma.$queryRawUnsafe<Array<{
     project_count: number;
     due_projects: number;
+    oldest_due: Date | null;
     never_succeeded: number;
     failed_projects: number;
   }>>(
@@ -398,6 +399,7 @@ export async function getSyncQueueStats(companyId: string, dataset: string) {
       SELECT
         COUNT(*)::int AS project_count,
         COUNT(*) FILTER (WHERE next_run_at <= NOW())::int AS due_projects,
+        MIN(next_run_at) FILTER (WHERE next_run_at <= NOW()) AS oldest_due,
         COUNT(*) FILTER (WHERE last_success_at IS NULL)::int AS never_succeeded,
         COUNT(*) FILTER (WHERE failure_count > 0)::int AS failed_projects
       FROM procore_sync_project_states
@@ -410,6 +412,7 @@ export async function getSyncQueueStats(companyId: string, dataset: string) {
   return rows[0] || {
     project_count: 0,
     due_projects: 0,
+    oldest_due: null,
     never_succeeded: 0,
     failed_projects: 0,
   };

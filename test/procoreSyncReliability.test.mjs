@@ -287,6 +287,7 @@ test("health evaluation catches an old Actuals queue even while one project is s
       failed_projects: 0,
       max_failure_count: 0,
       due_projects: 14,
+      overdue_two_hours: 9,
       oldest_due: "2026-09-02T10:00:00.000Z",
       newest_success: "2026-09-02T12:55:00.000Z",
     }],
@@ -297,7 +298,26 @@ test("health evaluation catches an old Actuals queue even while one project is s
     },
   }, new Date("2026-09-02T13:00:00.000Z"));
 
-  assert.ok(issues.includes("14 Actuals project(s) have been waiting for more than 2 hours."));
+  assert.ok(issues.includes("9 Actuals project(s) have been waiting for more than 2 hours."));
+});
+
+test("Actuals health uses the measured overdue count and labels legacy counts accurately", () => {
+  const actuals = {
+    dataset: "actuals", never_succeeded: 0, failed_projects: 0, max_failure_count: 0,
+    due_projects: 23, oldest_due: "2026-10-26T07:00:00Z", newest_success: "2026-10-26T10:29:00Z",
+  };
+  const snapshot = { datasets: [actuals], webhookQueue: [],
+    projectReconciliation: { last_success_at: "2026-10-26T07:10:00Z", last_attempt_at: "2026-10-26T07:10:00Z" } };
+  const now = new Date("2026-10-26T10:30:22Z");
+  assert.deepEqual(evaluateProcoreSyncHealth(snapshot, now), [
+    "23 Actuals project(s) are due; the oldest has been waiting for more than 2 hours.",
+  ]);
+  actuals.overdue_two_hours = 16;
+  assert.deepEqual(evaluateProcoreSyncHealth(snapshot, now), [
+    "16 Actuals project(s) have been waiting for more than 2 hours.",
+  ]);
+  actuals.overdue_two_hours = 0;
+  assert.deepEqual(evaluateProcoreSyncHealth(snapshot, now), []);
 });
 
 test("health evaluation catches an overdue change-order approval queue", () => {

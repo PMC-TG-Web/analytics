@@ -25,6 +25,7 @@ import {
 } from "@/lib/procoreSyncResponse";
 import { procoreQuotaObservation } from "@/lib/procoreRateLimit";
 import { actualsPollingMinutes } from "@/lib/procorePollingPolicy";
+import { actualsBatchSize } from "@/lib/procoreActualsBatch";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -424,10 +425,11 @@ async function runActualsSync(request: NextRequest) {
 
     const queueStats = await getSyncQueueStats(companyId, dataset);
     const batchCap = boundedNumber(process.env.PROCORE_ACTUALS_MAX_PROJECTS_PER_TICK, 8, 3, 12);
-    const recommendedBatchSize = Math.min(
-      batchCap,
-      Math.max(3, Math.ceil(queueStats.due_projects / 12))
-    );
+    const recommendedBatchSize = actualsBatchSize({
+      dueProjects: queueStats.due_projects,
+      oldestDue: queueStats.oldest_due,
+      cap: batchCap,
+    });
     const totalMs = Date.now() - startedAt;
     if (logId !== null) {
       await prisma.syncLog.update({

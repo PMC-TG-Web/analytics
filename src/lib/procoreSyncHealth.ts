@@ -5,6 +5,7 @@ export type ProcoreSyncHealthSnapshot = {
     failed_projects: number;
     max_failure_count: number;
     due_projects?: number;
+    overdue_two_hours?: number;
     oldest_due?: Date | string | null;
     newest_success: Date | string | null;
   }>;
@@ -76,19 +77,23 @@ export function evaluateProcoreSyncHealth(snapshot: ProcoreSyncHealthSnapshot, n
   const actuals = datasets.get("actuals");
   // Explicit queue due times include activity/webhook-based polling intervals.
   // Keep the legacy newest-success check for older snapshots without queue age.
-  const actualsOverdue = actuals?.due_projects === undefined
-    || (Number(actuals.due_projects) > 0 && ageMinutes(actuals.oldest_due || null, now) > 120);
+  const actualsOverdue = actuals?.overdue_two_hours !== undefined
+    ? actuals.overdue_two_hours > 0
+    : actuals?.due_projects === undefined
+      || (Number(actuals.due_projects) > 0 && ageMinutes(actuals.oldest_due || null, now) > 120);
   const actualsIsStale = !actuals || (actualsOverdue && ageMinutes(actuals.newest_success, now) > 180);
   if (actualsIsStale && !actualsStalenessMonitoringPaused(now)) {
     issues.push(`Actuals have not completed successfully within 3 hours.${quotaSuffix}`);
   } else if (
     actuals
     && Number(actuals.due_projects || 0) > 0
-    && ageMinutes(actuals.oldest_due || null, now) > 120
+    && actualsOverdue
     && !actualsStalenessMonitoringPaused(now)
   ) {
     issues.push(
-      `${actuals.due_projects} Actuals project(s) have been waiting for more than 2 hours.${quotaSuffix}`,
+      actuals.overdue_two_hours === undefined
+        ? `${actuals.due_projects} Actuals project(s) are due; the oldest has been waiting for more than 2 hours.${quotaSuffix}`
+        : `${actuals.overdue_two_hours} Actuals project(s) have been waiting for more than 2 hours.${quotaSuffix}`,
     );
   } else if (actuals && actuals.failed_projects > 5) {
     issues.push(`${actuals.failed_projects} actuals projects are failing.`);

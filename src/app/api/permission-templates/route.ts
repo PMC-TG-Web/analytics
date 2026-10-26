@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireAccessAdministrator } from '@/lib/accessManagement';
 import {
   NAVIGATION_PERMISSION_OPTIONS,
   JOB_TITLE_PERMISSION_TEMPLATES,
@@ -98,6 +99,8 @@ export async function GET() {
 
 export async function PUT(request: NextRequest) {
   try {
+    const admin = await requireAccessAdministrator(request);
+    if (!admin.authorized) return admin.response;
     const body = (await request.json()) as TemplatePayload;
     const jobTitle = typeof body.jobTitle === 'string' ? body.jobTitle.trim() : '';
 
@@ -149,6 +152,8 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    const admin = await requireAccessAdministrator(request);
+    if (!admin.authorized) return admin.response;
     const jobTitle = request.nextUrl.searchParams.get('jobTitle')?.trim() || '';
 
     if (!jobTitle) {

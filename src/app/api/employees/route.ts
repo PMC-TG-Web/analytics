@@ -1,10 +1,7 @@
 import { prisma } from '@/lib/prisma';
+import type { Prisma } from '@prisma/client';
 import { getErrorMessage, shouldFallbackToEmptyRead } from '@/lib/dbResilience';
-import {
-  buildJobTitleTemplateConstantName,
-  getTemplatePermissionsForJobTitle,
-  normalizeJobTitleTemplateKey,
-} from '@/lib/permissions';
+import { getAccessManagementActor } from '@/lib/accessManagement';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -37,11 +34,11 @@ function getNavigationPermissionsFromBody(body: Record<string, unknown>): string
   return null;
 }
 
-async function syncUserPermissions(email: string | null | undefined, permissions: string[], isActive: boolean): Promise<void> {
+async function syncUserPermissions(tx: Prisma.TransactionClient, email: string | null | undefined, permissions: string[], isActive: boolean): Promise<void> {
   const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
   if (!normalizedEmail) return;
 
-  await prisma.user.upsert({
+  await tx.user.upsert({
     where: { email: normalizedEmail },
     create: {
       email: normalizedEmail,
@@ -55,45 +52,15 @@ async function syncUserPermissions(email: string | null | undefined, permissions
   });
 }
 
-async function resolveTemplatePermissionsForJobTitle(
-  jobTitle: string | null | undefined
-): Promise<{ permissions: string[]; hasCustomTemplate: boolean }> {
-  const normalizedTitle = normalizeJobTitleTemplateKey(jobTitle);
-  if (!normalizedTitle) return { permissions: [], hasCustomTemplate: false };
-
-  const constantName = buildJobTitleTemplateConstantName(normalizedTitle);
-  const customTemplate = await prisma.estimatingConstant.findUnique({
-    where: { name: constantName },
-    select: { value: true },
-  });
-
-  if (customTemplate?.value) {
-    try {
-      const parsed = JSON.parse(customTemplate.value) as unknown;
-
-      if (Array.isArray(parsed)) {
-        return {
-          permissions: normalizeNavigationPermissions(parsed),
-          hasCustomTemplate: true,
-        };
-      }
-
-      if (parsed && typeof parsed === 'object') {
-        const rec = parsed as Record<string, unknown>;
-        return {
-          permissions: normalizeNavigationPermissions(rec.permissions),
-          hasCustomTemplate: true,
-        };
-      }
-    } catch {
-      // Ignore malformed template JSON and fall through to static defaults.
-    }
-  }
-
-  return {
-    permissions: getTemplatePermissionsForJobTitle(normalizedTitle),
-    hasCustomTemplate: false,
-  };
+const normalizedEmail = (value: unknown) => typeof value === 'string' ? value.trim().toLowerCase() : '';
+const accessDenied = () => NextResponse.json(
+  { success: false, error: 'An administrator must change application permissions, a linked sign-in email, or a linked account’s status.' },
+  { status: 403 }
+);
+function employeeMutationDenied(actor: Awaited<ReturnType<typeof getAccessManagementActor>>) {
+  if (!actor.email) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+  if (!actor.canEditEmployees) return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+  return null;
 }
 
 export async function GET(request: NextRequest) {
@@ -123,7 +90,7 @@ export async function GET(request: NextRequest) {
 
     const users = employeeEmails.length > 0
       ? await prisma.user.findMany({
-          where: { email: { in: employeeEmails } },
+          where: { email: { in: employeeEmails, mode: 'insensitive' } },
           select: { email: true, permissions: true },
         })
       : [];
@@ -138,12 +105,9 @@ export async function GET(request: NextRequest) {
       const custom = (emp.customFields ?? {}) as Record<string, unknown>;
       const fullName = `${emp.firstName || ''} ${emp.lastName || ''}`.replace(/\s+/g, ' ').trim();
       const normalizedEmail = emp.email?.trim().toLowerCase() || '';
-      const customNavigationPermissions = normalizeNavigationPermissions(
-        custom.navigationPermissions ?? custom.NavigationPermissions
-      );
-      const effectiveNavigationPermissions = customNavigationPermissions.length > 0
-        ? customNavigationPermissions
-        : (normalizedEmail ? userPermissionsByEmail.get(normalizedEmail) || [] : []);
+      // Employee custom fields are historical profile metadata, not authority
+      // for current access. Never replay a stale grant into an administrator form.
+      const effectiveNavigationPermissions = normalizedEmail ? userPermissionsByEmail.get(normalizedEmail) || [] : [];
 
       return {
         id: emp.id,
@@ -177,6 +141,7 @@ export async function GET(request: NextRequest) {
         apparelRecords: custom.apparelRecords,
         notes: custom.notes,
         navigationPermissions: effectiveNavigationPermissions,
+        hasLoginAccount: !!normalizedEmail && userPermissionsByEmail.has(normalizedEmail),
       };
     });
 
@@ -225,12 +190,13 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const actor = await getAccessManagementActor(request);
+    const denied = employeeMutationDenied(actor);
+    if (denied) return denied;
     const body = await request.json();
     const { firstName, lastName, jobTitle, email, phone, isActive, customFields } = body;
     const navigationPermissions = getNavigationPermissionsFromBody(body as Record<string, unknown>);
-    const templateResolution = await resolveTemplatePermissionsForJobTitle(
-      typeof jobTitle === 'string' ? jobTitle : null
-    );
+    if (navigationPermissions !== null && !actor.canManageAccess) return accessDenied();
 
     if (!firstName || !lastName) {
       return NextResponse.json(
@@ -239,26 +205,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const employee = await prisma.employee.create({
-      data: {
-        firstName,
-        lastName,
-        jobTitle: jobTitle || null,
-        email: email || null,
-        phone: phone || null,
-        isActive: isActive ?? true,
-        customFields: customFields || null,
-      },
-    });
-
-    const effectivePermissions = navigationPermissions ?? templateResolution.permissions;
-    if (navigationPermissions !== null || templateResolution.hasCustomTemplate || templateResolution.permissions.length > 0) {
-      await syncUserPermissions(employee.email, effectivePermissions, employee.isActive);
-    }
+    const result = await prisma.$transaction(async tx => {
+      const currentEmail = normalizedEmail(email);
+      const linkedUser = currentEmail ? await tx.user.findFirst({
+        where: { email: { equals: currentEmail, mode: 'insensitive' } }, select: { id: true },
+      }) : null;
+      if (linkedUser && !actor.canManageAccess) return { denied: true as const };
+      const created = await tx.employee.create({
+        data: {
+          firstName,
+          lastName,
+          jobTitle: jobTitle || null,
+          email: currentEmail || null,
+          phone: phone || null,
+          isActive: isActive ?? true,
+          customFields: customFields || null,
+        },
+      });
+      if (navigationPermissions !== null) await syncUserPermissions(tx, created.email, navigationPermissions, created.isActive);
+      const account = created.email ? await tx.user.findFirst({ where: { email: { equals: created.email, mode: 'insensitive' } }, select: { permissions: true } }) : null;
+      return { employee: { ...created, hasLoginAccount: !!account, navigationPermissions: normalizeNavigationPermissions(account?.permissions) } };
+    }, { isolationLevel: 'Serializable' });
+    if ('denied' in result) return accessDenied();
 
     return NextResponse.json({
       success: true,
-      data: employee,
+      data: result.employee,
     });
   } catch (error) {
     console.error('Failed to create employee:', error);
@@ -271,9 +243,13 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
+    const actor = await getAccessManagementActor(request);
+    const denied = employeeMutationDenied(actor);
+    if (denied) return denied;
     const body = await request.json();
     const { id, firstName, lastName, jobTitle, email, phone, isActive, customFields } = body;
     const navigationPermissions = getNavigationPermissionsFromBody(body as Record<string, unknown>);
+    if (navigationPermissions !== null && !actor.canManageAccess) return accessDenied();
 
     if (!id) {
       return NextResponse.json(
@@ -282,53 +258,58 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const previousEmployee = await prisma.employee.findUnique({
-      where: { id },
-      select: { email: true },
-    });
-
-    const employee = await prisma.employee.update({
-      where: { id },
-      data: {
-        ...(firstName !== undefined && { firstName }),
-        ...(lastName !== undefined && { lastName }),
-        ...(jobTitle !== undefined && { jobTitle: jobTitle || null }),
-        ...(email !== undefined && { email: email || null }),
-        ...(phone !== undefined && { phone: phone || null }),
-        ...(isActive !== undefined && { isActive }),
-        ...(customFields !== undefined && { customFields: customFields || null }),
-      },
-    });
-
-    const previousEmail = typeof previousEmployee?.email === 'string'
-      ? previousEmployee.email.trim().toLowerCase()
-      : '';
-    const currentEmail = typeof employee.email === 'string'
-      ? employee.email.trim().toLowerCase()
-      : '';
-
-    if (previousEmail && previousEmail !== currentEmail) {
-      await prisma.user.updateMany({
-        where: { email: previousEmail },
-        data: { isActive: false },
+    const result = await prisma.$transaction(async tx => {
+      const previousEmployee = await tx.employee.findUnique({
+        where: { id },
+        select: { email: true, isActive: true },
       });
-    }
+      if (!previousEmployee) return { missing: true as const };
+      const previousEmail = normalizedEmail(previousEmployee.email);
+      const currentEmail = email === undefined ? previousEmail : normalizedEmail(email);
+      const linkedUser = previousEmail ? await tx.user.findFirst({
+        where: { email: { equals: previousEmail, mode: 'insensitive' } }, select: { id: true },
+      }) : null;
+      // Linking a different existing login must be checked as well as unlinking one.
+      const newLinkedUser = currentEmail && currentEmail !== previousEmail ? await tx.user.findFirst({
+        where: { email: { equals: currentEmail, mode: 'insensitive' } }, select: { id: true },
+      }) : null;
+      const changesLogin = previousEmail !== currentEmail || (isActive !== undefined && isActive !== previousEmployee.isActive);
+      if (!actor.canManageAccess && changesLogin && (linkedUser || newLinkedUser)) return { denied: true as const };
 
-    const templateResolution = await resolveTemplatePermissionsForJobTitle(
-      typeof employee.jobTitle === 'string' ? employee.jobTitle : null
-    );
-    const effectivePermissions = navigationPermissions ?? templateResolution.permissions;
-    if (navigationPermissions !== null || templateResolution.hasCustomTemplate || templateResolution.permissions.length > 0) {
-      await syncUserPermissions(
-        employee.email,
-        effectivePermissions,
-        employee.isActive
-      );
-    }
+      const employee = await tx.employee.update({
+        where: { id },
+        data: {
+          ...(firstName !== undefined && { firstName }),
+          ...(lastName !== undefined && { lastName }),
+          ...(jobTitle !== undefined && { jobTitle: jobTitle || null }),
+          ...(email !== undefined && { email: currentEmail || null }),
+          ...(phone !== undefined && { phone: phone || null }),
+          ...(isActive !== undefined && { isActive }),
+          ...(customFields !== undefined && { customFields: customFields || null }),
+        },
+      });
+
+      if (actor.canManageAccess && previousEmail && previousEmail !== currentEmail) {
+        await tx.user.updateMany({
+          where: { email: { equals: previousEmail, mode: 'insensitive' } },
+          data: { isActive: false },
+        });
+      }
+
+      if (navigationPermissions !== null) {
+        await syncUserPermissions(tx, employee.email, navigationPermissions, employee.isActive);
+      } else if (actor.canManageAccess && isActive !== undefined && isActive !== previousEmployee.isActive && currentEmail) {
+        await tx.user.updateMany({ where: { email: { equals: currentEmail, mode: 'insensitive' } }, data: { isActive: employee.isActive } });
+      }
+      const account = currentEmail ? await tx.user.findFirst({ where: { email: { equals: currentEmail, mode: 'insensitive' } }, select: { permissions: true } }) : null;
+      return { employee: { ...employee, hasLoginAccount: !!account, navigationPermissions: normalizeNavigationPermissions(account?.permissions) } };
+    }, { isolationLevel: 'Serializable' });
+    if ('denied' in result) return accessDenied();
+    if ('missing' in result) return NextResponse.json({ success: false, error: 'Employee not found' }, { status: 404 });
 
     return NextResponse.json({
       success: true,
-      data: employee,
+      data: result.employee,
     });
   } catch (error) {
     console.error('Failed to update employee:', error);
@@ -341,6 +322,9 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    const actor = await getAccessManagementActor(request);
+    const denied = employeeMutationDenied(actor);
+    if (denied) return denied;
     const searchParams = request.nextUrl.searchParams;
     const id = searchParams.get('id');
 
@@ -351,17 +335,21 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const employee = await prisma.employee.delete({
-      where: { id },
-    });
-
-    const normalizedEmail = typeof employee.email === 'string' ? employee.email.trim().toLowerCase() : '';
-    if (normalizedEmail) {
-      await prisma.user.updateMany({
-        where: { email: normalizedEmail },
+    const result = await prisma.$transaction(async tx => {
+      const employee = await tx.employee.findUnique({ where: { id }, select: { email: true } });
+      if (!employee) return { missing: true as const };
+      const email = normalizedEmail(employee.email);
+      const linkedUser = email ? await tx.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' } }, select: { id: true } }) : null;
+      if (linkedUser && !actor.canManageAccess) return { denied: true as const };
+      await tx.employee.delete({ where: { id } });
+      if (actor.canManageAccess && email) await tx.user.updateMany({
+        where: { email: { equals: email, mode: 'insensitive' } },
         data: { isActive: false },
       });
-    }
+      return {};
+    }, { isolationLevel: 'Serializable' });
+    if ('denied' in result) return accessDenied();
+    if ('missing' in result) return NextResponse.json({ success: false, error: 'Employee not found' }, { status: 404 });
 
     return NextResponse.json({
       success: true,

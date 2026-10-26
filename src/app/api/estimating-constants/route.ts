@@ -1,4 +1,6 @@
 import { prisma } from '@/lib/prisma';
+import { requireAccessAdministrator } from '@/lib/accessManagement';
+import { isPermissionTemplateRecord } from '@/lib/permissionTemplatePolicy';
 import { buildSearchParamsCacheKey, getCachedValue, invalidateCacheByPrefix, setCachedValue } from '@/lib/serverReadCache';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -67,8 +69,13 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    // Resolve identity before consuming the request body (Auth0 may rewrap it).
+    // Ordinary constants retain their existing middleware permission boundary.
+    const access = await requireAccessAdministrator(request);
     const body = await request.json();
     const { name, value, category } = body;
+
+    if (isPermissionTemplateRecord(body) && !access.authorized) return access.response;
 
     if (!name || !value) {
       return NextResponse.json(
@@ -103,6 +110,7 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
+    const access = await requireAccessAdministrator(request);
     const body = await request.json();
     const { id, name, value, category } = body;
 
@@ -113,21 +121,27 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const constant = await prisma.estimatingConstant.update({
-      where: { id },
-      data: {
-        ...(name !== undefined && { name }),
-        ...(value !== undefined && { value }),
-        ...(category !== undefined && { category }),
-      },
-    });
+    const result = await prisma.$transaction(async tx => {
+      const existing = await tx.estimatingConstant.findUnique({ where: { id }, select: { name: true, category: true } });
+      if ((isPermissionTemplateRecord(existing) || isPermissionTemplateRecord(body)) && !access.authorized) return { denied: access.response };
+      const constant = await tx.estimatingConstant.update({
+        where: { id },
+        data: {
+          ...(name !== undefined && { name }),
+          ...(value !== undefined && { value }),
+          ...(category !== undefined && { category }),
+        },
+      });
+      return { constant };
+    }, { isolationLevel: 'Serializable' });
+    if ('denied' in result) return result.denied;
 
     invalidateCacheByPrefix(ESTIMATING_CONSTANTS_CACHE_PREFIX);
     invalidateCacheByPrefix('kpi-cards:');
 
     return NextResponse.json({
       success: true,
-      data: constant,
+      data: result.constant,
     });
   } catch (error) {
     console.error('Failed to update constant:', error);
@@ -140,6 +154,7 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    const access = await requireAccessAdministrator(request);
     const searchParams = request.nextUrl.searchParams;
     const id = searchParams.get('id');
 
@@ -150,9 +165,13 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    await prisma.estimatingConstant.delete({
-      where: { id },
-    });
+    const result = await prisma.$transaction(async tx => {
+      const existing = await tx.estimatingConstant.findUnique({ where: { id }, select: { name: true, category: true } });
+      if (isPermissionTemplateRecord(existing) && !access.authorized) return { denied: access.response };
+      await tx.estimatingConstant.delete({ where: { id } });
+      return {};
+    }, { isolationLevel: 'Serializable' });
+    if ('denied' in result) return result.denied;
 
     invalidateCacheByPrefix(ESTIMATING_CONSTANTS_CACHE_PREFIX);
     invalidateCacheByPrefix('kpi-cards:');

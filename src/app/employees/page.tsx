@@ -33,6 +33,7 @@ interface Employee {
   payHistory?: Array<{ date: string; rate: number }>;
   apparelRecords?: Array<{ type: string; size: string; dateReceived: string; count: number }>;
   navigationPermissions?: string[];
+  hasLoginAccount?: boolean;
   isActive: boolean;
   notes?: string;
   createdAt: string;
@@ -85,6 +86,9 @@ const NAV_PERMISSION_LABELS: Record<string, string> = {
   'procore-scope-map': 'Procore: Scope Map page',
 };
 
+const EMPLOYEES_CACHE_KEY = 'employees:access-controls-v1';
+const SIGN_IN_ACCESS_MESSAGE = 'An administrator manages this employee’s sign-in email and access status.';
+
 function formatPermissionOption(permission: string) {
   return NAV_PERMISSION_LABELS[permission] || permission;
 }
@@ -104,6 +108,8 @@ function EmployeesContent() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterActive, setFilterActive] = useState<"all" | "active" | "inactive">("active");
   const [saving, setSaving] = useState(false);
+  const [canManageAccess, setCanManageAccess] = useState(false);
+  const editingSignInIsProtected = !canManageAccess && editingEmployee !== null && editingEmployee.hasLoginAccount !== false;
 
   // Time off state
   const [timeOffModalVisible, setTimeOffModalVisible] = useState(false);
@@ -178,10 +184,15 @@ function EmployeesContent() {
   });
 
   function applyPermissionsTemplateForTitle(jobTitle: string) {
+    if (!canManageAccess) return;
     const templatePermissions = getTemplatePermissionsForTitle(jobTitle);
     setFormData((prev) => ({
       ...prev,
-      navigationPermissions: templatePermissions,
+      // Page templates must not remove administrative roles managed on the administrator screen.
+      navigationPermissions: Array.from(new Set([
+        ...templatePermissions,
+        ...(prev.navigationPermissions || []).filter(permission => permission === 'ADMIN' || permission === 'OWNER'),
+      ])).sort((a, b) => a.localeCompare(b)),
     }));
   }
 
@@ -190,8 +201,33 @@ function EmployeesContent() {
     if (typeof window !== 'undefined') {
       loadEmployees();
       loadJobTitles();
-      loadJobTitleTemplates();
     }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    async function loadAccessCapability() {
+      try {
+        const response = await fetch('/api/permissions/me', {
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+        if (!response.ok) return;
+        const result = await response.json();
+        const assignedPermissions = result.success ? result.data?.permissions : null;
+        // Match the server's administrator check against assigned roles, not expanded page access.
+        const allowed = Array.isArray(assignedPermissions)
+          && assignedPermissions.some((permission: unknown) => permission === 'ADMIN' || permission === 'OWNER');
+        if (!controller.signal.aborted) {
+          setCanManageAccess(allowed);
+          if (allowed) await loadJobTitleTemplates();
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) console.error('Failed to load access management capability:', error);
+      }
+    }
+    void loadAccessCapability();
+    return () => controller.abort();
   }, []);
 
   function getTemplatePermissionsForTitle(title: string | null | undefined): string[] {
@@ -300,6 +336,7 @@ function EmployeesContent() {
   }
 
   function openTemplateModal(initialTitle?: string) {
+    if (!canManageAccess) return;
     const preferredTitle = (initialTitle || formData.jobTitle || defaultJobTitle).trim();
     const title = preferredTitle || defaultJobTitle;
     setSelectedTemplateTitle(title);
@@ -308,6 +345,7 @@ function EmployeesContent() {
   }
 
   async function saveTemplateForSelectedTitle() {
+    if (!canManageAccess) return;
     const title = selectedTemplateTitle.trim();
     if (!title) {
       alert("Select a job title first");
@@ -344,6 +382,7 @@ function EmployeesContent() {
   }
 
   async function resetTemplateForSelectedTitle() {
+    if (!canManageAccess) return;
     const title = selectedTemplateTitle.trim();
     if (!title) return;
     if (!confirm(`Reset custom template for ${title} back to default mapping?`)) return;
@@ -406,7 +445,7 @@ function EmployeesContent() {
   async function loadEmployees() {
     try {
       // Try to get from cache first
-      const cached = getCachedData<Employee[]>('employees');
+      const cached = getCachedData<Employee[]>(EMPLOYEES_CACHE_KEY);
       if (cached) {
         setEmployees(cached);
         setLoading(false);
@@ -444,7 +483,7 @@ function EmployeesContent() {
         });
         
         setEmployees(employeeData);
-        setCachedData('employees', employeeData);
+        setCachedData(EMPLOYEES_CACHE_KEY, employeeData);
       } else {
         throw new Error('Invalid response format');
       }
@@ -531,6 +570,16 @@ function EmployeesContent() {
     try {
       const now = new Date().toISOString();
       const employeeId = editingEmployee?.id || `emp_${Date.now()}`;
+      const selectedPermissions = Array.from(new Set((formData.navigationPermissions || [])
+        .filter((permission): permission is string => typeof permission === 'string')
+        .map(permission => permission.trim())
+        .filter(Boolean))).sort();
+      const originalPermissions = Array.from(new Set(editingEmployee?.navigationPermissions || [])).sort();
+      const shouldUpdateAccess = canManageAccess && (
+        !editingEmployee
+        || (formData.email || '').trim().toLowerCase() !== (editingEmployee.email || '').trim().toLowerCase()
+        || JSON.stringify(selectedPermissions) !== JSON.stringify(originalPermissions)
+      );
       const customFields = {
         workEmail: formData.workEmail || "",
         workPhone: formatPhoneNumber(formData.workPhone || ""),
@@ -550,9 +599,7 @@ function EmployeesContent() {
         payHistory: formData.payHistory || [],
         apparelRecords: formData.apparelRecords || [],
         notes: formData.notes || "",
-        navigationPermissions: Array.isArray(formData.navigationPermissions)
-          ? formData.navigationPermissions.filter((permission): permission is string => typeof permission === "string" && permission.trim().length > 0)
-          : [],
+        ...(shouldUpdateAccess ? { navigationPermissions: selectedPermissions } : {}),
       };
       
       const employeeData: Employee = {
@@ -579,25 +626,40 @@ function EmployeesContent() {
         notes: formData.notes || "",
         payHistory: formData.payHistory || [],
         apparelRecords: formData.apparelRecords || [],
-        navigationPermissions: customFields.navigationPermissions,
+        navigationPermissions: canManageAccess
+          ? selectedPermissions
+          : editingEmployee?.navigationPermissions,
         createdAt: editingEmployee?.createdAt || now,
         updatedAt: now,
       };
 
-      await fetch(editingEmployee ? `/api/employees?id=${employeeId}` : '/api/employees', {
+      const { navigationPermissions, ...employeeProfile } = employeeData;
+      const response = await fetch(editingEmployee ? `/api/employees?id=${employeeId}` : '/api/employees', {
         method: editingEmployee ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...employeeData,
+          ...employeeProfile,
+          ...(shouldUpdateAccess ? { navigationPermissions } : {}),
           customFields,
         })
       });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to save employee');
+      }
+      if (typeof result.data?.id === 'string') employeeData.id = result.data.id;
+      employeeData.hasLoginAccount = typeof result.data?.hasLoginAccount === 'boolean'
+        ? result.data.hasLoginAccount
+        : editingEmployee?.hasLoginAccount;
+      if (Array.isArray(result.data?.navigationPermissions)) {
+        employeeData.navigationPermissions = result.data.navigationPermissions;
+      }
       
       // Update local state
       if (editingEmployee) {
         setEmployees((prev) => {
           const updated = prev.map((emp) => (emp.id === employeeId ? employeeData : emp));
-          setCachedData('employees', updated);
+          setCachedData(EMPLOYEES_CACHE_KEY, updated);
           return updated;
         });
       } else {
@@ -607,7 +669,7 @@ function EmployeesContent() {
             if (lastNameCompare !== 0) return lastNameCompare;
             return a.firstName.localeCompare(b.firstName);
           });
-          setCachedData('employees', updated);
+          setCachedData(EMPLOYEES_CACHE_KEY, updated);
           return updated;
         });
       }
@@ -616,7 +678,7 @@ function EmployeesContent() {
       setEditingEmployee(null);
     } catch (error) {
       console.error("Failed to save employee:", error);
-      alert("Failed to save employee");
+      alert(error instanceof Error ? error.message : "Failed to save employee");
     } finally {
       setSaving(false);
     }
@@ -747,6 +809,7 @@ function EmployeesContent() {
   }
 
   async function deleteEmployee(employee: Employee) {
+    if (!canManageAccess && employee.hasLoginAccount !== false) return;
     if (!confirm(`Are you sure you want to delete ${employee.firstName} ${employee.lastName}?`)) {
       return;
     }
@@ -756,20 +819,24 @@ function EmployeesContent() {
         method: 'DELETE'
       });
       const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to delete employee');
+      }
       if (result.success) {
         setEmployees((prev) => {
           const updated = prev.filter((emp) => emp.id !== employee.id);
-          setCachedData('employees', updated);
+          setCachedData(EMPLOYEES_CACHE_KEY, updated);
           return updated;
         });
       }
     } catch (error) {
       console.error("Failed to delete employee:", error);
-      alert("Failed to delete employee");
+      alert(error instanceof Error ? error.message : "Failed to delete employee");
     }
   }
 
   async function toggleEmployeeStatus(employee: Employee) {
+    if (!canManageAccess && employee.hasLoginAccount !== false) return;
     const newStatus = !employee.isActive;
     try {
       const now = new Date().toISOString();
@@ -781,19 +848,22 @@ function EmployeesContent() {
       const response = await fetch(`/api/employees?id=${employee.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(employeeData)
+        body: JSON.stringify({ id: employee.id, isActive: newStatus })
       });
       const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to update status');
+      }
       if (result.success) {
         setEmployees((prev) => {
           const updated = prev.map((emp) => (emp.id === employee.id ? employeeData : emp));
-          setCachedData('employees', updated);
+          setCachedData(EMPLOYEES_CACHE_KEY, updated);
           return updated;
         });
       }
     } catch (error) {
       console.error("Failed to toggle status:", error);
-      alert("Failed to update status");
+      alert(error instanceof Error ? error.message : "Failed to update status");
     }
   }
 
@@ -1060,12 +1130,12 @@ function EmployeesContent() {
               Download Report
             </button>
 
-            <button
+            {canManageAccess && <button
               onClick={() => openTemplateModal()}
               className="px-6 py-3 bg-indigo-50 text-indigo-800 border-2 border-indigo-200 font-black uppercase tracking-widest text-[10px] rounded-2xl hover:bg-indigo-100 transition-all shadow-lg shadow-indigo-900/10"
             >
               Manage Access Templates
-            </button>
+            </button>}
             
           </div>
         </div>
@@ -1168,12 +1238,15 @@ function EmployeesContent() {
                       <td className="py-3 px-4 text-center">
                         <button
                           onClick={() => toggleEmployeeStatus(employee)}
-                          className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+                          disabled={!canManageAccess && employee.hasLoginAccount !== false}
+                          className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-70 ${
                             employee.isActive
                               ? "bg-green-100 text-green-800 hover:bg-green-200"
                               : "bg-red-100 text-red-800 hover:bg-red-200"
                           }`}
-                          title={`Click to set as ${employee.isActive ? 'Inactive' : 'Active'}`}
+                          title={!canManageAccess && employee.hasLoginAccount !== false
+                            ? SIGN_IN_ACCESS_MESSAGE
+                            : `Click to set as ${employee.isActive ? 'Inactive' : 'Active'}`}
                         >
                           {employee.isActive ? "Active" : "Inactive"}
                         </button>
@@ -1200,7 +1273,9 @@ function EmployeesContent() {
                           </button>
                           <button
                             onClick={() => deleteEmployee(employee)}
-                            className="px-3 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700 transition-colors font-medium"
+                            disabled={!canManageAccess && employee.hasLoginAccount !== false}
+                            title={!canManageAccess && employee.hasLoginAccount !== false ? SIGN_IN_ACCESS_MESSAGE : undefined}
+                            className="px-3 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700 transition-colors font-medium disabled:cursor-not-allowed disabled:opacity-70"
                           >
                             Delete
                           </button>
@@ -1216,7 +1291,7 @@ function EmployeesContent() {
       </div>
 
       {/* Job Title Template Modal */}
-      {templateModalVisible && (
+      {canManageAccess && templateModalVisible && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
           onClick={() => setTemplateModalVisible(false)}
@@ -1318,6 +1393,7 @@ function EmployeesContent() {
               <h2 className="text-2xl font-bold text-gray-900 mb-6">
                 {editingEmployee ? "Edit Employee" : "Add New Employee"}
               </h2>
+              {editingSignInIsProtected && <p className="mb-4 text-sm text-gray-600">{SIGN_IN_ACCESS_MESSAGE}</p>}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* First Name */}
@@ -1356,6 +1432,7 @@ function EmployeesContent() {
                   <input
                     type="email"
                     value={formData.email}
+                    disabled={editingSignInIsProtected}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
                     placeholder="john.doe@pmcdecor.com"
@@ -1427,18 +1504,18 @@ function EmployeesContent() {
                     >
                       +
                     </button>
-                    <button
+                    {canManageAccess && <button
                       type="button"
                       onClick={() => applyPermissionsTemplateForTitle(formData.jobTitle || "")}
                       className="px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
                       title="Apply permissions template for selected job title"
                     >
                       Template
-                    </button>
+                    </button>}
                   </div>
-                  <p className="mt-1 text-xs text-gray-500">
+                  {canManageAccess && <p className="mt-1 text-xs text-gray-500">
                     Apply Template sets page access using the selected job title.
-                  </p>
+                  </p>}
                   {showAddJobTitle && (
                     <div className="mt-2 flex gap-2">
                       <input
@@ -1629,6 +1706,7 @@ function EmployeesContent() {
                   </label>
                   <select
                     value={formData.isActive ? "active" : "inactive"}
+                    disabled={editingSignInIsProtected}
                     onChange={(e) => setFormData({ ...formData, isActive: e.target.value === "active" })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
                   >
@@ -1638,7 +1716,7 @@ function EmployeesContent() {
                 </div>
 
                 {/* Navigation Permissions */}
-                <div className="col-span-2">
+                {canManageAccess && <div className="col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Navigation Permissions
                   </label>
@@ -1666,7 +1744,7 @@ function EmployeesContent() {
                       );
                     })}
                   </div>
-                </div>
+                </div>}
 
                 {/* Notes */}
                 <div className="col-span-2">

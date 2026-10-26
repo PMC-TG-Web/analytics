@@ -1,8 +1,7 @@
 import { randomUUID } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getRequestUserEmail } from '@/lib/requestUser';
-import { loadUserAssignedPermissionsFromDatabase } from '@/lib/permissions';
+import { requireAccessAdministrator as requireAdmin } from '@/lib/accessManagement';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -15,24 +14,6 @@ type UserPermissionRecord = {
   createdAt: Date;
   updatedAt: Date;
 };
-
-function isAdminPermission(permissions: string[]) {
-  return permissions.includes('OWNER') || permissions.includes('ADMIN');
-}
-
-async function requireAdmin(request: NextRequest) {
-  const email = await getRequestUserEmail(request);
-  if (!email) {
-    return { authorized: false as const, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
-  }
-
-  const permissions = await loadUserAssignedPermissionsFromDatabase(prisma, email);
-  if (!isAdminPermission(permissions)) {
-    return { authorized: false as const, response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
-  }
-
-  return { authorized: true as const, email };
-}
 
 function normalizePermissions(permissions: unknown): string[] {
   if (!Array.isArray(permissions)) return [];

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { isRouteAuthorizedApiRequest } from "../src/lib/permissionRoutes.js";
 import {
   PRIVATE_EVENT_SUBJECT,
   calendarSyncWindow,
@@ -95,7 +96,9 @@ test("the sync window runs from yesterday through two weeks ahead on UTC day bou
 
 test("calendar sync stays inside the secret-authenticated worker lane and the dashboard reads only the mirror", async () => {
   const middleware = await readFile(new URL("../middleware.ts", import.meta.url), "utf8");
-  assert.match(middleware, /pathname === '\/api\/cron\/calendar-sync'/);
+  assert.equal(isRouteAuthorizedApiRequest('/api/cron/calendar-sync', 'POST'), true);
+  assert.equal(isRouteAuthorizedApiRequest('/api/cron/calendar-sync/other', 'POST'), false);
+  assert.equal(isRouteAuthorizedApiRequest('/api/cron/calendar-sync', 'GET'), false);
   assert.match(middleware, /pathname === '\/api\/background\/calendar-sync'/);
 
   const scheduler = await readFile(new URL("../netlify/functions/scheduled-sync.mts", import.meta.url), "utf8");

@@ -1,5 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { getErrorMessage, shouldFallbackToEmptyRead } from '@/lib/dbResilience';
+import { getRequestUserEmail } from '@/lib/requestUser';
+import { expandAssignedPermissions } from '@/lib/permissions';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -14,6 +16,64 @@ type StoredTimeOffPayload = {
 
 const DEFAULT_TYPE = 'Vacation';
 const DEFAULT_HOURS = 10;
+
+function forbiddenTimeOff() {
+  return NextResponse.json(
+    { success: false, error: 'You do not have access to this employee’s time off.' },
+    { status: 403 }
+  );
+}
+
+async function authorizeTimeOff(request: NextRequest, method: 'GET' | 'POST' | 'DELETE') {
+  // Resolve the session before consuming a POST body, and reload current access
+  // rather than trusting a navigation cookie or permissions supplied by a client.
+  try {
+    const email = (await getRequestUserEmail(request))?.trim().toLowerCase();
+    if (!email) {
+      return { authorized: false as const, response: NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 }) };
+    }
+
+    const users = await prisma.user.findMany({
+      where: { email: { equals: email, mode: 'insensitive' } },
+      select: { permissions: true, isActive: true },
+      take: 2,
+    });
+    if (users.length !== 1 || !users[0].isActive) {
+      return { authorized: false as const, response: forbiddenTimeOff() };
+    }
+
+    const permissions = expandAssignedPermissions(users[0].permissions).map(permission => permission.toLowerCase());
+    const canManage = permissions.includes('employees');
+    const canDispatch = permissions.includes('crew-dispatch');
+    const canReadAll = canManage || canDispatch || permissions.includes('long-term-schedule');
+    if (method === 'DELETE') {
+      return canManage
+        ? { authorized: true as const, employee: null }
+        : { authorized: false as const, response: forbiddenTimeOff() };
+    }
+    if ((method === 'GET' && canReadAll) || (method === 'POST' && (canManage || canDispatch))) {
+      return { authorized: true as const, employee: null };
+    }
+
+    // An employee's login email is the only self-service identity link. Refuse
+    // missing or ambiguous matches instead of guessing by display name.
+    const employees = await prisma.employee.findMany({
+      where: { email: { equals: email, mode: 'insensitive' } },
+      select: { id: true, firstName: true, lastName: true, isActive: true },
+      take: 2,
+    });
+    if (employees.length !== 1 || !employees[0].isActive) {
+      return { authorized: false as const, response: forbiddenTimeOff() };
+    }
+    return { authorized: true as const, employee: employees[0] };
+  } catch (error) {
+    console.error('Failed to authorize time off request:', error);
+    return {
+      authorized: false as const,
+      response: NextResponse.json({ success: false, error: 'Unable to verify time off access.' }, { status: 503 }),
+    };
+  }
+}
 
 function toDateKey(date: Date): string {
   const year = date.getFullYear();
@@ -84,12 +144,16 @@ function normalizeStoredTimeOff(row: {
 
 export async function GET(request: NextRequest) {
   try {
+    const access = await authorizeTimeOff(request, 'GET');
+    if (!access.authorized) return access.response;
     const searchParams = request.nextUrl.searchParams;
     const employeeId = searchParams.get('employeeId');
+    if (access.employee && employeeId && employeeId !== access.employee.id) return forbiddenTimeOff();
+    const scopedEmployeeId = access.employee?.id || employeeId;
 
     const records = await prisma.timeOffRequest.findMany({
       where: {
-        ...(employeeId ? { employeeId } : {}),
+        ...(scopedEmployeeId ? { employeeId: scopedEmployeeId } : {}),
       },
       select: {
         id: true,
@@ -121,8 +185,11 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const access = await authorizeTimeOff(request, 'POST');
+    if (!access.authorized) return access.response;
     const body = await request.json();
     const employeeId = String(body?.employeeId || '').trim();
+    if (access.employee && employeeId !== access.employee.id) return forbiddenTimeOff();
     const startDate = String(body?.startDate || '').trim();
     const endDate = String(body?.endDate || '').trim();
     const type = String(body?.type || DEFAULT_TYPE).trim() || DEFAULT_TYPE;
@@ -137,10 +204,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const employee = await prisma.employee.findUnique({
+    const employee = access.employee || await prisma.employee.findUnique({
       where: { id: employeeId },
       select: { firstName: true, lastName: true },
     });
+    if (!employee) {
+      return NextResponse.json({ success: false, error: 'Employee not found' }, { status: 404 });
+    }
 
     const employeeName = employee
       ? `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || null
@@ -193,6 +263,8 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    const access = await authorizeTimeOff(request, 'DELETE');
+    if (!access.authorized) return access.response;
     const id = request.nextUrl.searchParams.get('id');
     if (!id) {
       return NextResponse.json(

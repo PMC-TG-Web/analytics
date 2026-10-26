@@ -89,6 +89,8 @@ const API_PERMISSION_RULES = [
   { prefix: '/api/accounting/direct-cost-bills', permission: 'accounting-direct-cost-bills' },
   { prefix: '/api/accounting/project-profitability', permission: 'accounting-project-profitability' },
   { prefix: '/api/analytics/cost-code-sales', permission: 'analytics-cost-code-sales' },
+  { prefix: '/api/analytics', permission: 'analytics' },
+  { prefix: '/api/cron/sync/logs', permission: 'admin' },
   { prefix: '/api/debug', permission: 'diagnostics' },
   { prefix: '/api/explore', permission: 'diagnostics' },
   { prefix: '/api/health', permission: 'diagnostics' },
@@ -126,6 +128,7 @@ const API_PERMISSION_RULES = [
   { prefix: '/api/scheduling', permission: 'scheduling' },
   { prefix: '/api/pm-dashboard', permission: 'pm-dashboard' },
   { prefix: '/api/dashboard-summary', permission: 'dashboard' },
+  { prefix: '/api/estimating-dashboard', permission: 'dashboard' },
   { prefix: '/api/estimating-constants', permission: 'estimating-tools' },
   { prefix: '/api/estimates', permission: 'estimating-tools' },
   { prefix: '/api/kpi-cards', permission: 'kpi' },
@@ -135,11 +138,132 @@ const API_PERMISSION_RULES = [
   { prefix: '/api/certifications', permission: 'certifications' },
   { prefix: '/api/holidays', permission: 'holidays' },
   { prefix: '/api/employees', permission: 'employees' },
+  { prefix: '/api/time-off', permission: 'employees' },
   { prefix: '/api/onboarding-submissions', permission: 'onboarding' },
   { prefix: '/api/permission-templates', permission: 'employees' },
   { prefix: '/api/projects', permission: 'projects' },
+  { prefix: '/api/projects-v1-live', permission: 'projects' },
+  { prefix: '/api/bid-board-live', permission: 'projects' },
+  { prefix: '/api/pmc/projects', permission: 'projects' },
+  { prefix: '/api/labor-report', permission: 'reporting' },
   { prefix: '/api/procore', permission: 'procore' },
 ];
+
+// These exceptions apply only to the named request. New sibling/child routes
+// must declare their own policy instead of inheriting a session/auth bypass.
+const SESSION_ONLY_API_REQUESTS = [
+  { path: '/api/permissions/me', methods: ['GET'] },
+  { path: '/api/weather', methods: ['GET'] },
+  // The route checks current account permissions and restricts self-service
+  // requests to the employee linked to the authenticated email.
+  { path: '/api/time-off', methods: ['GET', 'POST'] },
+];
+
+const PUBLIC_API_REQUESTS = [
+  { path: '/api/public/version', methods: ['GET'] },
+];
+
+const AUTH_API_REQUESTS = [
+  { path: '/api/auth/dev-login', methods: ['GET'] },
+  { path: '/api/auth/me', methods: ['GET'] },
+  { path: '/api/auth/session', methods: ['POST'] },
+  { path: '/api/auth/procore/login', methods: ['GET'] },
+  { path: '/api/auth/procore/callback', methods: ['GET'] },
+  // Auth0's configured login/callback handlers accept GET. Other SDK defaults
+  // (profile/access-token) live outside /api and are not API exceptions.
+  { path: '/api/auth/login', methods: ['GET'] },
+  { path: '/api/auth/callback', methods: ['GET'] },
+  { path: '/api/auth/logout', methods: ['GET', 'POST'] },
+  { path: '/api/auth/logout/local', methods: ['GET', 'POST'] },
+];
+
+// Each handler validates its own server secret or authenticated identity before
+// reading protected data or writing. Sync logs deliberately are not exempt.
+const ROUTE_AUTHORIZED_API_REQUESTS = [
+  { path: '/api/cron/actuals', methods: ['POST'] },
+  { path: '/api/cron/calendar-sync', methods: ['POST'] },
+  { path: '/api/cron/change-order-approvals', methods: ['POST'] },
+  { path: '/api/cron/commitment-maker-tasks', methods: ['POST'] },
+  { path: '/api/cron/market-outlook', methods: ['POST'] },
+  { path: '/api/cron/nightly-structure', methods: ['POST'] },
+  { path: '/api/cron/pm-dashboard', methods: ['POST'] },
+  { path: '/api/cron/productivity-review-reminders', methods: ['POST'] },
+  { path: '/api/cron/project-link-sync', methods: ['POST'] },
+  { path: '/api/cron/project-onboarding', methods: ['POST'] },
+  { path: '/api/cron/project-reconciliation', methods: ['POST'] },
+  { path: '/api/cron/qbo-bill-batch', methods: ['POST'] },
+  { path: '/api/cron/sync', methods: ['POST'] },
+  { path: '/api/cron/sync/health', methods: ['GET', 'POST'] },
+  { path: '/api/cron/timecard-notifications', methods: ['POST'] },
+  { path: '/api/internal/backfill-gantt-scopes', methods: ['POST'] },
+  { path: '/api/internal/backfill-project-scopes-to-gantt', methods: ['GET', 'POST'] },
+  { path: '/api/internal/check-duplicate-projects', methods: ['GET'] },
+  { path: '/api/internal/debug-scope-project-split', methods: ['GET'] },
+  { path: '/api/internal/dedupe-project-scopes', methods: ['POST'] },
+  { path: '/api/internal/export-kpi-entries', methods: ['GET'] },
+  { path: '/api/internal/import-kpi-entries', methods: ['POST'] },
+  { path: '/api/internal/merge-duplicate-projects', methods: ['POST'] },
+  { path: '/api/internal/permission-check', methods: ['POST'] },
+  { path: '/api/internal/pmc-projects-compare', methods: ['GET'] },
+  { path: '/api/internal/project-lookup', methods: ['GET'] },
+  { path: '/api/internal/projects-audit', methods: ['GET'] },
+  { path: '/api/internal/projects-diagnostics', methods: ['GET'] },
+  { path: '/api/internal/repair-project-identity', methods: ['POST'] },
+  { path: '/api/internal/reset-procore-data', methods: ['POST'] },
+  { path: '/api/internal/scope-diagnostics', methods: ['GET'] },
+  { path: '/api/webhooks/procore', methods: ['POST'] },
+  { path: '/api/webhooks/procore/process', methods: ['POST'] },
+];
+
+// Netlify owns these paths outside the Next.js route inventory. This declares
+// their policy without turning it into an unconditional middleware bypass.
+const WORKER_API_REQUESTS = [
+  { path: '/api/background/actuals-sync', methods: ['POST'] },
+  { path: '/api/background/nightly-structure-sync', methods: ['POST'] },
+  { path: '/api/background/change-order-approvals', methods: ['POST'] },
+  { path: '/api/background/commitment-maker-tasks', methods: ['POST'] },
+  { path: '/api/background/pm-dashboard-sync', methods: ['POST'] },
+  { path: '/api/background/calendar-sync', methods: ['POST'] },
+  { path: '/api/background/project-reconciliation', methods: ['POST'] },
+  { path: '/api/background/analytics-connection-check', methods: ['POST'] },
+  { path: '/api/background/qbo-bill-batch', methods: ['POST'] },
+];
+
+function matchesApiRequest(requests, pathname, method) {
+  const normalizedPath = normalizePath(pathname);
+  const normalizedMethod = typeof method === 'string' ? method.toUpperCase() : '';
+  return requests.some((request) => request.path === normalizedPath && request.methods.includes(normalizedMethod));
+}
+
+export function isSessionOnlyApiRequest(pathname, method) {
+  return matchesApiRequest(SESSION_ONLY_API_REQUESTS, pathname, method);
+}
+
+export function isPublicApiRequest(pathname, method) {
+  return matchesApiRequest(PUBLIC_API_REQUESTS, pathname, method);
+}
+
+export function isAuthApiRequest(pathname, method) {
+  return matchesApiRequest(AUTH_API_REQUESTS, pathname, method);
+}
+
+export function isRouteAuthorizedApiRequest(pathname, method) {
+  return matchesApiRequest(ROUTE_AUTHORIZED_API_REQUESTS, pathname, method);
+}
+
+export function isWorkerApiRequest(pathname, method) {
+  return matchesApiRequest(WORKER_API_REQUESTS, pathname, method);
+}
+
+export function hasApiAccessPolicy(pathname, method) {
+  if (typeof pathname !== 'string' || !pathname.startsWith('/api/')) return false;
+  return resolvePermissionForPath(pathname) !== null
+    || isSessionOnlyApiRequest(pathname, method)
+    || isPublicApiRequest(pathname, method)
+    || isAuthApiRequest(pathname, method)
+    || isRouteAuthorizedApiRequest(pathname, method)
+    || isWorkerApiRequest(pathname, method);
+}
 
 function normalizePath(pathname) {
   if (!pathname) return '/';

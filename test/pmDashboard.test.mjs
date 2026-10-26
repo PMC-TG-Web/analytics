@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { isRouteAuthorizedApiRequest } from '../src/lib/permissionRoutes.js';
 
 import {
   buildProcoreItemUrl,
@@ -134,10 +135,11 @@ test('the dashboard produces five stable workday keys across weekends and DST bo
 
 test('page, data API, and secret-authenticated sync route are protected', () => {
   const permissions = readFileSync(new URL('../src/lib/permissionRoutes.js', import.meta.url), 'utf8');
-  const middleware = readFileSync(new URL('../middleware.ts', import.meta.url), 'utf8');
   assert.match(permissions, /prefix: '\/pm-dashboard', permission: 'pm-dashboard'/);
   assert.match(permissions, /prefix: '\/api\/pm-dashboard', permission: 'pm-dashboard'/);
-  assert.match(middleware, /pathname === '\/api\/cron\/pm-dashboard'/);
+  assert.equal(isRouteAuthorizedApiRequest('/api/cron/pm-dashboard', 'POST'), true);
+  assert.equal(isRouteAuthorizedApiRequest('/api/cron/pm-dashboard/other', 'POST'), false);
+  assert.equal(isRouteAuthorizedApiRequest('/api/cron/pm-dashboard', 'GET'), false);
 });
 
 test('the PM dashboard omits the global app navigation for the Procore side panel', () => {

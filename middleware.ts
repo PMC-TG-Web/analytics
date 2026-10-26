@@ -4,7 +4,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { canAccessBillingAnalytics, isBillingAnalyticsPath } from '@/lib/billingAnalyticsAccess';
 import { auth0 } from '@/lib/auth0';
 import { APP_SESSION_COOKIE, emailSignInEnabled, procoreSignInEnabled, safeAppReturnTo } from '@/lib/appSignInPolicy';
-import { resolvePermissionForPath } from '@/lib/permissionRoutes';
+import {
+  hasApiAccessPolicy,
+  isAuthApiRequest,
+  isPublicApiRequest,
+  isRouteAuthorizedApiRequest,
+  isSessionOnlyApiRequest,
+  resolvePermissionForPath,
+} from '@/lib/permissionRoutes';
 import {
   getPermissionCookieOptions,
   PERMISSION_COOKIE_NAME,
@@ -66,10 +73,9 @@ function resolvePermissionsForRequest(request: NextRequest): string[] {
   const method = request.method.toUpperCase();
   const permissions = new Set<string>();
 
-  // The landing page is available to every signed-in user. Its public forecast
-  // widget needs the same policy, including accounts without a Home grant.
-  // This only skips page permissions; session and API protections still run.
-  if (pathname === '/' || pathname === '/help/home' || (pathname === '/api/weather' && method === 'GET')) {
+  // Landing/help and explicit session APIs do not require page grants. Session,
+  // CSRF, and route-owned target checks (such as time off) still apply.
+  if (pathname === '/' || pathname === '/help/home' || isSessionOnlyApiRequest(pathname, method)) {
     return [];
   }
 
@@ -215,7 +221,12 @@ function isAnalyticsMobileBypassPath(pathname: string): boolean {
     return true;
   }
 
-  return pathname === '/api/analytics/commitment-productivity' || pathname.startsWith('/api/analytics/commitment-productivity/');
+  return [
+    '/api/analytics/commitment-productivity',
+    '/api/analytics/commitment-productivity/logs',
+    '/api/analytics/commitment-productivity/readiness',
+    '/api/analytics/commitment-productivity/timecards',
+  ].includes(pathname);
 }
 
 function isPmDashboardPath(pathname: string): boolean {
@@ -276,9 +287,9 @@ export async function middleware(request: NextRequest) {
   }
 
   const isApiRoute = pathname.startsWith('/api/');
-  const isAuthApiRoute = pathname.startsWith('/api/auth/');
+  const isAuthApiRoute = isAuthApiRequest(pathname, request.method);
   const isInternalPermissionCheckRoute = pathname === INTERNAL_PERMISSION_CHECK_ROUTE;
-  const isPublicVersionRoute = pathname === '/api/public/version';
+  const isPublicVersionRoute = isPublicApiRequest(pathname, request.method);
   const isProcoreWebhookReceiverRoute = pathname === '/api/webhooks/procore';
   const isProcoreWebhookProcessRoute = pathname === '/api/webhooks/procore/process';
   const isProcoreBackgroundSyncRoute =
@@ -312,7 +323,16 @@ export async function middleware(request: NextRequest) {
     return new NextResponse('Not found', { status: 404 });
   }
 
-  // In dev mode without Auth0 config, bypass all middleware
+  // Missing policy is never a grant, including local development and legacy
+  // integration entry paths. New APIs must declare their authorization boundary.
+  if (isApiRoute && !hasApiAccessPolicy(pathname, request.method)) {
+    return NextResponse.json(
+      { success: false, error: 'Forbidden', code: 'API_ACCESS_POLICY_REQUIRED' },
+      { status: 403, headers: { 'Cache-Control': 'private, no-store' } }
+    );
+  }
+
+  // Retain the legacy development bypass only after policy completeness checks.
   if (isDev && auth0Misconfigured && !procoreSignInEnabled() && !isBillingAnalyticsPath(pathname) && !isSubcontractAllocationPath(pathname)) {
     return NextResponse.next();
   }
@@ -485,48 +505,9 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Allow cron sync routes — each validates CRON_SECRET/PROCORE_SYNC_SECRET
-  // internally before it can read from Procore or write synchronized data.
-  if (
-    pathname === '/api/cron/market-outlook' ||
-    pathname === '/api/cron/sync' ||
-    pathname.startsWith('/api/cron/sync/') ||
-    pathname === '/api/cron/actuals' ||
-    pathname.startsWith('/api/cron/actuals/') ||
-    pathname === '/api/cron/project-onboarding' ||
-    pathname.startsWith('/api/cron/project-onboarding/') ||
-    pathname === '/api/cron/project-reconciliation' ||
-    pathname.startsWith('/api/cron/project-reconciliation/') ||
-    pathname === '/api/cron/project-link-sync' ||
-    pathname.startsWith('/api/cron/project-link-sync/') ||
-    pathname === '/api/cron/change-order-approvals' ||
-    pathname === '/api/cron/commitment-maker-tasks' ||
-    pathname === '/api/cron/nightly-structure' ||
-    pathname.startsWith('/api/cron/nightly-structure/') ||
-    pathname === '/api/cron/productivity-review-reminders' ||
-    pathname === '/api/cron/timecard-notifications' ||
-    pathname === '/api/cron/pm-dashboard' ||
-    pathname === '/api/cron/qbo-bill-batch' ||
-    pathname === '/api/cron/calendar-sync'
-  ) {
-    return NextResponse.next();
-  }
-
-      // Allow one-time backfills — protected by their own CRON_SECRET header check inside the route.
-      if (pathname === '/api/internal/backfill-gantt-scopes' ||
-        pathname === '/api/internal/backfill-project-scopes-to-gantt' ||
-        pathname === '/api/internal/dedupe-project-scopes' ||
-        pathname === '/api/internal/scope-diagnostics' ||
-        pathname === '/api/internal/projects-diagnostics' ||
-          pathname === '/api/internal/project-lookup' ||
-        pathname === '/api/internal/repair-project-identity' ||
-        pathname === '/api/internal/debug-scope-project-split' ||
-        pathname === '/api/internal/check-duplicate-projects' ||
-          pathname === '/api/internal/merge-duplicate-projects' ||
-          pathname === '/api/internal/projects-audit' ||
-          pathname === '/api/internal/reset-procore-data' ||
-          pathname === '/api/internal/export-kpi-entries' ||
-          pathname === '/api/internal/import-kpi-entries') {
+  // These exact route/method pairs validate credentials inside their handlers.
+  // Adjacent APIs (such as sync logs) must use ordinary session permissions.
+  if (isRouteAuthorizedApiRequest(pathname, request.method) && !isProcoreWebhookProcessRoute) {
     return NextResponse.next();
   }
 
@@ -701,6 +682,12 @@ export async function middleware(request: NextRequest) {
 
   let permissionCookieToSet: string | null = null;
   const requiredPermissions = resolvePermissionsForRequest(request);
+  if (isApiRoute && requiredPermissions.length === 0 && !isSessionOnlyApiRequest(pathname, request.method)) {
+    return NextResponse.json(
+      { success: false, error: 'Forbidden' },
+      { status: 403, headers: { 'Cache-Control': 'private, no-store' } }
+    );
+  }
   if (requiredPermissions.length > 0) {
     const sessionEmail = session.user?.email?.trim().toLowerCase() || null;
     const cachedPermissions = await verifyPermissionCookieValue(

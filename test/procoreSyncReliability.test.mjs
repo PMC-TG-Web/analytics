@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { isRouteAuthorizedApiRequest } from "../src/lib/permissionRoutes.js";
 import {
   procoreApiErrorIsNotFound,
   procoreSyncDetailHasErrors,
@@ -763,9 +764,11 @@ test("health evaluation identifies provider quota recovery when data is stale", 
 test("middleware allows secret-authenticated reconciliation routes", async () => {
   const middleware = await readFile(new URL("../middleware.ts", import.meta.url), "utf8");
   assert.match(middleware, /pathname === '\/api\/background\/project-reconciliation'/);
-  assert.match(middleware, /pathname === '\/api\/cron\/project-reconciliation'/);
-  assert.match(middleware, /pathname === '\/api\/cron\/project-link-sync'/);
-  assert.match(middleware, /pathname === '\/api\/cron\/commitment-maker-tasks'/);
+  for (const path of ['/api/cron/project-reconciliation', '/api/cron/project-link-sync', '/api/cron/commitment-maker-tasks']) {
+    assert.equal(isRouteAuthorizedApiRequest(path, 'POST'), true, path);
+    assert.equal(isRouteAuthorizedApiRequest(`${path}/other`, 'POST'), false, path);
+    assert.equal(isRouteAuthorizedApiRequest(path, 'GET'), false, path);
+  }
 });
 
 test("full project reconciliation has timeout headroom and rejects truncated responses", async () => {

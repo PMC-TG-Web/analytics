@@ -5,6 +5,7 @@ import { parseBls, parseFred, parseEia, fetchMarketFeeds, fetchMarketJson } from
 import { marketSeries, marketChanges, marketFreshness, marketSignal, normalizeMarketPoints, numericValue } from '../src/lib/marketSeries.ts';
 import { authorizedMarketSync } from '../src/lib/marketSyncAuth.ts';
 import { mergeMarketHistory, saveMarketResults } from '../src/lib/marketStore.ts';
+import { isRouteAuthorizedApiRequest } from '../src/lib/permissionRoutes.js';
 
 const now = new Date('2026-10-15T16:00:00Z');
 const point = (period, value, preliminary = false) => ({ period, value, preliminary });
@@ -123,8 +124,9 @@ test('cron authentication fails closed and is reached only through an exact midd
   assert.equal(authorizedMarketSync('secret', ''), false);
   assert.equal(authorizedMarketSync('wrong', 'secret'), false);
   assert.equal(authorizedMarketSync('secret', 'secret'), true);
-  const middleware = fs.readFileSync(new URL('../middleware.ts', import.meta.url), 'utf8');
-  assert.ok(middleware.includes("pathname === '/api/cron/market-outlook'"));
+  assert.equal(isRouteAuthorizedApiRequest('/api/cron/market-outlook', 'POST'), true);
+  assert.equal(isRouteAuthorizedApiRequest('/api/cron/market-outlook/other', 'POST'), false);
+  assert.equal(isRouteAuthorizedApiRequest('/api/cron/market-outlook', 'GET'), false);
   const route = fs.readFileSync(new URL('../src/app/api/cron/market-outlook/route.ts', import.meta.url), 'utf8');
   assert.ok(route.indexOf('if (!authorizedMarketSync') < route.indexOf('await syncMarketOutlook()'));
   assert.ok(route.includes("'Cache-Control': 'no-store'"));

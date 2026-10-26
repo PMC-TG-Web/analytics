@@ -3,6 +3,7 @@ import fs from "node:fs";
 import test from "node:test";
 import ts from "typescript";
 import vm from "node:vm";
+import * as sourceProjectLinks from "../src/lib/procoreSourceProjectLink.ts";
 
 function loadModule(prisma, enqueue = async () => 0) {
   const source = fs.readFileSync("src/lib/procoreProductivity.ts", "utf8");
@@ -12,6 +13,10 @@ function loadModule(prisma, enqueue = async () => 0) {
   const module = { exports: {} };
   const require = (id) => {
     if (id === "@/lib/prisma") return { prisma };
+    if (id === "@/lib/procoreSourceProjectLink") return sourceProjectLinks;
+    if (id === "@/lib/procoreLegacyProjectIdentity") return {
+      resolveProcoreLegacyProject: async () => ({ project: null, created: false, status: "unresolved" }),
+    };
     if (id === "@prisma/client") return { Prisma: {} };
     if (id === "@/lib/dailyLogTimeNotificationStore") return { enqueueDailyLogTimeNotifications: enqueue };
     throw new Error(`Unexpected import: ${id}`);

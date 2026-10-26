@@ -398,6 +398,8 @@ model Project {
   scopeTrackings                       ScopeTracking[]
   timecardEntries                      TimecardEntry[]
   timecardTimeTypes                    TimecardTimeType[]
+  procoreIdentity                     ProcoreLegacyProjectLink?
+  procoreBidBoardIdentities            ProcoreLegacyBidBoardLink[]
 
   @@index([projectNumber])
   @@index([projectName])
@@ -407,6 +409,32 @@ model Project {
   @@index([bidBoardId])
   @@index([projectArchived])
   @@index([projectArchived, status])
+}
+
+/// Verified compatibility link. Names/numbers never establish this identity.
+/// No historical records are rewritten when this additive table is installed.
+model ProcoreLegacyProjectLink {
+  companyId        String   @map("company_id")
+  procoreProjectId String   @map("procore_project_id")
+  projectId        String   @unique @map("project_id")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  project          Project  @relation(fields: [projectId], references: [id], onDelete: Restrict)
+
+  @@id([companyId, procoreProjectId])
+  @@map("procore_legacy_project_links")
+}
+
+/// Bid Board IDs have a distinct namespace. Several bids can refer to one job.
+model ProcoreLegacyBidBoardLink {
+  companyId  String   @map("company_id")
+  bidBoardId String   @map("bid_board_id")
+  projectId  String   @map("project_id")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Restrict)
+
+  @@id([companyId, bidBoardId])
+  @@index([projectId])
+  @@map("procore_legacy_bid_board_links")
 }
 
 model ProjectScope {

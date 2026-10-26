@@ -1,5 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { resolveProcoreLegacyProject } from "@/lib/procoreLegacyProjectIdentity";
+import { selectProcoreSourceProjectLink, reportProcoreSourceProjectLinkConflicts } from "@/lib/procoreSourceProjectLink";
 import { enqueueDailyLogTimeNotifications } from "@/lib/dailyLogTimeNotificationStore";
 
 export type ProcoreLog = Record<string, unknown>;
@@ -14,12 +16,6 @@ type PersistProductivityLogsParams = {
   createProjectIfMissing?: boolean;
   persistUnpackedFields?: boolean;
 };
-
-function asObject(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
 
 function asJsonValue(value: unknown): Prisma.InputJsonValue {
   if (
@@ -297,111 +293,6 @@ function extractPayloadColumns(log: ProcoreLog, companyId: string | undefined, p
   };
 }
 
-async function resolveLinkedProject(params: PersistProductivityLogsParams) {
-  const { companyId, projectId, projectName, projectNumber, createProjectIfMissing } = params;
-
-  const matchers: Prisma.ProjectWhereInput[] = [
-    {
-      customFields: {
-        path: ["procoreProjectId"],
-        equals: projectId,
-      },
-    },
-    {
-      customFields: {
-        path: ["procoreId"],
-        equals: projectId,
-      },
-    },
-    { projectNumber: projectId },
-  ];
-
-  if (projectNumber) {
-    matchers.push({ projectNumber });
-  }
-
-  if (projectName && projectNumber) {
-    matchers.push({ projectName, projectNumber });
-  } else if (projectName) {
-    matchers.push({ projectName });
-  }
-
-  const existing = await prisma.project.findFirst({
-    where: {
-      OR: matchers,
-    },
-    select: {
-      id: true,
-      projectNumber: true,
-      projectName: true,
-      customFields: true,
-    },
-  });
-
-  if (existing) {
-    if (createProjectIfMissing) {
-      const existingCustomFields = asObject(existing.customFields);
-      const existingCompanyId = String(existingCustomFields.procoreCompanyId || "").trim() || null;
-      const mergedCustomFields: Prisma.InputJsonObject = {
-        ...existingCustomFields,
-        procoreProjectId: projectId,
-        procoreCompanyId: companyId || existingCompanyId,
-        syncedFrom: "procore_productivity",
-        productivitySyncedAt: new Date().toISOString(),
-      };
-
-      await prisma.project.update({
-        where: { id: existing.id },
-        data: {
-          projectNumber: existing.projectNumber || projectNumber || projectId,
-          projectName: existing.projectName || projectName || `Procore Project ${projectId}`,
-          customFields: mergedCustomFields,
-        },
-      });
-    }
-
-    return {
-      project: {
-        id: existing.id,
-        projectNumber: existing.projectNumber,
-        projectName: existing.projectName,
-      },
-      created: false,
-    };
-  }
-
-  if (!createProjectIfMissing) {
-    return {
-      project: null,
-      created: false,
-    };
-  }
-
-  const created = await prisma.project.create({
-    data: {
-      projectNumber: projectNumber || projectId,
-      projectName: projectName || `Procore Project ${projectId}`,
-      status: "Active",
-      customFields: {
-        procoreProjectId: projectId,
-        procoreCompanyId: companyId || null,
-        syncedFrom: "procore_productivity",
-        productivitySyncedAt: new Date().toISOString(),
-      },
-    },
-    select: {
-      id: true,
-      projectNumber: true,
-      projectName: true,
-    },
-  });
-
-  return {
-    project: created,
-    created: true,
-  };
-}
-
 export async function persistProductivityLogs(
   logs: ProcoreLog[],
   params: PersistProductivityLogsParams
@@ -418,30 +309,29 @@ export async function persistProductivityLogs(
     };
   }
 
-  const linkedProjectResult = await resolveLinkedProject(params);
+  const linkedProjectResult = await resolveProcoreLegacyProject({ ...params, companyId: params.companyId, source: "procore_productivity" });
   await ensureUnpackedFieldsTable();
-  const expectedProjectId = linkedProjectResult.project?.id ?? null;
   const expectedCompanyId = params.companyId || null;
-  const existingLogs = params.persistUnpackedFields === false
-    ? await prisma.productivityLog.findMany({
-        where: {
-          id: {
-            in: logs.map((log) => String(log.id ?? "").trim()).filter(Boolean),
-          },
-        },
-        select: {
-          id: true,
-          projectId: true,
-          procoreCompanyId: true,
-          procoreProjectId: true,
-          procoreUpdatedAt: true,
-        },
-      })
-    : [];
+  const existingLogs = await prisma.productivityLog.findMany({
+    where: {
+      id: {
+        in: logs.map((log) => String(log.id ?? "").trim()).filter(Boolean),
+      },
+    },
+    select: {
+      id: true,
+      projectId: true,
+      jobKey: true,
+      procoreCompanyId: true,
+      procoreProjectId: true,
+      procoreUpdatedAt: true,
+    },
+  });
   const existingLogsById = new Map(existingLogs.map((log) => [log.id, log]));
 
   let saved = 0;
   let skipped = 0;
+  let projectLinkConflicts = 0;
 
   for (const log of logs) {
     const procoreId = String(log.id ?? "").trim();
@@ -458,10 +348,13 @@ export async function persistProductivityLogs(
 
     const sourceUpdatedAt = toNullableDate(log.updated_at);
     const existingLog = existingLogsById.get(procoreId);
+    const projectLink = selectProcoreSourceProjectLink(existingLog, linkedProjectResult.project, "number");
+    if (projectLink.conflict) projectLinkConflicts += 1;
     if (
-      sourceUpdatedAt
+      params.persistUnpackedFields === false
+      && sourceUpdatedAt
       && existingLog?.procoreUpdatedAt?.getTime() === sourceUpdatedAt.getTime()
-      && (existingLog.projectId ?? null) === expectedProjectId
+      && (existingLog.projectId ?? null) === (projectLink.projectId ?? null)
       && (existingLog.procoreCompanyId ?? null) === expectedCompanyId
       && existingLog.procoreProjectId === params.projectId
     ) {
@@ -493,8 +386,8 @@ export async function persistProductivityLogs(
     };
 
     const sharedFields = {
-      projectId: linkedProjectResult.project?.id,
-      jobKey: linkedProjectResult.project?.projectNumber || params.projectNumber || params.projectId,
+      projectId: projectLink.projectId,
+      jobKey: projectLink.jobKey,
       date: new Date(`${dateText}T00:00:00.000Z`),
       foreman: String(log.foreman_name ?? log.foreman ?? "") || null,
       crew: String(log.crew_name ?? log.crew ?? "") || null,
@@ -507,7 +400,7 @@ export async function persistProductivityLogs(
 
     await prisma.productivityLog.upsert({
       where: { id: procoreId },
-      update: sharedFields,
+      update: { ...sharedFields, ...projectLink.update },
       create: { id: procoreId, ...sharedFields },
     });
 
@@ -520,6 +413,7 @@ export async function persistProductivityLogs(
 
   // Run even for unchanged rows: PO metadata may arrive after the log's webhook.
   const notificationsQueued = await enqueueDailyLogTimeNotifications(logs, params);
+  reportProcoreSourceProjectLinkConflicts("productivity", params, projectLinkConflicts);
   return {
     attempted: logs.length,
     notificationsQueued,
@@ -528,5 +422,7 @@ export async function persistProductivityLogs(
     projectLinked: Boolean(linkedProjectResult.project?.id),
     projectCreated: linkedProjectResult.created,
     linkedProjectId: linkedProjectResult.project?.id || null,
+    projectIdentity: { status: linkedProjectResult.status, reason: linkedProjectResult.reason },
+    projectLinkConflicts,
   };
 }

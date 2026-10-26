@@ -1,5 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { resolveProcoreLegacyProject } from "@/lib/procoreLegacyProjectIdentity";
+import { selectProcoreSourceProjectLink, reportProcoreSourceProjectLinkConflicts } from "@/lib/procoreSourceProjectLink";
 
 export type ProcoreTimecardTimeType = Record<string, unknown>;
 type MutableJsonObject = Record<string, Prisma.InputJsonValue>;
@@ -206,53 +208,19 @@ function extractPayloadColumns(
   };
 }
 
-async function resolveLinkedProject(params: PersistTimecardTimeTypesParams) {
-  const { companyId, projectId, projectName, projectNumber, createProjectIfMissing } = params;
-
-  const matchers: Prisma.ProjectWhereInput[] = [
-    { customFields: { path: ["procoreProjectId"], equals: projectId } },
-    { customFields: { path: ["procoreId"], equals: projectId } },
-    { projectNumber: projectId },
-  ];
-
-  if (projectNumber) matchers.push({ projectNumber });
-  if (projectName && projectNumber) matchers.push({ projectName, projectNumber });
-  else if (projectName) matchers.push({ projectName });
-
-  const existing = await prisma.project.findFirst({
-    where: { OR: matchers },
-    select: { id: true, projectNumber: true, projectName: true, customFields: true },
-  });
-
-  if (existing) return { linkedProjectId: existing.id, projectCreated: false };
-
-  if (!createProjectIfMissing) return { linkedProjectId: null, projectCreated: false };
-
-  const newProject = await prisma.project.create({
-    data: {
-      projectNumber: projectNumber || projectId,
-      projectName: projectName || `Procore Project ${projectId}`,
-      customFields: {
-        procoreProjectId: projectId,
-        procoreCompanyId: companyId || null,
-        source: "procore_timecard_time_types_sync",
-      },
-    },
-    select: { id: true },
-  });
-
-  return { linkedProjectId: newProject.id, projectCreated: true };
-}
 
 export async function persistTimecardTimeTypes(
   records: ProcoreTimecardTimeType[],
   params: PersistTimecardTimeTypesParams
 ) {
   const { companyId, projectId } = params;
-  const { linkedProjectId, projectCreated } = await resolveLinkedProject(params);
+  const linkedProjectResult = await resolveProcoreLegacyProject({ ...params, companyId: params.companyId, source: "procore_timecard_time_types_sync" });
+  const linkedProjectId = linkedProjectResult.project?.id ?? null;
+  const projectCreated = linkedProjectResult.created;
 
   let saved = 0;
   let skipped = 0;
+  let projectLinkConflicts = 0;
 
   for (const record of records) {
     try {
@@ -262,26 +230,27 @@ export async function persistTimecardTimeTypes(
       const uid = `tct_${rawId}_${projectId}`;
       const cols = extractPayloadColumns(record, companyId, projectId);
       const { jsonFields } = unpackPayloadFields(record);
+      const existing = await prisma.timecardTimeType.findFirst({
+        where: { procoreId: cols.procoreId ?? undefined, procoreProjectId: projectId },
+        select: { id: true, projectId: true, jobKey: true },
+      });
+      const projectLink = selectProcoreSourceProjectLink(existing, linkedProjectResult.project, "id");
+      if (projectLink.conflict) projectLinkConflicts += 1;
 
       const sharedFields = {
         ...cols,
-        jobKey: linkedProjectId || undefined,
-        projectId: linkedProjectId || undefined,
+        jobKey: projectLink.jobKey,
+        projectId: projectLink.projectId,
         customFields: record as unknown as Prisma.InputJsonObject,
         updatedAt: new Date(),
       };
-
-      const existing = await prisma.timecardTimeType.findFirst({
-        where: { procoreId: cols.procoreId ?? undefined, procoreProjectId: projectId },
-        select: { id: true },
-      });
 
       let typeId: string;
 
       if (existing) {
         await prisma.timecardTimeType.update({
           where: { id: existing.id },
-          data: sharedFields,
+          data: { ...sharedFields, ...projectLink.update },
         });
         typeId = existing.id;
       } else {
@@ -298,5 +267,9 @@ export async function persistTimecardTimeTypes(
     }
   }
 
-  return { saved, skipped, linkedProjectId, projectCreated };
+  reportProcoreSourceProjectLinkConflicts("timecard-time-types", params, projectLinkConflicts);
+  return {
+    saved, skipped, linkedProjectId, projectCreated, projectLinkConflicts,
+    projectIdentity: { status: linkedProjectResult.status, reason: linkedProjectResult.reason },
+  };
 }

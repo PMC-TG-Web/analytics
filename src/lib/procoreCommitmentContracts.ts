@@ -1,5 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { resolveProcoreLegacyProject } from "@/lib/procoreLegacyProjectIdentity";
+import { selectProcoreSourceProjectLink, reportProcoreSourceProjectLinkConflicts } from "@/lib/procoreSourceProjectLink";
 
 export type ProcoreCommitmentContract = Record<string, unknown>;
 type MutableJsonObject = Record<string, Prisma.InputJsonValue>;
@@ -92,31 +94,6 @@ function unpackJsonFields(payload: Record<string, unknown>): Prisma.InputJsonObj
   return out as Prisma.InputJsonObject;
 }
 
-async function resolveLinkedProject(params: PersistCommitmentContractsParams) {
-  const { companyId, projectId, projectName, projectNumber, createProjectIfMissing } = params;
-  const matchers: Prisma.ProjectWhereInput[] = [
-    { customFields: { path: ["procoreProjectId"], equals: projectId } },
-    { customFields: { path: ["procoreId"], equals: projectId } },
-    { projectNumber: projectId },
-  ];
-  if (projectNumber) matchers.push({ projectNumber });
-  if (projectName && projectNumber) matchers.push({ projectName, projectNumber });
-  else if (projectName) matchers.push({ projectName });
-
-  const existing = await prisma.project.findFirst({ where: { OR: matchers }, select: { id: true } });
-  if (existing) return { linkedProjectId: existing.id, projectCreated: false };
-  if (!createProjectIfMissing) return { linkedProjectId: null, projectCreated: false };
-
-  const created = await prisma.project.create({
-    data: {
-      projectNumber: projectNumber || projectId,
-      projectName: projectName || `Procore Project ${projectId}`,
-      customFields: { procoreProjectId: projectId, procoreCompanyId: companyId || null, source: "procore_commitment_contracts_sync" },
-    },
-    select: { id: true },
-  });
-  return { linkedProjectId: created.id, projectCreated: true };
-}
 
 async function ensureUnpackedFieldsTable() {
   if (unpackedFieldsTableReady) return unpackedFieldsTableReady;
@@ -201,9 +178,12 @@ export async function persistCommitmentContracts(
   params: PersistCommitmentContractsParams
 ) {
   const { companyId, projectId } = params;
-  const { linkedProjectId, projectCreated } = await resolveLinkedProject(params);
+  const linkedProjectResult = await resolveProcoreLegacyProject({ ...params, companyId: params.companyId, source: "procore_commitment_contracts_sync" });
+  const linkedProjectId = linkedProjectResult.project?.id ?? null;
+  const projectCreated = linkedProjectResult.created;
   let saved = 0;
   let skipped = 0;
+  let projectLinkConflicts = 0;
 
   for (const record of records) {
     try {
@@ -213,23 +193,26 @@ export async function persistCommitmentContracts(
       const uid = `cc_${rawId}_${projectId}`;
       const cols = extractPayloadColumns(record, companyId, projectId);
       const jsonFields = unpackJsonFields(record);
+      const existing = await prisma.commitmentContract.findFirst({
+        where: { procoreId: cols.procoreId ?? undefined, procoreProjectId: projectId },
+        select: { id: true, projectId: true, jobKey: true },
+      });
+      const projectLink = selectProcoreSourceProjectLink(existing, linkedProjectResult.project, "id");
+      if (projectLink.conflict) projectLinkConflicts += 1;
 
       const sharedFields = {
         ...cols,
-        jobKey: linkedProjectId || undefined,
-        projectId: linkedProjectId || undefined,
+        jobKey: projectLink.jobKey,
+        projectId: projectLink.projectId,
         customFields: record as unknown as Prisma.InputJsonObject,
         updatedAt: new Date(),
       };
 
-      const existing = await prisma.commitmentContract.findFirst({
-        where: { procoreId: cols.procoreId ?? undefined, procoreProjectId: projectId },
-        select: { id: true },
-      });
-
       let finalId = uid;
       if (existing) {
-        await prisma.commitmentContract.update({ where: { id: existing.id }, data: sharedFields });
+        await prisma.commitmentContract.update({
+          where: { id: existing.id }, data: { ...sharedFields, ...projectLink.update },
+        });
         finalId = existing.id;
       } else {
         await prisma.commitmentContract.create({ data: { id: uid, ...sharedFields } });
@@ -244,5 +227,9 @@ export async function persistCommitmentContracts(
     }
   }
 
-  return { saved, skipped, linkedProjectId, projectCreated };
+  reportProcoreSourceProjectLinkConflicts("commitments", params, projectLinkConflicts);
+  return {
+    saved, skipped, linkedProjectId, projectCreated, projectLinkConflicts,
+    projectIdentity: { status: linkedProjectResult.status, reason: linkedProjectResult.reason },
+  };
 }

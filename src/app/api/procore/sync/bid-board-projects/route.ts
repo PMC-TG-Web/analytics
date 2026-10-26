@@ -7,6 +7,7 @@ import {
   withProcoreLiveApiBypassForSyncSecret,
 } from "@/lib/procore";
 import { prisma } from "@/lib/prisma";
+import { preserveBidBoardProjectLink, updateProjectBidBoardStatus } from "@/lib/procoreProjectHeaderLinks";
 import { extractCustomerFromCustomFields, isMeaningfulCustomer } from "@/lib/procoreProjectFeed";
 import { buildAllowedProcoreHostCandidates } from "@/lib/procoreHosts";
 import { shouldStopBidBoardPagination } from "@/lib/procoreBidBoardPagination";
@@ -176,30 +177,6 @@ async function fetchAllBidBoardProjects(params: {
   throw lastError || Object.assign(new Error("Procore returned no Bid Board projects."), { status: 502 });
 }
 
-async function resolveProcoreProjectId(params: {
-  companyId: string;
-  projectNumber: string | null;
-  suppliedProjectId: string | null;
-}) {
-  if (params.suppliedProjectId) return params.suppliedProjectId;
-  if (!params.projectNumber) return null;
-
-  const matches = await prisma.$queryRawUnsafe<Array<{ procore_project_id: string }>>(
-    `
-      SELECT procore_project_id
-      FROM pmc_projects
-      WHERE company_id = $1
-        AND LOWER(BTRIM(project_number)) = LOWER(BTRIM($2))
-      ORDER BY updated_at DESC
-      LIMIT 2
-    `,
-    params.companyId,
-    params.projectNumber
-  );
-
-  return matches.length === 1 ? matches[0].procore_project_id : null;
-}
-
 async function upsertProject(params: {
   companyId: string;
   project: UnknownRecord;
@@ -218,6 +195,7 @@ async function upsertProject(params: {
     sales: numeric(isRecord(project.stats) ? project.stats.total : 0),
     active: projectIsActive(project),
     estimateDetailsDue: !hasEstimateQueueRecord || payloadChanged,
+    identityConflict: false,
   };
   if (!bidBoardPayloadNeedsPersistence(previousPayload, project)) {
     return { ...result, written: false };
@@ -225,11 +203,8 @@ async function upsertProject(params: {
 
   const raw = isRecord(project.raw) ? project.raw : {};
   const projectNumber = text(project.project_number) || null;
-  const procoreProjectId = await resolveProcoreProjectId({
-    companyId,
-    projectNumber,
-    suppliedProjectId: text(project.project_id || project.procore_project_id) || null,
-  });
+  // A matching project number does not establish the cross-system identity.
+  const procoreProjectId = text(project.project_id || project.procore_project_id) || null;
   const projectName = text(project.name || project.title) || "Untitled Bid";
   const customer = customerFromProject(project);
   const customerCompanyId =
@@ -238,35 +213,34 @@ async function upsertProject(params: {
     || null;
   const payload = jsonValue(project);
 
-  await Promise.all([
-    prisma.pmcBidBoardProject.upsert({
-      where: { companyId_bidBoardId: { companyId, bidBoardId } },
-      create: {
-        companyId,
-        bidBoardId,
-        procoreProjectId,
-        projectNumber,
-        projectName,
-        customer,
-        customerCompanyId,
-        status,
-        statusRaw,
-        payload,
-        syncedAt: new Date(),
-      },
-      update: {
-        ...(procoreProjectId ? { procoreProjectId } : {}),
-        projectNumber,
-        projectName,
-        customer,
-        customerCompanyId,
-        status,
-        statusRaw,
-        payload,
-        syncedAt: new Date(),
-      },
-    }),
-    prisma.$executeRawUnsafe(
+  await prisma.pmcBidBoardProject.upsert({
+    where: { companyId_bidBoardId: { companyId, bidBoardId } },
+    create: {
+      companyId,
+      bidBoardId,
+      procoreProjectId,
+      projectNumber,
+      projectName,
+      customer,
+      customerCompanyId,
+      status,
+      statusRaw,
+      payload,
+      syncedAt: new Date(),
+    },
+    update: {
+      projectNumber,
+      projectName,
+      customer,
+      customerCompanyId,
+      status,
+      statusRaw,
+      payload,
+      syncedAt: new Date(),
+    },
+  });
+  const bidBoardLink = await preserveBidBoardProjectLink({ companyId, bidBoardId, procoreProjectId });
+  await prisma.$executeRawUnsafe(
       `
         INSERT INTO procore_bid_board_live (
           bid_board_id, company_id, procore_project_id, name, status,
@@ -276,38 +250,29 @@ async function upsertProject(params: {
         ON CONFLICT (bid_board_id)
         DO UPDATE SET
           company_id = EXCLUDED.company_id,
-          procore_project_id = COALESCE(EXCLUDED.procore_project_id, procore_bid_board_live.procore_project_id),
+          procore_project_id = COALESCE(procore_bid_board_live.procore_project_id, EXCLUDED.procore_project_id),
           name = EXCLUDED.name,
           status = EXCLUDED.status,
           status_raw = EXCLUDED.status_raw,
           customer = EXCLUDED.customer,
           payload = EXCLUDED.payload,
           synced_at = NOW()
+        WHERE procore_bid_board_live.company_id = EXCLUDED.company_id
       `,
       bidBoardId,
       companyId,
-      procoreProjectId,
+      bidBoardLink.procoreProjectId,
       projectName,
       status,
       statusRaw,
       customer,
       JSON.stringify(project)
-    ),
-    ...(procoreProjectId
-      ? [
-          prisma.pmcProject.updateMany({
-            where: { companyId, procoreProjectId },
-            data: {
-              bidBoardId,
-              bidBoardStatus: status,
-              syncedAt: new Date(),
-            },
-          }),
-        ]
-      : []),
-  ]);
+    );
+  const projectLinkConflict = bidBoardLink.procoreProjectId
+    ? await updateProjectBidBoardStatus({ companyId, procoreProjectId: bidBoardLink.procoreProjectId, bidBoardId, status })
+    : false;
 
-  return { ...result, written: true };
+  return { ...result, written: true, identityConflict: bidBoardLink.conflict || projectLinkConflict };
 }
 
 async function mapWithConcurrency<T, R>(
@@ -513,6 +478,7 @@ export async function POST(request: Request) {
         persisted: persisted.length,
         written: persisted.filter((project) => project.written).length,
         unchanged: persisted.filter((project) => !project.written).length,
+        identityConflicts: persisted.filter((project) => project.identityConflict).map((project) => project.bidBoardId),
         estimateDetailsQueued,
         estimateDetailProjectIds: estimateDetailsDue,
         markedMissing,

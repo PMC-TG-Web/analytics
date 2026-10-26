@@ -2,6 +2,8 @@ import { analyticsSyncProcoreConnection, pmDashboardProcoreConnection, withProco
 import { parseBidBoardStatusChangedAt } from "@/lib/productivityReviewCooldown";
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { canUpdateProjectFromBidBoard, preserveBidBoardProjectLink } from '@/lib/procoreProjectHeaderLinks';
+import { syncLegacyBidBoardProjectHeader, syncLegacyProcoreProjectHeader } from '@/lib/procoreProjectHeaders';
 import {
   makeRequest,
   getClientCredentialsToken,
@@ -203,6 +205,7 @@ function errorRateLimitUntil(error: unknown): Date | null {
 }
 
 async function upsertCanonicalProjectFromWebhook(params: {
+  companyId: string;
   procoreId: string;
   projectNumber: string | null;
   projectName: string;
@@ -210,96 +213,18 @@ async function upsertCanonicalProjectFromWebhook(params: {
   statusRaw: string | null;
   customer: string | null;
 }): Promise<void> {
-  const { procoreId, projectNumber, projectName, status, statusRaw, customer } = params;
-  const bidBoardStatus = mapV1StatusToBidBoardStatus(status);
-  const nowIso = new Date().toISOString();
-
-  const matches = await prisma.project.findMany({
-    where: {
-      OR: [
-        { procoreId },
-        { customFields: { path: ['procoreId'], equals: procoreId } },
-      ],
-    },
-    orderBy: [{ updatedAt: 'desc' }],
+  const result = await syncLegacyProcoreProjectHeader({
+    ...params,
+    procoreProjectId: params.procoreId,
+    status: mapV1StatusToBidBoardStatus(params.status),
+    customer: isMeaningfulCustomer(params.customer) ? params.customer : null,
+    source: 'procore_webhook',
   });
-
-  const existing = matches[0] ?? null;
-  const duplicateMatches = matches.slice(1);
-
-  // Keep one authoritative canonical row per Procore ID.
-  for (const duplicate of duplicateMatches) {
-    const duplicateCustomFields =
-      duplicate.customFields && typeof duplicate.customFields === 'object' && !Array.isArray(duplicate.customFields)
-        ? (duplicate.customFields as Record<string, unknown>)
-        : {};
-
-    await prisma.project.update({
-      where: { id: duplicate.id },
-      data: {
-        projectArchived: true,
-        procoreId: null,
-        customFields: {
-          ...duplicateCustomFields,
-          mergedIntoProcoreId: procoreId,
-          mergedBy: 'procore_webhook',
-          mergedAt: nowIso,
-        },
-      },
+  if (!result.project) {
+    console.warn('[procore-webhook] legacy project identity unresolved', {
+      companyId: params.companyId, projectId: params.procoreId, reason: result.reason,
     });
   }
-
-  if (existing) {
-    const existingCustomFields =
-      existing.customFields && typeof existing.customFields === 'object' && !Array.isArray(existing.customFields)
-        ? (existing.customFields as Record<string, unknown>)
-        : {};
-
-    await prisma.project.update({
-      where: { id: existing.id },
-      data: {
-        procoreId,
-        projectNumber: existing.projectNumber || projectNumber,
-        customer: isMeaningfulCustomer(customer) ? customer : (existing.customer || null),
-        customerSource: isMeaningfulCustomer(customer) ? 'procore_webhook' : (existing.customerSource || null),
-        status: bidBoardStatus || existing.status,
-        statusSource: bidBoardStatus ? 'procore_v1_mapped' : existing.statusSource,
-        customFields: {
-          ...existingCustomFields,
-          procoreId,
-          customerLabel: isMeaningfulCustomer(customer)
-            ? customer
-            : ((existingCustomFields.customerLabel as string | null | undefined) || null),
-          statusRaw,
-          bidBoardStatus,
-          statusSyncedAt: nowIso,
-          syncedFrom: 'procore_webhook',
-          syncedAt: nowIso,
-        },
-      },
-    });
-    return;
-  }
-
-  await prisma.project.create({
-    data: {
-      projectName,
-      procoreId,
-      projectNumber,
-      customer: isMeaningfulCustomer(customer) ? customer : null,
-      customerSource: isMeaningfulCustomer(customer) ? 'procore_webhook' : null,
-      status: bidBoardStatus,
-      statusSource: bidBoardStatus ? 'procore_v1_mapped' : null,
-      customFields: {
-        procoreId,
-        customerLabel: isMeaningfulCustomer(customer) ? customer : null,
-        statusRaw,
-        bidBoardStatus,
-        source: 'procore_webhook',
-        syncedAt: nowIso,
-      },
-    },
-  });
 }
 
 async function upsertPmcProjectFromWebhook(params: {
@@ -319,7 +244,7 @@ async function upsertPmcProjectFromWebhook(params: {
   zip?: string | null;
   procoreCreatedAt?: Date | null;
   procoreUpdatedAt?: Date | null;
-}): Promise<void> {
+}): Promise<boolean> {
   const {
     companyId,
     procoreProjectId,
@@ -339,6 +264,23 @@ async function upsertPmcProjectFromWebhook(params: {
     procoreUpdatedAt,
   } = params;
   const now = new Date();
+  const updateData = {
+    projectName,
+    syncedAt: now,
+    ...(bidBoardId ? { bidBoardId } : {}),
+    ...(projectNumber ? { projectNumber } : {}),
+    ...(isMeaningfulCustomer(customer) ? { customer } : {}),
+    ...(status ? { status } : {}),
+    ...(bidBoardStatus ? { bidBoardStatus } : {}),
+    ...(projectManager ? { projectManager } : {}),
+    ...(estimator ? { estimator } : {}),
+    ...(address ? { address } : {}),
+    ...(city ? { city } : {}),
+    ...(state ? { state } : {}),
+    ...(zip ? { zip } : {}),
+    ...(procoreCreatedAt ? { procoreCreatedAt } : {}),
+    ...(procoreUpdatedAt ? { procoreUpdatedAt } : {}),
+  };
 
   await prisma.pmcProject.upsert({
     where: {
@@ -351,7 +293,7 @@ async function upsertPmcProjectFromWebhook(params: {
       companyId,
       procoreProjectId,
       projectName,
-      bidBoardId: bidBoardId || null,
+      bidBoardId: null,
       projectNumber: projectNumber || null,
       customer: isMeaningfulCustomer(customer) ? customer : null,
       status: status || null,
@@ -366,24 +308,28 @@ async function upsertPmcProjectFromWebhook(params: {
       procoreUpdatedAt: procoreUpdatedAt || null,
       syncedAt: now,
     },
-    update: {
-      projectName,
-      syncedAt: now,
-      ...(bidBoardId ? { bidBoardId } : {}),
-      ...(projectNumber ? { projectNumber } : {}),
-      ...(isMeaningfulCustomer(customer) ? { customer } : {}),
-      ...(status ? { status } : {}),
-      ...(bidBoardStatus ? { bidBoardStatus } : {}),
-      ...(projectManager ? { projectManager } : {}),
-      ...(estimator ? { estimator } : {}),
-      ...(address ? { address } : {}),
-      ...(city ? { city } : {}),
-      ...(state ? { state } : {}),
-      ...(zip ? { zip } : {}),
-      ...(procoreCreatedAt ? { procoreCreatedAt } : {}),
-      ...(procoreUpdatedAt ? { procoreUpdatedAt } : {}),
-    },
+    update: bidBoardId ? {} : updateData,
   });
+  if (bidBoardId) {
+    if (!await canUpdateProjectFromBidBoard({ companyId, procoreProjectId, bidBoardId })) {
+      console.warn('[procore-webhook] ambiguous project Bid Board selection preserved', { companyId, procoreProjectId, bidBoardId });
+      return false;
+    }
+    const linked = await prisma.pmcProject.updateMany({
+      where: {
+        companyId,
+        procoreProjectId,
+        OR: [{ bidBoardId: null }, { bidBoardId }],
+      },
+      data: updateData,
+    });
+    if (linked.count !== 1) {
+      console.warn('[procore-webhook] established project Bid Board link preserved', { companyId, procoreProjectId, bidBoardId });
+      return false;
+    }
+  }
+
+  return true;
 }
 
 async function upsertPmcBidBoardProjectFromWebhook(params: {
@@ -396,7 +342,7 @@ async function upsertPmcBidBoardProjectFromWebhook(params: {
   status?: string | null;
   statusRaw?: string | null;
   payload: unknown;
-}): Promise<void> {
+}) {
   const {
     companyId,
     bidBoardId,
@@ -434,13 +380,13 @@ async function upsertPmcBidBoardProjectFromWebhook(params: {
       projectName,
       payload: payloadValue,
       syncedAt: now,
-      ...(procoreProjectId ? { procoreProjectId } : {}),
       ...(projectNumber ? { projectNumber } : {}),
       ...(isMeaningfulCustomer(customer) ? { customer } : {}),
       ...(status ? { status } : {}),
       ...(statusRaw ? { statusRaw } : {}),
     },
   });
+  return preserveBidBoardProjectLink({ companyId, bidBoardId, procoreProjectId });
 }
 
 async function upsertV1StagingFromWebhook(params: {
@@ -488,9 +434,10 @@ async function applyBidBoardStatusToV1Staging(params: {
   bidBoardName?: string | null;
   customer?: string | null;
 }) {
-  const { companyId, procoreProjectId, bidBoardStatus, bidBoardId, bidBoardName, customer } = params;
+  const { companyId, procoreProjectId, bidBoardStatus, bidBoardId } = params;
 
   if (procoreProjectId) {
+    if (!bidBoardId || !await canUpdateProjectFromBidBoard({ companyId, procoreProjectId, bidBoardId })) return 0;
     const updatedById = await prisma.$executeRawUnsafe(
       `
         UPDATE procore_project_staging
@@ -505,6 +452,12 @@ async function applyBidBoardStatusToV1Staging(params: {
         WHERE source = 'procore_v1_projects'
           AND company_id = $3
           AND procore_project_id = $4
+          AND (payload->>'bidBoardExternalId' IS NULL OR payload->>'bidBoardExternalId' = $2)
+          AND NOT EXISTS (
+            SELECT 1 FROM pmc_projects project
+            WHERE project.company_id = $3 AND project.procore_project_id = $4
+              AND project.bid_board_id IS NOT NULL AND project.bid_board_id <> $2
+          )
       `,
       bidBoardStatus ?? null,
       bidBoardId ?? null,
@@ -515,46 +468,8 @@ async function applyBidBoardStatusToV1Staging(params: {
     if (updatedById > 0) return updatedById;
   }
 
-  const normalizedName = String(bidBoardName || '').trim();
-  if (!normalizedName) return 0;
-  const normalizedCustomer = isMeaningfulCustomer(customer) ? String(customer).trim() : null;
-
-  return prisma.$executeRawUnsafe(
-    `
-      WITH candidate AS (
-        SELECT ctid
-        FROM procore_project_staging
-        WHERE source = 'procore_v1_projects'
-          AND company_id = $3
-          AND LOWER(BTRIM(COALESCE(name, ''))) = LOWER(BTRIM($4))
-        ORDER BY
-          CASE
-            WHEN $5::text IS NOT NULL
-              AND LOWER(BTRIM(COALESCE(customer, ''))) = LOWER(BTRIM($5::text))
-            THEN 0 ELSE 1
-          END,
-          synced_at DESC
-        LIMIT 1
-      )
-      UPDATE procore_project_staging s
-      SET
-        bid_board_status = $1,
-        payload = COALESCE(s.payload, '{}'::jsonb) || jsonb_build_object(
-          'bidBoardStatus', $1,
-          'bidBoardExternalId', $2,
-          'bidBoardSyncedAt', NOW()::text,
-          'bidBoardMatchMode', 'name_fallback'
-        ),
-        synced_at = NOW()
-      FROM candidate
-      WHERE s.ctid = candidate.ctid
-    `,
-    bidBoardStatus ?? null,
-    bidBoardId ?? null,
-    companyId,
-    normalizedName,
-    normalizedCustomer
-  );
+  // A name/customer match is not evidence of a Procore project identity.
+  return 0;
 }
 
 async function upsertBidBoardLive(params: {
@@ -587,13 +502,14 @@ async function upsertBidBoardLive(params: {
       ON CONFLICT (bid_board_id)
       DO UPDATE SET
         company_id = EXCLUDED.company_id,
-        procore_project_id = EXCLUDED.procore_project_id,
+        procore_project_id = COALESCE(procore_bid_board_live.procore_project_id, EXCLUDED.procore_project_id),
         name = COALESCE(EXCLUDED.name, procore_bid_board_live.name),
         status = EXCLUDED.status,
         status_raw = EXCLUDED.status_raw,
         customer = COALESCE(EXCLUDED.customer, procore_bid_board_live.customer),
         synced_at = NOW(),
         payload = EXCLUDED.payload
+      WHERE procore_bid_board_live.company_id = EXCLUDED.company_id
     `,
     bidBoardId,
     companyId,
@@ -653,104 +569,18 @@ async function upsertCanonicalProjectFromBidBoardWebhook(params: {
   statusRaw: string | null;
   customer: string | null;
 }): Promise<void> {
-  const { bidBoardId, procoreProjectId, projectName, status, statusRaw, customer } = params;
-  const nowIso = new Date().toISOString();
-  const bidBoardStatus = normalizeBidBoardStatus(status);
-
-  const matches = await prisma.project.findMany({
-    where: {
-      OR: [
-        { bidBoardId },
-        { customFields: { path: ['bidBoardId'], equals: bidBoardId } },
-        ...(procoreProjectId ? [{ procoreId: procoreProjectId }] : []),
-        ...(procoreProjectId ? [{ customFields: { path: ['procoreId'], equals: procoreProjectId } }] : []),
-      ],
-    },
-    orderBy: [{ updatedAt: 'desc' }],
+  const result = await syncLegacyBidBoardProjectHeader({
+    ...params,
+    status: normalizeBidBoardStatus(params.status),
+    customer: isMeaningfulCustomer(params.customer) ? params.customer : null,
+    source: 'procore_webhook',
   });
-
-  const existing = matches[0] ?? null;
-  const duplicateMatches = matches.slice(1);
-
-  for (const duplicate of duplicateMatches) {
-    const duplicateCustomFields =
-      duplicate.customFields && typeof duplicate.customFields === 'object' && !Array.isArray(duplicate.customFields)
-        ? (duplicate.customFields as Record<string, unknown>)
-        : {};
-
-    await prisma.project.update({
-      where: { id: duplicate.id },
-      data: {
-        projectArchived: true,
-        procoreId: null,
-        bidBoardId: null,
-        customFields: {
-          ...duplicateCustomFields,
-          mergedIntoProcoreId: procoreProjectId || bidBoardId,
-          mergedBy: 'procore_webhook',
-          mergedAt: nowIso,
-        },
-      },
+  if (!result.project) {
+    console.warn('[procore-webhook] legacy Bid Board identity unresolved', {
+      companyId: params.companyId, bidBoardId: params.bidBoardId, reason: result.reason,
     });
   }
-
-  if (existing) {
-    const existingCustomFields =
-      existing.customFields && typeof existing.customFields === 'object' && !Array.isArray(existing.customFields)
-        ? (existing.customFields as Record<string, unknown>)
-        : {};
-
-    await prisma.project.update({
-      where: { id: existing.id },
-      data: {
-        bidBoardId,
-        procoreId: procoreProjectId || existing.procoreId,
-        projectName: existing.projectName || projectName,
-        customer: isMeaningfulCustomer(customer) ? customer : (existing.customer || null),
-        customerSource: isMeaningfulCustomer(customer) ? 'procore_bid_board' : (existing.customerSource || null),
-        status: bidBoardStatus || existing.status,
-        statusSource: bidBoardStatus ? 'procore_bid_board' : existing.statusSource,
-        customFields: {
-          ...existingCustomFields,
-          bidBoardId,
-          procoreId: procoreProjectId || (existingCustomFields.procoreId as string | null | undefined),
-          customerLabel: isMeaningfulCustomer(customer)
-            ? customer
-            : ((existingCustomFields.customerLabel as string | null | undefined) || null),
-          bidBoardStatus,
-          bidBoardStatusRaw: statusRaw,
-          statusSyncedAt: nowIso,
-          syncedFrom: 'procore_webhook',
-          syncedAt: nowIso,
-        },
-      },
-    });
-    return;
-  }
-
-  await prisma.project.create({
-    data: {
-      projectName,
-      bidBoardId,
-      procoreId: procoreProjectId,
-      customer: isMeaningfulCustomer(customer) ? customer : null,
-      customerSource: isMeaningfulCustomer(customer) ? 'procore_bid_board' : null,
-      status: bidBoardStatus,
-      statusSource: bidBoardStatus ? 'procore_bid_board' : null,
-      customFields: {
-        bidBoardId,
-        procoreId: procoreProjectId,
-        bidBoardStatus,
-        bidBoardStatusRaw: statusRaw,
-        customerLabel: isMeaningfulCustomer(customer) ? customer : null,
-        source: 'procore_webhook',
-        syncedAt: nowIso,
-      },
-    },
-  });
 }
-
-// ─── Projects handler ────────────────────────────────────────────────────────
 
 async function handleProjectsEvent(event: {
   companyId: string | null;
@@ -848,15 +678,6 @@ async function handleProjectsEvent(event: {
     existingPmcProject?.bidBoardStatus || existingPmcProject?.status || null
   );
 
-  await upsertCanonicalProjectFromWebhook({
-    procoreId: resourceId,
-    projectNumber,
-    projectName,
-    status,
-    statusRaw,
-    customer,
-  });
-
   await upsertPmcProjectFromWebhook({
     companyId,
     procoreProjectId,
@@ -873,6 +694,16 @@ async function handleProjectsEvent(event: {
     zip: firstStr(project.zip, project.zip_code, asObj(project.address)?.zip),
     procoreCreatedAt: readDate(project.created_at),
     procoreUpdatedAt: readDate(project.updated_at),
+  });
+
+  await upsertCanonicalProjectFromWebhook({
+    companyId,
+    procoreId: procoreProjectId,
+    projectNumber,
+    projectName,
+    status,
+    statusRaw,
+    customer,
   });
 
   if (!previouslyComplete && isCompleteProjectStatus(bidBoardStatus || status)) {
@@ -1012,7 +843,7 @@ async function handleBidBoardProjectsEvent(event: {
   const payloadRecord = unwrapBidBoardProjectPayload(event.payload) || asObj(event.payload);
   const resourceId = (
     event.resourceId ||
-    firstStr(payloadRecord?.id, payloadRecord?.bid_board_project_id, payloadRecord?.project_id) ||
+    firstStr(payloadRecord?.id, payloadRecord?.bid_board_project_id) ||
     ''
   ).trim();
 
@@ -1028,7 +859,7 @@ async function handleBidBoardProjectsEvent(event: {
   if (!project) return;
 
   const bidBoardId = firstStr(project.id, project.bid_board_project_id, resourceId) || resourceId;
-  const procoreProjectId = firstStr(project.project_id, project.procore_project_id) || null;
+  let procoreProjectId = text(project.project_id) || text(project.procore_project_id) || null;
   const projectNumber = firstStr(project.project_number, project.number) || null;
   const projectName = firstStr(project.name, project.display_name, project.title) || 'Untitled Bid Board Project';
   const statusRaw =
@@ -1071,18 +902,8 @@ async function handleBidBoardProjectsEvent(event: {
     }
   }
 
-  await upsertBidBoardLive({
-    companyId,
-    bidBoardId,
-    procoreProjectId,
-    name: projectName,
-    status: bidBoardStatus,
-    statusRaw,
-    customer: isMeaningfulCustomer(customer) ? customer : null,
-    payload: project,
-  });
 
-  await upsertPmcBidBoardProjectFromWebhook({
+  const bidBoardLink = await upsertPmcBidBoardProjectFromWebhook({
     companyId,
     bidBoardId,
     procoreProjectId,
@@ -1094,8 +915,21 @@ async function handleBidBoardProjectsEvent(event: {
     payload: project,
   });
 
+  await upsertBidBoardLive({
+    companyId,
+    bidBoardId,
+    procoreProjectId: bidBoardLink.procoreProjectId,
+    name: projectName,
+    status: bidBoardStatus,
+    statusRaw,
+    customer: isMeaningfulCustomer(customer) ? customer : null,
+    payload: project,
+  });
+  procoreProjectId = bidBoardLink.procoreProjectId;
+
+  let projectLinkAccepted = true;
   if (procoreProjectId) {
-    await upsertPmcProjectFromWebhook({
+    projectLinkAccepted = await upsertPmcProjectFromWebhook({
       companyId,
       procoreProjectId,
       bidBoardId,
@@ -1105,7 +939,7 @@ async function handleBidBoardProjectsEvent(event: {
       bidBoardStatus,
     });
 
-    if (!previouslyComplete && isCompleteProjectStatus(bidBoardStatus)) {
+    if (projectLinkAccepted && !previouslyComplete && isCompleteProjectStatus(bidBoardStatus)) {
       const taskResult = await ensureProductivityReviewTaskOnComplete({
         token,
         companyId,
@@ -1124,39 +958,26 @@ async function handleBidBoardProjectsEvent(event: {
     }
   }
 
-  await upsertCanonicalProjectFromBidBoardWebhook({
-    companyId,
-    bidBoardId,
-    procoreProjectId,
-    projectName,
-    status: bidBoardStatus,
-    statusRaw,
-    customer,
-  });
+  if (!bidBoardLink.conflict && projectLinkAccepted) {
+    await upsertCanonicalProjectFromBidBoardWebhook({
+      companyId,
+      bidBoardId,
+      procoreProjectId,
+      projectName,
+      status: bidBoardStatus,
+      statusRaw,
+      customer,
+    });
+  }
 
-  const updatedStagingRows = await applyBidBoardStatusToV1Staging({
+  await applyBidBoardStatusToV1Staging({
     companyId,
-    procoreProjectId,
+    procoreProjectId: projectLinkAccepted ? procoreProjectId : null,
     bidBoardStatus,
     bidBoardId,
     bidBoardName: projectName,
     customer,
   });
-
-  if (bidBoardStatus && updatedStagingRows === 0 && procoreProjectId) {
-    await prisma.$executeRawUnsafe(
-      `
-        UPDATE procore_project_staging
-        SET bid_board_status = $1, synced_at = NOW()
-        WHERE source = 'procore_v1_projects'
-          AND company_id = $2
-          AND procore_project_id = $3
-      `,
-      bidBoardStatus,
-      companyId,
-      procoreProjectId
-    );
-  }
 }
 
 // ─── Timecards handler ───────────────────────────────────────────────────────

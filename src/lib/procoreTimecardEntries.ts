@@ -1,5 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { resolveProcoreLegacyProject } from "@/lib/procoreLegacyProjectIdentity";
+import { selectProcoreSourceProjectLink, reportProcoreSourceProjectLinkConflicts } from "@/lib/procoreSourceProjectLink";
 import { extractTimesheetId } from "@/lib/timecardNotification";
 
 export type ProcoreTimecardEntry = Record<string, unknown>;
@@ -330,69 +332,6 @@ function extractPayloadColumns(
   };
 }
 
-async function resolveLinkedProject(params: PersistTimecardEntriesParams) {
-  const { companyId, projectId, projectName, projectNumber, createProjectIfMissing } = params;
-
-  const matchers: Prisma.ProjectWhereInput[] = [
-    { customFields: { path: ["procoreProjectId"], equals: projectId } },
-    { customFields: { path: ["procoreId"], equals: projectId } },
-    { projectNumber: projectId },
-  ];
-
-  if (projectNumber) matchers.push({ projectNumber });
-  if (projectName && projectNumber) matchers.push({ projectName, projectNumber });
-  else if (projectName) matchers.push({ projectName });
-
-  const existing = await prisma.project.findFirst({
-    where: { OR: matchers },
-    select: { id: true, projectNumber: true, projectName: true, customFields: true },
-  });
-
-  if (existing) {
-    if (createProjectIfMissing) {
-      const existingCustomFields = asObject(existing.customFields);
-      const existingCompanyId = String(existingCustomFields.procoreCompanyId || "").trim() || null;
-      await prisma.project.update({
-        where: { id: existing.id },
-        data: {
-          projectNumber: existing.projectNumber || projectNumber || projectId,
-          projectName: existing.projectName || projectName || `Procore Project ${projectId}`,
-          customFields: {
-            ...existingCustomFields,
-            procoreProjectId: projectId,
-            procoreCompanyId: companyId || existingCompanyId,
-            syncedFrom: "procore_timecards",
-            timecardSyncedAt: new Date().toISOString(),
-          } as Prisma.InputJsonObject,
-        },
-      });
-    }
-    return {
-      project: { id: existing.id, projectNumber: existing.projectNumber, projectName: existing.projectName },
-      created: false,
-    };
-  }
-
-  if (!createProjectIfMissing) return { project: null, created: false };
-
-  const created = await prisma.project.create({
-    data: {
-      projectNumber: projectNumber || projectId,
-      projectName: projectName || `Procore Project ${projectId}`,
-      status: "Active",
-      customFields: {
-        procoreProjectId: projectId,
-        procoreCompanyId: companyId || null,
-        syncedFrom: "procore_timecards",
-        timecardSyncedAt: new Date().toISOString(),
-      },
-    },
-    select: { id: true, projectNumber: true, projectName: true },
-  });
-
-  return { project: created, created: true };
-}
-
 export async function persistTimecardEntries(
   entries: ProcoreTimecardEntry[],
   params: PersistTimecardEntriesParams
@@ -401,33 +340,32 @@ export async function persistTimecardEntries(
     return { attempted: 0, saved: 0, skipped: 0, notificationsQueued: 0, projectLinked: false, projectCreated: false, linkedProjectId: null as string | null };
   }
 
-  const linkedProjectResult = await resolveLinkedProject(params);
+  const linkedProjectResult = await resolveProcoreLegacyProject({ ...params, companyId: params.companyId, source: "procore_timecards" });
   await ensureUnpackedFieldsTable();
-  const expectedProjectId = linkedProjectResult.project?.id ?? null;
   const expectedCompanyId = params.companyId || null;
-  const existingEntries = params.persistUnpackedFields === false
-    ? await prisma.timecardEntry.findMany({
-        where: {
-          id: {
-            in: entries
-              .map((entry) => String(entry.id ?? "").trim())
-              .filter(Boolean)
-              .map((procoreId) => `tc_${procoreId}_${params.projectId}`),
-          },
-        },
-        select: {
-          id: true,
-          projectId: true,
-          procoreCompanyId: true,
-          procoreProjectId: true,
-          procoreUpdatedAt: true,
-        },
-      })
-    : [];
+  const existingEntries = await prisma.timecardEntry.findMany({
+    where: {
+      id: {
+        in: entries
+          .map((entry) => String(entry.id ?? "").trim())
+          .filter(Boolean)
+          .map((procoreId) => `tc_${procoreId}_${params.projectId}`),
+      },
+    },
+    select: {
+      id: true,
+      projectId: true,
+      jobKey: true,
+      procoreCompanyId: true,
+      procoreProjectId: true,
+      procoreUpdatedAt: true,
+    },
+  });
   const existingEntriesById = new Map(existingEntries.map((entry) => [entry.id, entry]));
 
   let saved = 0;
   let skipped = 0;
+  let projectLinkConflicts = 0;
   let cursor = 0;
   const workerCount = Math.min(8, Math.max(1, entries.length));
 
@@ -444,10 +382,13 @@ export async function persistTimecardEntries(
     const deterministicId = `tc_${procoreId}_${params.projectId}`;
     const sourceUpdatedAt = toNullableDate(entry.updated_at);
     const existingEntry = existingEntriesById.get(deterministicId);
+    const projectLink = selectProcoreSourceProjectLink(existingEntry, linkedProjectResult.project, "number");
+    if (projectLink.conflict) projectLinkConflicts += 1;
     if (
-      sourceUpdatedAt
+      params.persistUnpackedFields === false
+      && sourceUpdatedAt
       && existingEntry?.procoreUpdatedAt?.getTime() === sourceUpdatedAt.getTime()
-      && (existingEntry.projectId ?? null) === expectedProjectId
+      && (existingEntry.projectId ?? null) === (projectLink.projectId ?? null)
       && (existingEntry.procoreCompanyId ?? null) === expectedCompanyId
       && existingEntry.procoreProjectId === params.projectId
     ) {
@@ -479,8 +420,8 @@ export async function persistTimecardEntries(
     };
 
     const sharedFields = {
-      projectId: linkedProjectResult.project?.id,
-      jobKey: linkedProjectResult.project?.projectNumber || params.projectNumber || params.projectId,
+      projectId: projectLink.projectId,
+      jobKey: projectLink.jobKey,
       date: new Date(`${dateText}T00:00:00.000Z`),
       party: String(party?.name ?? "") || null,
       hours: Number.isFinite(parsedHours) ? parsedHours : null,
@@ -492,7 +433,7 @@ export async function persistTimecardEntries(
     try {
       const savedEntry = await prisma.timecardEntry.upsert({
         where: { id: deterministicId },
-        update: sharedFields,
+        update: { ...sharedFields, ...projectLink.update },
         create: { id: deterministicId, ...sharedFields },
         select: { id: true },
       });
@@ -509,6 +450,7 @@ export async function persistTimecardEntries(
 
   await Promise.all(Array.from({ length: workerCount }, () => persistNextEntry()));
   const notificationsQueued = await enqueueEligibleTimecardNotifications(entries, params);
+  reportProcoreSourceProjectLinkConflicts("timecards", params, projectLinkConflicts);
 
   return {
     attempted: entries.length,
@@ -518,5 +460,7 @@ export async function persistTimecardEntries(
     projectLinked: Boolean(linkedProjectResult.project),
     projectCreated: linkedProjectResult.created,
     linkedProjectId: linkedProjectResult.project?.id ?? null,
+    projectIdentity: { status: linkedProjectResult.status, reason: linkedProjectResult.reason },
+    projectLinkConflicts,
   };
 }

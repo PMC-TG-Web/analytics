@@ -10,6 +10,8 @@ import {
 } from "@/lib/procore";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { canUpdateProjectFromBidBoard, preserveBidBoardProjectLink } from "@/lib/procoreProjectHeaderLinks";
+import { syncLegacyBidBoardProjectHeader, syncLegacyProcoreProjectHeader } from "@/lib/procoreProjectHeaders";
 import { extractCustomerFromCustomFields, isMeaningfulCustomer } from "@/lib/procoreProjectFeed";
 import { buildAllowedProcoreHostCandidates } from "@/lib/procoreHosts";
 
@@ -168,13 +170,14 @@ async function upsertBidBoardLive(params: {
       ON CONFLICT (bid_board_id)
       DO UPDATE SET
         company_id = EXCLUDED.company_id,
-        procore_project_id = EXCLUDED.procore_project_id,
+        procore_project_id = COALESCE(procore_bid_board_live.procore_project_id, EXCLUDED.procore_project_id),
         name = EXCLUDED.name,
         status = EXCLUDED.status,
         status_raw = EXCLUDED.status_raw,
         customer = EXCLUDED.customer,
         payload = EXCLUDED.payload,
         synced_at = NOW()
+      WHERE procore_bid_board_live.company_id = EXCLUDED.company_id
     `,
     bidBoardId,
     companyId,
@@ -351,7 +354,6 @@ async function upsertPmcProject(params: {
       syncedAt: new Date(),
     },
     update: {
-      bidBoardId: bidBoardId || null,
       projectNumber: projectNumber || null,
       projectName,
       customer: customer || null,
@@ -416,7 +418,6 @@ async function upsertPmcBidBoardProject(params: {
       syncedAt: new Date(),
     },
     update: {
-      procoreProjectId: procoreProjectId || null,
       projectNumber: projectNumber || null,
       projectName,
       customer: customer || null,
@@ -427,6 +428,7 @@ async function upsertPmcBidBoardProject(params: {
       syncedAt: new Date(),
     },
   });
+  return preserveBidBoardProjectLink({ companyId, bidBoardId, procoreProjectId });
 }
 
 async function applyBidBoardStatusToV1Staging(params: {
@@ -437,10 +439,11 @@ async function applyBidBoardStatusToV1Staging(params: {
   bidBoardName?: string | null;
   customer?: string | null;
 }) {
-  const { companyId, procoreProjectId, bidBoardStatus, bidBoardId, bidBoardName, customer } = params;
+  const { companyId, procoreProjectId, bidBoardStatus, bidBoardId } = params;
 
-  // First attempt: exact match by Procore project id.
+  // Only an exact company/project link can receive a Bid Board status.
   if (procoreProjectId) {
+    if (!bidBoardId || !await canUpdateProjectFromBidBoard({ companyId, procoreProjectId, bidBoardId })) return 0;
     const updatedById = await prisma.$executeRawUnsafe(
       `
         UPDATE procore_project_staging
@@ -455,6 +458,12 @@ async function applyBidBoardStatusToV1Staging(params: {
         WHERE source = 'procore_v1_projects'
           AND company_id = $3
           AND procore_project_id = $4
+          AND (payload->>'bidBoardExternalId' IS NULL OR payload->>'bidBoardExternalId' = $2)
+          AND NOT EXISTS (
+            SELECT 1 FROM pmc_projects project
+            WHERE project.company_id = $3 AND project.procore_project_id = $4
+              AND project.bid_board_id IS NOT NULL AND project.bid_board_id <> $2
+          )
       `,
       bidBoardStatus ?? null,
       bidBoardId ?? null,
@@ -465,47 +474,8 @@ async function applyBidBoardStatusToV1Staging(params: {
     if (updatedById > 0) return updatedById;
   }
 
-  // Fallback: match one best candidate by normalized name (and customer priority when available).
-  const normalizedName = String(bidBoardName || '').trim();
-  if (!normalizedName) return 0;
-  const normalizedCustomer = isMeaningfulCustomer(customer) ? String(customer).trim() : null;
-
-  return prisma.$executeRawUnsafe(
-    `
-      WITH candidate AS (
-        SELECT ctid
-        FROM procore_project_staging
-        WHERE source = 'procore_v1_projects'
-          AND company_id = $3
-          AND LOWER(BTRIM(COALESCE(name, ''))) = LOWER(BTRIM($4))
-        ORDER BY
-          CASE
-            WHEN $5::text IS NOT NULL
-              AND LOWER(BTRIM(COALESCE(customer, ''))) = LOWER(BTRIM($5::text))
-            THEN 0 ELSE 1
-          END,
-          synced_at DESC
-        LIMIT 1
-      )
-      UPDATE procore_project_staging s
-      SET
-        bid_board_status = $1,
-        payload = COALESCE(s.payload, '{}'::jsonb) || jsonb_build_object(
-          'bidBoardStatus', $1,
-          'bidBoardExternalId', $2,
-          'bidBoardSyncedAt', NOW()::text,
-          'bidBoardMatchMode', 'name_fallback'
-        ),
-        synced_at = NOW()
-      FROM candidate
-      WHERE s.ctid = candidate.ctid
-    `,
-    bidBoardStatus ?? null,
-    bidBoardId ?? null,
-    companyId,
-    normalizedName,
-    normalizedCustomer
-  );
+  // Missing exact IDs remain unlinked; display fields cannot select a target.
+  return 0;
 }
 
 async function runAllProjectsSync(request: Request) {
@@ -1099,7 +1069,7 @@ async function runAllProjectsSync(request: Request) {
           for (const item of items) {
             const record = isRecord(item) ? item : {};
             const key = String(
-              record.id || `${String(record.project_id || '').trim()}~${String(record.name || '').trim()}~${String(record.status || '').trim()}`
+              record.id || record.bid_board_project_id || ''
             ).trim();
             if (!key) continue;
             if (!merged.has(key)) {
@@ -1124,7 +1094,7 @@ async function runAllProjectsSync(request: Request) {
     for (const item of await fetchBidBoardProjectsForToken(accessToken)) {
       const record = isRecord(item) ? item : {};
       const key = String(
-        record.id || `${String(record.project_id || '').trim()}~${String(record.name || '').trim()}~${String(record.status || '').trim()}`
+        record.id || record.bid_board_project_id || ''
       ).trim();
       if (!key) continue;
       bidBoardByKey.set(key, item);
@@ -1134,7 +1104,7 @@ async function runAllProjectsSync(request: Request) {
       for (const item of await fetchBidBoardProjectsForToken(String(userAccessToken).trim())) {
         const record = isRecord(item) ? item : {};
         const key = String(
-          record.id || `${String(record.project_id || '').trim()}~${String(record.name || '').trim()}~${String(record.status || '').trim()}`
+          record.id || record.bid_board_project_id || ''
         ).trim();
         if (!key) continue;
         if (!bidBoardByKey.has(key)) {
@@ -1211,6 +1181,7 @@ async function runAllProjectsSync(request: Request) {
       stagingBidBoardStatusUpdated: 0,
       stagingBidBoardStatusSkipped: 0,
       onboardingQueued: 0,
+      identityConflicts: [] as Array<{ source: string; externalId: string; reason: string }>,
       errors: [] as string[]
     };
     const writeConcurrency = Math.min(
@@ -1222,11 +1193,6 @@ async function runAllProjectsSync(request: Request) {
     );
 
     const v1CustomerByProcoreId = new Map<string, string>();
-    const v1CustomerByName = new Map<string, string>();
-
-    function normalizeKey(value: unknown): string {
-      return String(value ?? '').trim().toLowerCase();
-    }
 
     function pickCustomerFromUnknown(value: unknown): string {
       if (typeof value === 'string') return value;
@@ -1258,12 +1224,12 @@ async function runAllProjectsSync(request: Request) {
       }
     });
 
-    // 3. Process V1 Projects (Upsert into 'Project' table)
-    // We use customFields to store the Procore ID to avoid breaking existing logic
-    // We DO NOT overwrite 'status' if the project is already mapped to a schedule, unless it's new
+    // 3. Persist exact canonical headers, then resolve the legacy scheduling row.
+    // Identity conflicts retain the source mirrors and leave legacy records untouched.
     await mapWithConcurrency(allV1Projects, writeConcurrency, async (p) => {
       try {
-        const procoreId = String(p.id);
+        const procoreId = String(p.id || '').trim();
+        if (!procoreId) return;
         const name = p.name || p.display_name || "Untitled Procore Project";
         const number = p.project_number || "";
         
@@ -1289,21 +1255,8 @@ async function runAllProjectsSync(request: Request) {
 
         if (isMeaningfulCustomer(customer)) {
           v1CustomerByProcoreId.set(procoreId, customer);
-          const nameKey = normalizeKey(name);
-          if (nameKey) v1CustomerByName.set(nameKey, customer);
         }
         
-        // Match by procoreProjectId, projectNumber, or projectName
-        const existing = await prisma.project.findFirst({
-          where: {
-            OR: [
-              { procoreId: procoreId },
-              { customFields: { path: ['procoreId'], equals: procoreId } },
-              { projectNumber: number, projectName: name }
-            ]
-          }
-        });
-
         const status = p.status || p.project_status?.name || p.project_stage?.name || "Active";
         const statusRaw = p.status || p.project_status?.name || p.project_stage?.name || null;
         const fallbackBidBoardStatus = mapV1StatusToBidBoardStatus(status);
@@ -1341,66 +1294,19 @@ async function runAllProjectsSync(request: Request) {
         });
         results.pmcProjectsSynced++;
 
-        if (existing) {
-          const existingCustomFields =
-            existing.customFields && typeof existing.customFields === 'object' && !Array.isArray(existing.customFields)
-              ? (existing.customFields as Record<string, unknown>)
-              : {};
-
-          const canonicalStatus = fallbackBidBoardStatus || existing.status;
-          const canonicalStatusSource = fallbackBidBoardStatus ? 'procore_v1_mapped' : existing.statusSource;
-
-          await prisma.project.update({
-            where: { id: existing.id },
-            data: {
-              // procoreProjectId: procoreId,
-              // procoreLastSync: new Date(),
-              procoreId,
-              // Only fill if current values are empty or a default "Unknown" placeholder
-              projectNumber: existing.projectNumber || number,
-              customer: isMeaningfulCustomer(customer)
-                ? customer
-                : (existing.customer || customer || null),
-              status: canonicalStatus,
-              customerSource: isMeaningfulCustomer(customer)
-                ? 'procore_v1'
-                : (existing.customerSource || null),
-              statusSource: canonicalStatusSource,
-              customFields: {
-                ...existingCustomFields,
-                procoreId: procoreId, // Storing in JSON instead of new column for now
-                customerLabel: isMeaningfulCustomer(customer)
-                  ? customer
-                  : ((existingCustomFields.customerLabel as string | null | undefined) || null),
-                statusRaw,
-                bidBoardStatus: fallbackBidBoardStatus,
-                statusSyncedAt: new Date().toISOString(),
-                syncedFrom: 'procore_v1',
-                syncedAt: new Date().toISOString()
-              }
-            }
-          });
-        } else {
-          await prisma.project.create({
-            data: {
-              projectName: name,
-              procoreId,
-              projectNumber: number,
-              customer: isMeaningfulCustomer(customer) ? customer : null,
-              customerSource: isMeaningfulCustomer(customer) ? 'procore_v1' : null,
-              status: fallbackBidBoardStatus,
-              statusSource: fallbackBidBoardStatus ? 'procore_v1_mapped' : null,
-              // procoreProjectId: procoreId,
-              customFields: { 
-                procoreId: procoreId,
-                customerLabel: isMeaningfulCustomer(customer) ? customer : null,
-                bidBoardStatus: fallbackBidBoardStatus,
-                statusRaw,
-                source: 'procore_v1',
-                syncedAt: new Date().toISOString()
-              }
-            }
-          });
+        const identity = await syncLegacyProcoreProjectHeader({
+          companyId,
+          procoreProjectId: procoreId,
+          projectName: name,
+          projectNumber: number || null,
+          customer: isMeaningfulCustomer(customer) ? customer : null,
+          status: fallbackBidBoardStatus,
+          statusRaw,
+          source: 'procore_v1',
+        });
+        if (!identity.project) {
+          results.identityConflicts.push({ source: 'procore_v1', externalId: procoreId, reason: identity.reason || identity.status });
+          return;
         }
         results.v1Synced++;
       } catch (e: unknown) {
@@ -1440,8 +1346,9 @@ async function runAllProjectsSync(request: Request) {
     // 4. Process Bid Board Projects
     await mapWithConcurrency(allBidBoardProjects, writeConcurrency, async (bb) => {
       try {
-        const bidId = String(bb.id);
-        const procoreProjectId = bb.project_id ? String(bb.project_id) : null;
+        const bidId = String(bb.id || bb.bid_board_project_id || '').trim();
+        if (!bidId) return;
+        const procoreProjectId = bb.project_id || bb.procore_project_id ? String(bb.project_id || bb.procore_project_id).trim() : null;
         const name = bb.name || "Untitled Bid";
         const bidStatus = normalizeBidBoardStatus(bb.status) || "Bid Submitted";
         const bidStatusRaw = bb.status || null;
@@ -1484,25 +1391,8 @@ async function runAllProjectsSync(request: Request) {
           customer = v1CustomerByProcoreId.get(procoreProjectId) || '';
         }
 
-        if (!isMeaningfulCustomer(customer)) {
-          const nameKey = normalizeKey(name);
-          if (nameKey && v1CustomerByName.has(nameKey)) {
-            customer = v1CustomerByName.get(nameKey) || '';
-          }
-        }
 
-        await upsertBidBoardLive({
-          companyId,
-          bidBoardId: bidId,
-          procoreProjectId,
-          name,
-          status: bidStatus,
-          statusRaw: bidStatusRaw,
-          customer: isMeaningfulCustomer(customer) ? customer : null,
-          payload: bb,
-        });
-
-        await upsertPmcBidBoardProject({
+        const bidBoardLink = await upsertPmcBidBoardProject({
           companyId,
           bidBoardId: bidId,
           procoreProjectId,
@@ -1514,78 +1404,44 @@ async function runAllProjectsSync(request: Request) {
           statusRaw: bidStatusRaw,
           payload: bb,
         });
+
+        await upsertBidBoardLive({
+          companyId,
+          bidBoardId: bidId,
+          procoreProjectId: bidBoardLink.procoreProjectId,
+          name,
+          status: bidStatus,
+          statusRaw: bidStatusRaw,
+          customer: isMeaningfulCustomer(customer) ? customer : null,
+          payload: bb,
+        });
         results.pmcBidBoardProjectsSynced++;
 
-        // Match by customFields path instead of new columns
-        const existing = await prisma.project.findFirst({
-          where: {
-            OR: [
-              { bidBoardId: bidId },
-              { customFields: { path: ['bidBoardId'], equals: bidId } },
-              ...(procoreProjectId ? [{ procoreId: procoreProjectId }] : []),
-              ...(procoreProjectId ? [{ customFields: { path: ['procoreId'], equals: procoreProjectId } }] : [])
-            ]
-          }
-        });
-
-        if (existing) {
-          const existingCustomFields =
-            existing.customFields && typeof existing.customFields === 'object' && !Array.isArray(existing.customFields)
-              ? (existing.customFields as Record<string, unknown>)
-              : {};
-
-          await prisma.project.update({
-            where: { id: existing.id },
-            data: {
-              bidBoardId: bidId,
-              procoreId: procoreProjectId || existing.procoreId,
-              customer: isMeaningfulCustomer(customer) ? customer : (existing.customer || null),
-              status: bidStatus,
-              customerSource: isMeaningfulCustomer(customer)
-                ? 'procore_bid_board'
-                : (existing.customerSource || null),
-              statusSource: 'procore_bid_board',
-              customFields: {
-                ...existingCustomFields,
-                bidBoardId: bidId,
-                procoreId: procoreProjectId || (existingCustomFields.procoreId as string | null | undefined),
-                customerLabel: isMeaningfulCustomer(customer)
-                  ? customer
-                  : ((existingCustomFields.customerLabel as string | null | undefined) || null),
-                bidBoardStatus: bidStatus,
-                bidBoardStatusRaw: bidStatusRaw,
-                statusSyncedAt: new Date().toISOString(),
-                syncedAt: new Date().toISOString()
-              }
-            }
-          });
+        const canUpdateLinkedProject = !bidBoardLink.conflict && (
+          !bidBoardLink.procoreProjectId || await canUpdateProjectFromBidBoard({
+            companyId, procoreProjectId: bidBoardLink.procoreProjectId, bidBoardId: bidId,
+          })
+        );
+        const identity = canUpdateLinkedProject ? await syncLegacyBidBoardProjectHeader({
+          companyId,
+          bidBoardId: bidId,
+          procoreProjectId: bidBoardLink.procoreProjectId,
+          projectName: name,
+          projectNumber: typeof bb.project_number === 'string' ? bb.project_number : null,
+          customer: isMeaningfulCustomer(customer) ? customer : null,
+          status: bidStatus,
+          statusRaw: bidStatusRaw,
+          source: 'procore_bid_board',
+        }) : { project: null, status: 'conflict', reason: 'canonical_bid_selection_conflict' };
+        if (identity.project) {
+          results.bidBoardSynced++;
         } else {
-          await prisma.project.create({
-            data: {
-              projectName: name,
-              bidBoardId: bidId,
-              procoreId: procoreProjectId,
-              customer: isMeaningfulCustomer(customer) ? customer : null,
-              customerSource: isMeaningfulCustomer(customer) ? 'procore_bid_board' : null,
-              status: bidStatus,
-              statusSource: 'procore_bid_board',
-              customFields: {
-                bidBoardId: bidId,
-                procoreId: procoreProjectId,
-                bidBoardStatus: bidStatus,
-                bidBoardStatusRaw: bidStatusRaw,
-                customerLabel: isMeaningfulCustomer(customer) ? customer : null,
-                source: 'procore_bid_board',
-                syncedAt: new Date().toISOString()
-              }
-            }
-          });
+          results.identityConflicts.push({ source: 'procore_bid_board', externalId: bidId, reason: identity.reason || identity.status });
         }
-        results.bidBoardSynced++;
 
         const updatedStagingRows = await applyBidBoardStatusToV1Staging({
           companyId,
-          procoreProjectId,
+          procoreProjectId: bidBoardLink.procoreProjectId,
           bidBoardStatus: bidStatus,
           bidBoardId: bidId,
           bidBoardName: name,

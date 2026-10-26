@@ -1,5 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { resolveProcoreLegacyProject } from "@/lib/procoreLegacyProjectIdentity";
+import { selectProcoreSourceProjectLink, reportProcoreSourceProjectLinkConflicts } from "@/lib/procoreSourceProjectLink";
 
 export type ProcoreChangeOrder = Record<string, unknown>;
 export type ProcoreChangeOrderLineItem = Record<string, unknown>;
@@ -141,62 +143,44 @@ async function persistLineItemUnpackedFields(lineItemId: string, record: Procore
   }
 }
 
-async function resolveLinkedProject(params: PersistParams) {
-  const { companyId, projectId, projectName, projectNumber, createProjectIfMissing } = params;
-  const matchers: Prisma.ProjectWhereInput[] = [
-    { customFields: { path: ["procoreProjectId"], equals: projectId } },
-    { customFields: { path: ["procoreId"], equals: projectId } },
-    { projectNumber: projectId },
-  ];
-  if (projectNumber) matchers.push({ projectNumber });
-  if (projectName && projectNumber) matchers.push({ projectName, projectNumber });
-  else if (projectName) matchers.push({ projectName });
-
-  const existing = await prisma.project.findFirst({ where: { OR: matchers }, select: { id: true } });
-  if (existing) return { linkedProjectId: existing.id, projectCreated: false };
-  if (!createProjectIfMissing) return { linkedProjectId: null, projectCreated: false };
-
-  const created = await prisma.project.create({
-    data: {
-      projectNumber: projectNumber || projectId,
-      projectName: projectName || `Procore Project ${projectId}`,
-      customFields: { procoreProjectId: projectId, procoreCompanyId: companyId || null, source: "procore_cco_sync" },
-    },
-    select: { id: true },
-  });
-  return { linkedProjectId: created.id, projectCreated: true };
-}
 
 export async function persistChangeOrderLineItems(
   changeOrder: ProcoreChangeOrder,
   lineItems: ProcoreChangeOrderLineItem[],
   params: PersistParams
-): Promise<{ saved: number; skipped: number; linkedProjectId: string | null; projectCreated: boolean; changeOrderDbId: string }> {
+) {
   const { companyId, projectId } = params;
-  const { linkedProjectId, projectCreated } = await resolveLinkedProject(params);
+  const linkedProjectResult = await resolveProcoreLegacyProject({ ...params, companyId: params.companyId, source: "procore_cco_sync" });
+  const linkedProjectId = linkedProjectResult.project?.id ?? null;
+  const projectCreated = linkedProjectResult.created;
+  const projectIdentity = { status: linkedProjectResult.status, reason: linkedProjectResult.reason };
+  let projectLinkConflicts = 0;
 
   // Upsert the change order itself
   const rawCoId = toNullableString(asObject(changeOrder).id);
-  if (!rawCoId) return { saved: 0, skipped: lineItems.length, linkedProjectId, projectCreated, changeOrderDbId: "" };
+  if (!rawCoId) return { saved: 0, skipped: lineItems.length, linkedProjectId, projectCreated, changeOrderDbId: "", projectIdentity, projectLinkConflicts };
 
   const coUid = `cco_${rawCoId}_${projectId}`;
   const coCols = extractChangeOrderColumns(changeOrder, companyId, projectId);
+  const existingCo = await prisma.commitmentChangeOrder.findFirst({
+    where: { procoreId: rawCoId, procoreProjectId: projectId },
+    select: { id: true, projectId: true, jobKey: true },
+  });
+  const coProjectLink = selectProcoreSourceProjectLink(existingCo, linkedProjectResult.project, "id");
+  if (coProjectLink.conflict) projectLinkConflicts += 1;
   const coShared = {
     ...coCols,
-    jobKey: linkedProjectId || undefined,
-    projectId: linkedProjectId || undefined,
+    jobKey: coProjectLink.jobKey,
+    projectId: coProjectLink.projectId,
     customFields: changeOrder as unknown as Prisma.InputJsonObject,
     updatedAt: new Date(),
   };
 
-  const existingCo = await prisma.commitmentChangeOrder.findFirst({
-    where: { procoreId: rawCoId, procoreProjectId: projectId },
-    select: { id: true },
-  });
-
   let changeOrderDbId = coUid;
   if (existingCo) {
-    await prisma.commitmentChangeOrder.update({ where: { id: existingCo.id }, data: coShared });
+    await prisma.commitmentChangeOrder.update({
+      where: { id: existingCo.id }, data: { ...coShared, ...coProjectLink.update },
+    });
     changeOrderDbId = existingCo.id;
   } else {
     await prisma.commitmentChangeOrder.create({ data: { id: coUid, ...coShared } });
@@ -213,23 +197,26 @@ export async function persistChangeOrderLineItems(
 
       const uid = `ccoli_${rawId}_${projectId}`;
       const cols = extractLineItemColumns(record, companyId, projectId, rawCoId);
+      const existing = await prisma.commitmentChangeOrderLineItem.findFirst({
+        where: { procoreId: rawId, procoreProjectId: projectId },
+        select: { id: true, projectId: true, jobKey: true },
+      });
+      const projectLink = selectProcoreSourceProjectLink(existing, linkedProjectResult.project, "id");
+      if (projectLink.conflict) projectLinkConflicts += 1;
       const sharedFields = {
         ...cols,
-        jobKey: linkedProjectId || undefined,
-        projectId: linkedProjectId || undefined,
+        jobKey: projectLink.jobKey,
+        projectId: projectLink.projectId,
         changeOrderId: changeOrderDbId,
         customFields: record as unknown as Prisma.InputJsonObject,
         updatedAt: new Date(),
       };
 
-      const existing = await prisma.commitmentChangeOrderLineItem.findFirst({
-        where: { procoreId: rawId, procoreProjectId: projectId },
-        select: { id: true },
-      });
-
       let finalId = uid;
       if (existing) {
-        await prisma.commitmentChangeOrderLineItem.update({ where: { id: existing.id }, data: sharedFields });
+        await prisma.commitmentChangeOrderLineItem.update({
+          where: { id: existing.id }, data: { ...sharedFields, ...projectLink.update },
+        });
         finalId = existing.id;
       } else {
         await prisma.commitmentChangeOrderLineItem.create({ data: { id: uid, ...sharedFields } });
@@ -243,5 +230,6 @@ export async function persistChangeOrderLineItems(
     }
   }
 
-  return { saved, skipped, linkedProjectId, projectCreated, changeOrderDbId };
+  reportProcoreSourceProjectLinkConflicts("change-order-details", params, projectLinkConflicts);
+  return { saved, skipped, linkedProjectId, projectCreated, changeOrderDbId, projectIdentity, projectLinkConflicts };
 }

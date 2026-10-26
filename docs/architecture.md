@@ -211,6 +211,14 @@ Keep these identifiers distinct:
 
 The current application still contains older paths that use `Project.id`, `jobKey`, or fallback matching. New work should prefer explicit `companyId + procoreProjectId` joins and should not introduce more fuzzy runtime identity.
 
+Procore legacy identity protection (2026-10-26): `procoreLegacyProjectIdentity.ts` resolves legacy `Project.id` through explicit company/project identity and the separate Bid Board namespace. Additive `procore_legacy_project_links` and `procore_legacy_bid_board_links` retain verified compatibility links; installation does not backfill, merge, delete, or reassign historical rows. Company-less legacy records require unique exact canonical evidence. A verified Bid Board-to-project relationship can enrich the same local row, preserving its scheduling ID. Ambiguous, conflicting, or retired candidates remain unresolved; names, numbers, customers, and row recency never choose a project. Project creation, identity links, and header callbacks share a serializable transaction with bounded conflict retries.
+
+All six transactional mirror writers use this resolver. Source payloads and external IDs continue to persist when legacy identity is unresolved. Existing transaction attachments and `jobKey` remain unchanged on refresh, including when the verified target differs; results expose `projectIdentity` and `projectLinkConflicts`. Historical corrections require a separately reviewed repair. Header sync and webhooks preserve established canonical/Bid Board links, omit conflicting downstream updates, and no longer archive duplicate legacy projects automatically. Raw mirror keys and source-row compatibility IDs remain unchanged.
+
+Scheduling/Gantt identity paths are outside this release: the owner plans to rewrite those modules. Existing scheduling IDs and attachments remain intact while the shared source sync protections focus on pages connected to the current Procore instance.
+
+Validate identity boundaries with `node --test test/procoreLegacyProjectIdentity.test.mjs test/procoreProjectHeaderIdentity.test.mjs test/procoreProjectPersistence.test.mjs`, then `npm run verify`. Production migrations run through the normal Netlify Git build; local Prisma generation/validation does not apply them. Read-only pre-release classification must use the same exported classifier as runtime resolution; never run a historical repair or a mutating refresh as an audit.
+
 ### Persistence layers
 
 Procore data is stored in several intentional layers:

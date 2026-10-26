@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { makeRequest, procoreConfig, getClientCredentialsToken } from "@/lib/procore";
 import { prisma } from "@/lib/prisma";
+import { resolveProcoreLegacyProject } from "@/lib/procoreLegacyProjectIdentity";
 
 export const dynamic = "force-dynamic";
 
@@ -146,10 +147,11 @@ async function upsertPrimeContractLive(params: {
 }
 
 async function updateProjectContractDate(params: {
+  companyId: string;
   projectId: string;
   records: PrimeContractRecord[];
 }) {
-  const { projectId, records } = params;
+  const { companyId, projectId, records } = params;
 
   const best = records
     .map((record) => ({
@@ -172,37 +174,36 @@ async function updateProjectContractDate(params: {
   const contractStartDate = toNullableDate(best.record.contract_start_date);
   const primeContractId = readText(best.record.id) || null;
 
-  const project = await prisma.project.findFirst({
-    where: {
-      OR: [
-        { procoreId: projectId },
-        { customFields: { path: ["procoreId"], equals: projectId } },
-        { customFields: { path: ["procoreProjectId"], equals: projectId } },
-      ],
-    },
-    select: { id: true, customFields: true },
-  });
-
-  if (!project) return;
-
-  const existingCustomFields =
-    project.customFields && typeof project.customFields === "object" && !Array.isArray(project.customFields)
-      ? (project.customFields as Record<string, unknown>)
-      : {};
-
-  await prisma.project.update({
-    where: { id: project.id },
-    data: {
-      customFields: {
-        ...existingCustomFields,
-        procorePrimeContractId: primeContractId,
-        contractDate: normalizedContractDate ? normalizedContractDate.toISOString() : null,
-        contractStartDate: contractStartDate ? contractStartDate.toISOString() : null,
-        contractDateSource: "procore_prime_contracts",
-        contractDateSyncedAt: new Date().toISOString(),
-      },
+  const identity = await resolveProcoreLegacyProject({
+    companyId,
+    projectId,
+    createProjectIfMissing: false,
+    source: "procore_prime_contracts",
+    updateProject: async (tx, project) => {
+      const existingCustomFields =
+        project.customFields && typeof project.customFields === "object" && !Array.isArray(project.customFields)
+          ? (project.customFields as Record<string, unknown>)
+          : {};
+      return tx.project.update({
+        where: { id: project.id },
+        data: {
+          customFields: {
+            ...existingCustomFields,
+            procorePrimeContractId: primeContractId,
+            contractDate: normalizedContractDate ? normalizedContractDate.toISOString() : null,
+            contractStartDate: contractStartDate ? contractStartDate.toISOString() : null,
+            contractDateSource: "procore_prime_contracts",
+            contractDateSyncedAt: new Date().toISOString(),
+          },
+        },
+      });
     },
   });
+  if (!identity.project) {
+    console.warn("[prime-contracts] legacy project identity unresolved", {
+      companyId, projectId, reason: identity.reason,
+    });
+  }
 }
 
 async function fetchAllProjects(
@@ -426,7 +427,7 @@ export async function POST(request: Request) {
           savedCount += 1;
         }
 
-        await updateProjectContractDate({ projectId, records });
+        await updateProjectContractDate({ companyId, projectId, records });
 
         summary.totalContractsSaved += savedCount;
         summary.activeProjects.push({

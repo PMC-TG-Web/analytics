@@ -7,6 +7,9 @@ import { localLogoutCookies } from '@/lib/localLogoutCookies';
 
 const STATE_COOKIE = 'analytics_procore_oauth';
 type OAuthState = { state: string; returnTo: string; redirectUri: string; expiresAt: number };
+type SignInStage = 'state' | 'token' | 'identity' | 'session' | 'revoke';
+type SignInFailure = 'state_invalid' | 'authorization_denied' | 'authorization_missing'
+  | 'rate_limited' | 'app_access_denied' | 'token_failed' | 'identity_failed' | 'session_failed' | 'revoke_failed';
 
 export function startProcoreAppLogin(request: NextRequest) {
   if (Buffer.byteLength(process.env.PROCORE_APP_SESSION_SECRET || '') < 32
@@ -29,6 +32,7 @@ export function startProcoreAppLogin(request: NextRequest) {
 }
 
 export async function finishProcoreAppLogin(request: NextRequest) {
+  let stage: SignInStage = 'state';
   let transaction: OAuthState | null = null;
   try {
     const parsed = JSON.parse(request.cookies.get(STATE_COOKIE)?.value || 'null');
@@ -38,9 +42,13 @@ export async function finishProcoreAppLogin(request: NextRequest) {
   } catch { /* Invalid state fails closed. */ }
   const state = request.nextUrl.searchParams.get('state') || '';
   const expected = transaction?.state || '';
-  const fail = (message: string) => {
+  const fail = (message: string, reason: SignInFailure, details: { status?: number; rateLimitUntil?: string } = {}) => {
+    const reference = randomBytes(8).toString('hex');
+    // Only fixed classifications and validated metadata enter logs. OAuth
+    // parameters, credentials, identity and provider error bodies stay private.
+    console.warn({ event: 'procore_sign_in_failed', reference, stage, reason, ...details });
     const url = new URL('/login', request.url);
-    url.searchParams.set('error', message);
+    url.searchParams.set('error', `${message} Reference: ${reference}.`);
     url.searchParams.set('returnTo', safeAppReturnTo(transaction?.returnTo));
     const response = NextResponse.redirect(url);
     response.cookies.delete(STATE_COOKIE);
@@ -50,14 +58,20 @@ export async function finishProcoreAppLogin(request: NextRequest) {
   if (!transaction || !/^[A-Za-z0-9_-]{43}$/.test(state) || state.length !== expected.length
     || !timingSafeEqual(Buffer.from(state), Buffer.from(expected)) || transaction.expiresAt <= Date.now()
     || transaction.redirectUri !== getProcoreRedirectUri(request.nextUrl.origin)
-    || new URL(transaction.redirectUri).origin !== request.nextUrl.origin) return fail('Sign-in expired. Please try again.');
+    || new URL(transaction.redirectUri).origin !== request.nextUrl.origin) return fail('Sign-in expired. Please try again.', 'state_invalid');
   const code = request.nextUrl.searchParams.get('code');
-  if (!code || request.nextUrl.searchParams.has('error')) return fail('Procore sign-in was not completed. Please try again.');
+  if (!code || request.nextUrl.searchParams.has('error')) return fail('Procore sign-in was not completed. Please try again.',
+    request.nextUrl.searchParams.has('error') ? 'authorization_denied' : 'authorization_missing');
   try {
+    stage = 'token';
     const tokens = await getProcoreSignInToken(code, transaction.redirectUri);
+    stage = 'identity';
     const identity = await getProcoreSignInIdentity(tokens.access_token);
+    stage = 'session';
     const { token, session } = await appSessions.create(identity, tokens);
+    stage = 'revoke';
     await appSessions.revoke(request.cookies.get(APP_SESSION_COOKIE)?.value);
+    stage = 'session';
     const response = NextResponse.redirect(new URL(safeAppReturnTo(transaction.returnTo), request.url));
     const secure = process.env.NODE_ENV === 'production' || request.nextUrl.protocol === 'https:';
     // Switching identities invalidates permission and old provider cookies as well as the old app session.
@@ -70,8 +84,24 @@ export async function finishProcoreAppLogin(request: NextRequest) {
     response.headers.set('Cache-Control', 'no-store');
     return response;
   } catch (error) {
-    return fail(error instanceof Error && error.message === 'PROCORE_APP_ACCESS_DENIED'
-      ? 'Your Procore account does not have access to this app. Contact your administrator.'
-      : 'Unable to complete Procore sign-in. Please try again.');
+    const metadata = error && typeof error === 'object' ? error as { status?: unknown; rateLimitUntil?: unknown } : {};
+    const status = typeof metadata.status === 'number' && Number.isInteger(metadata.status)
+      && metadata.status >= 400 && metadata.status <= 599 ? metadata.status : undefined;
+    const retryAt = metadata.rateLimitUntil;
+    const retryAtMs = retryAt instanceof Date ? Date.prototype.getTime.call(retryAt) : NaN;
+    const rateLimitUntil = status === 429 && Number.isFinite(retryAtMs)
+      && retryAtMs > Date.now() ? new Date(retryAtMs).toISOString() : undefined;
+    const details = { ...(status !== undefined ? { status } : {}), ...(rateLimitUntil ? { rateLimitUntil } : {}) };
+    const retryTime = rateLimitUntil ? new Date(retryAtMs).toLocaleTimeString('en-US', {
+      timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+    }) : undefined;
+    if (status === 429) return fail(`Procore sign-in is temporarily busy. ${rateLimitUntil
+      ? `Please try again after ${retryTime}.` : 'Please try again shortly.'}`, 'rate_limited', details);
+    if (error instanceof Error && error.message === 'PROCORE_APP_ACCESS_DENIED') {
+      return fail('Your Procore account does not have access to this app. Contact your administrator.', 'app_access_denied', details);
+    }
+    const reason: SignInFailure = stage === 'token' ? 'token_failed' : stage === 'identity' ? 'identity_failed'
+      : stage === 'revoke' ? 'revoke_failed' : 'session_failed';
+    return fail('Unable to complete Procore sign-in. Please try again.', reason, details);
   }
 }

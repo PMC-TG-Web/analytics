@@ -6,6 +6,7 @@ export type ProcoreIdentity = { id: string; email: string; name: string | null; 
 export type LoginTokens = { access_token: string; refresh_token?: string; expires_in: number; scope?: string };
 type SessionDatabase = Pick<PrismaClient, 'appLoginSession' | 'user'>;
 type Provider = {
+  prepareRefresh?: () => Promise<void>;
   refresh: (token: string) => Promise<LoginTokens>;
   identify: (token: string) => Promise<ProcoreIdentity>;
 };
@@ -80,7 +81,10 @@ export function createAppSessionService(db: SessionDatabase, provider: Provider,
             data: { refreshStartedAt: now },
           });
           if (claim.count) {
+            let refreshAttempted = false;
             try {
+              await provider.prepareRefresh?.();
+              refreshAttempted = true;
               const tokens = await provider.refresh(decryptAppCredential(session.refreshToken, tokenHash));
               if (!tokens.access_token || !tokens.refresh_token || !(tokens.expires_in > 0)) throw new Error('Invalid refreshed tokens.');
               const identity = await provider.identify(tokens.access_token);
@@ -95,14 +99,21 @@ export function createAppSessionService(db: SessionDatabase, provider: Provider,
                 scope: tokens.scope || session.scope, refreshStartedAt: null,
               } });
             } catch (error) {
-              const status = (error as { status?: number }).status;
-              if (status === 400 || status === 401 || status === 403) {
-                await db.appLoginSession.updateMany({ where: { tokenHash }, data: { revokedAt: clock() } });
-                return null;
+              if (!refreshAttempted) {
+                // Nothing was sent to Procore. Leave credentials intact and
+                // release only our claim so a later request can safely retry.
+                await db.appLoginSession.updateMany({ where: { tokenHash, revokedAt: null, refreshStartedAt: now },
+                  data: { refreshStartedAt: null } });
+              } else {
+                const status = (error as { status?: number }).status;
+                if (status === 400 || status === 401 || status === 403) {
+                  await db.appLoginSession.updateMany({ where: { tokenHash }, data: { revokedAt: clock() } });
+                  return null;
+                }
+                // A lost token response may already have rotated the credential. Never blindly replay it.
+                // Keep the app's saved-data session available; live Procore tools can explicitly reconnect.
+                await db.appLoginSession.updateMany({ where: { tokenHash }, data: { credentialsInvalid: true } });
               }
-              // A lost token response may already have rotated the credential. Never blindly replay it.
-              // Keep the app's saved-data session available; live Procore tools can explicitly reconnect.
-              await db.appLoginSession.updateMany({ where: { tokenHash }, data: { credentialsInvalid: true } });
             }
           }
         }

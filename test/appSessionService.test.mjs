@@ -135,6 +135,33 @@ test('unknown refresh outcome is never replayed and retains read-only report acc
   assert.equal(attempts, 1);
 });
 
+test('a known quota shortage or failed preflight preserves credentials and safely retries renewal later', async () => {
+  for (const failure of [Object.assign(new Error('quota unavailable'), { status: 429 }), new Error('database unavailable')]) {
+    const f = fixture(); const { token } = await f.service.create(identity, tokens); f.advance(5400);
+    f.provider.prepareRefresh = async () => { throw failure; };
+    const result = await f.service.resolve(token, true);
+    assert.equal(result.user.email, identity.email);
+    assert.equal(result.needsReconnect, false);
+    assert.equal(f.refreshCount(), 0);
+    const row = f.records.get(hashAppSessionToken(token));
+    assert.equal(row.refreshStartedAt, null);
+    assert.equal(row.credentialsInvalid, false);
+    assert.equal(decryptAppCredential(row.refreshToken, row.tokenHash), 'first-refresh');
+    f.provider.prepareRefresh = async () => {};
+    assert.equal((await f.service.resolve(token, true)).accessToken, 'new-access');
+    assert.equal(f.refreshCount(), 1);
+  }
+});
+
+test('a provider rejection after refresh starts is not mistaken for a safe preflight deferral', async () => {
+  const f = fixture(); const { token } = await f.service.create(identity, tokens); f.advance(5400);
+  f.provider.prepareRefresh = async () => {};
+  f.provider.identify = async () => { throw Object.assign(new Error('provider quota'), { status: 429 }); };
+  assert.equal((await f.service.resolve(token, true)).needsReconnect, true);
+  await f.service.resolve(token, true);
+  assert.equal(f.refreshCount(), 1, 'Never replay a spent rotating refresh token');
+});
+
 test('logout during token renewal cannot resurrect the session', async () => {
   const f = fixture(); const { token } = await f.service.create(identity, tokens); f.advance(5400);
   f.provider.refresh = async () => {

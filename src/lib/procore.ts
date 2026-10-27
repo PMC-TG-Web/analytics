@@ -1,7 +1,7 @@
-import { currentProcoreConnection, procoreServiceCredentials, withAuthenticatedSyncConnection } from '@/lib/procoreConnection';
+import { currentProcoreConnection, procoreServiceCredentials, withAuthenticatedSyncConnection, withProcoreConnection } from '@/lib/procoreConnection';
 // lib/procore.ts - Procore API utilities
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { waitForProcoreRequestPermit, completeProcoreRequestPermit } from '@/lib/procoreRequestGate';
+import { waitForProcoreRequestPermit, completeProcoreRequestPermit, checkProcoreAuthenticationCapacity } from '@/lib/procoreRequestGate';
 
 import {
   getProcoreBackgroundCooldown,
@@ -30,7 +30,7 @@ type ErrorWithStatusAndCause = Error & {
 };
 
 type ProcoreRequestContext = {
-  lane: 'background' | 'interactive';
+  lane: 'background' | 'interactive' | 'authentication';
   apiRequests: number;
   rateLimitUntil: Date | null;
 };
@@ -327,7 +327,12 @@ async function exchangeProcoreSignInToken(parameters: Record<string, string>): P
   return response.json();
 }
 
-export function getProcoreSignInToken(code: string, redirectUri: string) {
+export function prepareProcoreSignIn() {
+  return checkProcoreAuthenticationCapacity(procoreConfig.companyId);
+}
+
+export async function getProcoreSignInToken(code: string, redirectUri: string) {
+  await prepareProcoreSignIn();
   return exchangeProcoreSignInToken({ grant_type: 'authorization_code', code, redirect_uri: redirectUri });
 }
 
@@ -338,7 +343,7 @@ export function refreshProcoreSignInToken(refreshToken: string) {
 
 export async function getProcoreSignInIdentity(accessToken: string) {
   // Called only after a user OAuth exchange, never as a page's analytics data source.
-  return runWithProcoreRequestContext('interactive', async () => {
+  return withProcoreConnection('shared', () => runWithProcoreRequestContext('authentication', async () => {
     const me = await makeRequest('/rest/v1.0/me', accessToken) as Record<string, unknown>;
     const companyIds: string[] = [];
     for (let page = 1; page <= 10; page++) {
@@ -349,7 +354,7 @@ export async function getProcoreSignInIdentity(accessToken: string) {
     }
     return { id: String(me.id || ''), email: String(me.login || me.email || me.email_address || '').trim().toLowerCase(),
       name: typeof me.name === 'string' ? me.name : null, companyIds };
-  });
+  }));
 }
 
 // Make authenticated request to Procore API

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from './prisma';
 import { getRequestUserEmail } from './requestUser';
-import { expandAssignedPermissions, loadUserAssignedPermissionsFromDatabase } from './permissions';
+import { expandAssignedPermissions, loadUserAssignedPermissionsFromDatabase, hasAccessAdministratorRole } from './permissions';
 
 // Access management uses current, active database assignments, never the cached
 // navigation cookie or a job-title template. Match the existing administrator API.
@@ -11,7 +11,7 @@ export async function getAccessManagementActor(request: NextRequest) {
   return {
     email,
     permissions,
-    canManageAccess: permissions.includes('OWNER') || permissions.includes('ADMIN'),
+    canManageAccess: hasAccessAdministratorRole(permissions),
     canEditEmployees: expandAssignedPermissions(permissions).includes('employees'),
   };
 }

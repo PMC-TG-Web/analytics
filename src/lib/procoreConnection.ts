@@ -4,7 +4,7 @@ export type ProcoreConnection = 'shared' | 'pm-dashboard' | 'commitment-maker' |
 const connectionContext = new AsyncLocalStorage<ProcoreConnection>();
 
 export function billingProcoreConnection(env: NodeJS.ProcessEnv = process.env): ProcoreConnection {
-  if (!['true', '1', 'yes'].includes((env.PROCORE_BILLING_ENABLED || '').trim().toLowerCase())) return 'shared';
+  if (!['true', '1', 'yes'].includes((env.PROCORE_BILLING_ENABLED || '').trim().toLowerCase())) throw new Error('Billing Procore credentials are disabled; shared sign-in capacity cannot be used for sync.');
   const id = env.PROCORE_BILLING_CLIENT_ID?.trim();
   if (!id || !env.PROCORE_BILLING_CLIENT_SECRET?.trim()) throw new Error('Configure both PROCORE_BILLING_CLIENT_ID and PROCORE_BILLING_CLIENT_SECRET.');
   if ([env.PROCORE_CLIENT_ID, env.PROCORE_PM_DASHBOARD_CLIENT_ID, env.PROCORE_COMMITMENT_MAKER_CLIENT_ID, env.PROCORE_ANALYTICS_SYNC_CLIENT_ID].some(value => value?.trim() === id)) {
@@ -18,10 +18,10 @@ export function withBillingProcoreConnection<T>(operation: () => T): T {
 }
 
 export function analyticsSyncProcoreConnection(env: NodeJS.ProcessEnv = process.env): ProcoreConnection {
-  if (!['true', '1', 'yes'].includes((env.PROCORE_ANALYTICS_SYNC_ENABLED || '').trim().toLowerCase())) return 'shared';
+  if (!['true', '1', 'yes'].includes((env.PROCORE_ANALYTICS_SYNC_ENABLED || '').trim().toLowerCase())) throw new Error('Analytics sync Procore credentials are missing or disabled; shared sign-in capacity cannot be used for sync.');
   const id = env.PROCORE_ANALYTICS_SYNC_CLIENT_ID?.trim();
   if (!id || !env.PROCORE_ANALYTICS_SYNC_CLIENT_SECRET?.trim()) throw new Error('Configure both PROCORE_ANALYTICS_SYNC_CLIENT_ID and PROCORE_ANALYTICS_SYNC_CLIENT_SECRET.');
-  if ([env.PROCORE_CLIENT_ID, env.PROCORE_PM_DASHBOARD_CLIENT_ID, env.PROCORE_COMMITMENT_MAKER_CLIENT_ID].some(value => value?.trim() === id)) throw new Error('Analytics sync must use a distinct Procore OAuth client.');
+  if ([env.PROCORE_CLIENT_ID, env.PROCORE_PM_DASHBOARD_CLIENT_ID, env.PROCORE_COMMITMENT_MAKER_CLIENT_ID, env.PROCORE_BILLING_CLIENT_ID].some(value => value?.trim() === id)) throw new Error('Analytics sync must use a distinct Procore OAuth client.');
   return 'analytics-sync';
 }
 
@@ -35,7 +35,8 @@ export function withAuthenticatedSyncConnection<T>(request: Request, operation: 
   const selected = currentProcoreConnection();
   if (selected !== 'shared') return withProcoreConnection(selected, operation);
   const requested = request.headers.get('x-procore-connection');
-  return withProcoreConnection(requested === 'billing' ? billingProcoreConnection() : requested === 'shared' ? 'shared' : analyticsSyncProcoreConnection(), operation);
+  if (requested && !['billing', 'analytics-sync'].includes(requested)) throw new Error('Sync requires a dedicated Procore connection.');
+  return withProcoreConnection(requested === 'billing' ? billingProcoreConnection() : analyticsSyncProcoreConnection(), operation);
 }
 
 export function pmDashboardProcoreConnection(env: NodeJS.ProcessEnv = process.env): ProcoreConnection {

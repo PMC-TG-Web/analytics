@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { procoreBackgroundReserve, procoreQuotaObservation, type ProcoreQuotaObservation } from '@/lib/procoreRateLimit';
 import {
   observeProcoreBudget, procoreUsageEndpoint, reserveProcoreRequest, PROCORE_REQUEST_LEASE_MS,
+  PROCORE_AUTHENTICATION_RESERVE, procoreAuthenticationRetryAt,
   type ProcoreBudgetWindow, type ProcoreRequestLane,
 } from '@/lib/procoreRequestBudget';
 
@@ -32,7 +33,8 @@ export async function acquireProcoreRequestPermit(companyId: string, lane: Proco
       leaseId: row.lease_id, leaseUntil: row.lease_until?.getTime() || 0,
       interactiveUntil: row.interactive_until?.getTime() || 0,
       blockedUntil: row.blocked_until?.getTime() || 0, windows: row.windows,
-    }, lane, now, procoreBackgroundReserve(process.env.PROCORE_API_BACKGROUND_RESERVE));
+    }, lane, now, procoreBackgroundReserve(process.env.PROCORE_API_BACKGROUND_RESERVE),
+    connection === 'shared' ? PROCORE_AUTHENTICATION_RESERVE : 0);
     if (decision.retryAt) {
       await tx.$executeRaw`UPDATE ${table} SET interactive_until = ${new Date(decision.interactiveUntil)}, updated_at = NOW() WHERE company_id = ${companyId}`;
       return { permit: null, retryAt: decision.retryAt };
@@ -44,6 +46,20 @@ export async function acquireProcoreRequestPermit(companyId: string, lane: Proco
           updated_at = NOW() WHERE company_id = ${companyId}`;
     return { permit: { leaseId, companyId, lane, connection } satisfies ProcoreRequestPermit, retryAt: 0 };
   }, GATE_TRANSACTION_OPTIONS);
+}
+
+/** Check the original OAuth app's capacity without spending quota or credentials. */
+export async function checkProcoreAuthenticationCapacity(companyId: string) {
+  if (!companyId) throw new Error('Procore sign-in company is not configured.');
+  const table = Prisma.raw(procoreCoordinationTables('shared').gates);
+  const [row] = await prisma.$queryRaw<GateRow[]>`SELECT blocked_until, windows, clock_timestamp() AS now FROM ${table} WHERE company_id = ${companyId}`;
+  if (!row) return;
+  const retryAt = procoreAuthenticationRetryAt({ blockedUntil: row.blocked_until?.getTime() || 0, windows: row.windows }, row.now.getTime());
+  if (retryAt) {
+    throw Object.assign(new Error('Procore sign-in capacity is temporarily unavailable.'), {
+      status: 429, rateLimitUntil: new Date(retryAt),
+    });
+  }
 }
 
 export async function waitForProcoreRequestPermit(companyId: string, lane: ProcoreRequestLane, maxWaitMs = 8_000) {

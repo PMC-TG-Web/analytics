@@ -10,7 +10,7 @@ export async function syncSubcontractAllocationGroups(companyId: string, project
   if (!missingGroupNames) return { synced: true };
   const secret = process.env.PROCORE_SYNC_SECRET || process.env.SYNC_SECRET;
   if (!secret) throw new Error('The server sync connection is not configured.');
-  return withProcoreLiveApiBypassForSyncSecret(new Request('http://internal/allocation-groups', { headers: { 'x-sync-secret': secret, 'x-procore-connection': 'shared' } }), async () => {
+  return withProcoreLiveApiBypassForSyncSecret(new Request('http://internal/allocation-groups', { headers: { 'x-sync-secret': secret } }), async () => {
     const lease = await acquireProcoreWorker(companyId);
     if (!lease.acquired) return { synced: false, message: 'Group names are waiting for Procore sync capacity. Use Reload to retry.' };
     try {

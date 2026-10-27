@@ -33,6 +33,9 @@ test('shared gate SQL, lease ownership, cache identity and usage accounting work
       for (const statement of migration.split(';').map(value => value.trim()).filter(Boolean)) {
         await tx.$executeRawUnsafe(statement.replace(/^CREATE TABLE/, 'CREATE TEMP TABLE'));
       }
+      const isolated = await tx.$queryRawUnsafe(`SELECT bool_and(relnamespace = pg_my_temp_schema()) AS isolated
+        FROM pg_class WHERE oid IN ('procore_request_gates'::regclass, 'procore_api_usage'::regclass, 'procore_wbs_caches'::regclass)`);
+      assert.equal(isolated[0].isolated, true, 'Every write target must resolve to this transaction\'s temporary tables');
       const gate = load('src/lib/procoreRequestGate.ts', {
         '@prisma/client': { Prisma }, '@/lib/procoreConnection': connection,
         'node:crypto': { randomUUID }, '@/lib/prisma': { prisma: { $transaction: operation => operation(tx),
@@ -43,6 +46,16 @@ test('shared gate SQL, lease ownership, cache identity and usage accounting work
       await tx.$executeRawUnsafe('CREATE TEMP TABLE procore_pm_api_usage (LIKE procore_api_usage INCLUDING ALL)');
       await tx.$executeRawUnsafe('CREATE TEMP TABLE procore_cm_request_gates (LIKE procore_request_gates INCLUDING ALL)');
       await tx.$executeRawUnsafe('CREATE TEMP TABLE procore_cm_api_usage (LIKE procore_api_usage INCLUDING ALL)');
+      const authWindow = [{ limit: 600, remaining: 20, resetAt: Date.now() + 600000 }];
+      await tx.$executeRawUnsafe('INSERT INTO procore_request_gates (company_id, windows) VALUES ($1, $2::jsonb)', 'test-auth', JSON.stringify(authWindow));
+      await gate.checkProcoreAuthenticationCapacity('test-auth');
+      assert.equal((await gate.acquireProcoreRequestPermit('test-auth', 'interactive')).permit, null);
+      const authentication = await gate.acquireProcoreRequestPermit('test-auth', 'authentication');
+      assert.ok(authentication.permit);
+      await gate.completeProcoreRequestPermit({ permit: authentication.permit, observation: null, method: 'GET', path: '/me', status: 200 });
+      assert.equal((await gate.procoreApiUsageSummary('test-auth'))[0].lane, 'authentication');
+      await tx.$executeRawUnsafe('UPDATE procore_request_gates SET windows = $1::jsonb WHERE company_id = $2', JSON.stringify([{ ...authWindow[0], remaining: 1 }]), 'test-auth');
+      await assert.rejects(gate.checkProcoreAuthenticationCapacity('test-auth'), error => error.status === 429);
       const first = await gate.acquireProcoreRequestPermit('test-company', 'background');
       assert.ok(first.permit);
       const waiting = await gate.acquireProcoreRequestPermit('test-company', 'interactive');

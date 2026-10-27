@@ -4,11 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
-    "build": "node scripts/resolveFailedMigration.mjs && node scripts/migrateDeploy.mjs && prisma generate && next build",
+    "build": "npm run verify:auth && node scripts/checkAuthRelease.mjs && node scripts/resolveFailedMigration.mjs && node scripts/migrateDeploy.mjs && prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "test": "node --test test/*.test.mjs",
     "verify": "tsc --noEmit && npm test && npm run lint",
+    "verify:auth": "node --test test/authReleasePreflight.test.mjs test/accessManagement.test.mjs test/appSessionService.test.mjs test/procoreAppSignIn.test.mjs test/procoreAppOAuth.test.mjs test/procoreSignInTransport.test.mjs test/procoreAuthenticationCapacity.test.mjs test/procoreConnection.test.mjs test/procoreRequestBudget.test.mjs test/procoreRequestGate.test.mjs test/apiAccessPolicy.test.mjs test/apiAuthorizationMiddleware.test.mjs",
     "procore:webhook:list": "node scripts/registerProcoreWebhook.mjs",
     "procore:webhook:register": "node scripts/registerProcoreWebhook.mjs --register",
     "procore:webhook:cleanup": "node scripts/registerProcoreWebhook.mjs --cleanup",

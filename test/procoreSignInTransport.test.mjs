@@ -5,7 +5,7 @@ import vm from 'node:vm';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import ts from 'typescript';
 
-function transport(fetcher) {
+function transport(fetcher, prepare = async () => {}) {
   const module = { exports: {} };
   const code = ts.transpileModule(fs.readFileSync('src/lib/procore.ts', 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
@@ -14,7 +14,8 @@ function transport(fetcher) {
     module, URLSearchParams, URL, AbortSignal, Response, fetch: fetcher,
     process: { env: { PROCORE_CLIENT_ID: 'test-client', PROCORE_CLIENT_SECRET: 'test-only-secret',
       PROCORE_COMPANY_ID: 'company', APP_BASE_URL: 'https://app.example.test' } },
-    require: id => id === 'node:async_hooks' ? { AsyncLocalStorage } : {},
+    require: id => id === 'node:async_hooks' ? { AsyncLocalStorage }
+      : id === '@/lib/procoreRequestGate' ? { checkProcoreAuthenticationCapacity: prepare } : {},
   });
   return module.exports;
 }
@@ -40,6 +41,15 @@ test('code exchange and rotating refresh send the configured callback, client cr
   assert.equal(requests[0].form.get('grant_type'), 'authorization_code');
   assert.equal(requests[1].form.get('grant_type'), 'refresh_token');
   assert.equal(requests[1].form.get('refresh_token'), 'rotating-refresh');
+});
+
+test('initial sign-in checks capacity before spending its one-use authorization code', async () => {
+  const retryAt = new Date(Date.now() + 60000);
+  const api = transport(() => assert.fail('No token exchange while capacity is unavailable'), async company => {
+    assert.equal(company, 'company');
+    throw Object.assign(new Error('capacity'), { status: 429, rateLimitUntil: retryAt });
+  });
+  await assert.rejects(api.getProcoreSignInToken('code', 'https://app.example.test/api/auth/procore/callback'), error => error.status === 429 && error.rateLimitUntil === retryAt);
 });
 
 test('failed or uncertain refresh is attempted once and does not expose provider response bodies', async () => {

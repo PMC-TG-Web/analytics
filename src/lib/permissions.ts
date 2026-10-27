@@ -2,6 +2,10 @@ import { PATH_PERMISSION_RULES } from './permissionRoutes.js';
 
 export { resolvePermissionForPath } from './permissionRoutes.js';
 
+export function hasAccessAdministratorRole(assigned: readonly string[]) {
+  return assigned.includes('OWNER') || assigned.includes('ADMIN');
+}
+
 // User permissions configuration
 // Define groups for easier management
 export const PERMISSION_GROUPS: Record<string, string[]> = {

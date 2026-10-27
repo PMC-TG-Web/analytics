@@ -8,12 +8,17 @@ import * as connection from '../src/lib/procoreConnection.ts';
 import * as budget from '../src/lib/procoreRequestBudget.ts';
 import * as rateLimits from '../src/lib/procoreRateLimit.ts';
 
-function fixture({ delay = 3_200, failInitialization = false } = {}) {
+function fixture({ delay = 3_200, failInitialization = false, windows = [], blockedUntil = null } = {}) {
   let now = Date.now();
-  let row = { lease_id: null, lease_until: null, interactive_until: null, blocked_until: null, windows: [] };
+  let row = { lease_id: null, lease_until: null, interactive_until: null, blocked_until: blockedUntil, windows };
   let transactionCount = 0;
   let usage = 0;
   const prisma = {
+    async $queryRaw(strings, ...values) {
+      assert.match(strings.join('?'), /^SELECT blocked_until, windows, clock_timestamp\(\) AS now/);
+      assert.equal(values[0].sql, 'procore_request_gates');
+      return [{ ...row, now: new Date(now) }];
+    },
     async $executeRaw() {
       if (failInitialization) throw new Error('Database unavailable');
       // Slow initialization must not consume the lock transaction's lifetime.
@@ -76,6 +81,28 @@ test('slow database round trips do not expire permit acquisition or completion a
   await f.gate.completeProcoreRequestPermit({ permit: first.permit, observation: null, method: 'GET', path: '/project_roles', status: 200 });
   assert.equal(f.state().row.lease_id, next.permit.leaseId, 'Late completion cannot release a newer owner');
   assert.equal(f.state().usage, 1, 'Late completion cannot double-count usage');
+});
+
+test('the authentication preflight reads only the sign-in gate, preserving leases and all counters', async () => {
+  for (const remaining of [0, 1, 2]) {
+    const f = fixture({ windows: [{ limit: 600, remaining, resetAt: Date.now() + 60000 }] });
+    const before = structuredClone(f.state());
+    const check = () => connection.withProcoreConnection('analytics-sync', () => f.gate.checkProcoreAuthenticationCapacity('company'));
+    if (remaining < 2) await assert.rejects(check(), error => error.status === 429 && error.rateLimitUntil > new Date());
+    else await check();
+    assert.deepEqual(f.state(), before);
+  }
+});
+
+test('actual gate admission reserves shared capacity but leaves dedicated interactive capacity available', async () => {
+  const f = fixture({ delay: 0, windows: [{ limit: 600, remaining: 20, resetAt: Date.now() + 600000 }] });
+  assert.equal((await f.gate.acquireProcoreRequestPermit('company', 'interactive')).permit, null);
+  const auth = await f.gate.acquireProcoreRequestPermit('company', 'authentication');
+  assert.equal(auth.permit.lane, 'authentication');
+  await f.gate.completeProcoreRequestPermit({ permit: auth.permit, observation: null, status: 200, method: 'GET', path: '/me' });
+  assert.equal(f.state().usage, 1);
+  const dedicated = await connection.withProcoreConnection('commitment-maker', () => f.gate.acquireProcoreRequestPermit('company', 'interactive'));
+  assert.ok(dedicated.permit);
 });
 
 test('initialization failures never grant a permit or enter the reservation transaction', async () => {

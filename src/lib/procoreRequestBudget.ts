@@ -1,6 +1,6 @@
 import type { ProcoreQuotaObservation } from './procoreRateLimit';
 
-export type ProcoreRequestLane = 'background' | 'interactive';
+export type ProcoreRequestLane = 'background' | 'interactive' | 'authentication';
 export type ProcoreBudgetWindow = { limit: number; remaining: number; resetAt: number };
 export type ProcoreGateState = {
   leaseId: string | null;
@@ -12,15 +12,18 @@ export type ProcoreGateState = {
 
 export const PROCORE_REQUEST_LEASE_MS = 30_000;
 export const PROCORE_INTERACTIVE_PRIORITY_MS = 15_000;
+// Shared app only: ordinary tools must leave room for sign-in and renewal.
+export const PROCORE_AUTHENTICATION_RESERVE = 20;
 
-export function reserveProcoreRequest(state: ProcoreGateState, lane: ProcoreRequestLane, now: number, reserve: number) {
+export function reserveProcoreRequest(state: ProcoreGateState, lane: ProcoreRequestLane, now: number, reserve: number, authenticationReserve = 0) {
   const windows = state.windows.filter(window => window.resetAt > now);
-  const interactiveUntil = lane === 'interactive'
+  const interactiveUntil = lane !== 'background'
     ? Math.max(state.interactiveUntil, now + PROCORE_INTERACTIVE_PRIORITY_MS)
     : state.interactiveUntil;
   let retryAt = state.blockedUntil > now ? state.blockedUntil : 0;
   for (const window of windows) {
-    const floor = lane === 'background' ? Math.min(reserve, Math.max(1, Math.floor(window.limit * 0.25))) : 0;
+    const authFloor = lane === 'authentication' ? 0 : Math.min(authenticationReserve, Math.max(1, Math.floor(window.limit * 0.2)));
+    const floor = Math.max(authFloor, lane === 'background' ? Math.min(reserve, Math.max(1, Math.floor(window.limit * 0.25))) : 0);
     if (window.remaining <= floor) retryAt = Math.max(retryAt, window.resetAt);
   }
   if (lane === 'background' && interactiveUntil > now) retryAt = Math.max(retryAt, interactiveUntil);
@@ -32,6 +35,17 @@ export function reserveProcoreRequest(state: ProcoreGateState, lane: ProcoreRequ
     interactiveUntil,
     windows: retryAt ? windows : windows.map(window => ({ ...window, remaining: Math.max(0, window.remaining - 1) })),
   };
+}
+
+// A read-only preflight, not a reservation or a bypass of the provider's limits.
+// Run before spending a rotating refresh token. The actual identity requests
+// still acquire individual authentication permits and honor every window.
+export function procoreAuthenticationRetryAt(state: Pick<ProcoreGateState, 'blockedUntil' | 'windows'>, now: number) {
+  let retryAt = state.blockedUntil > now ? state.blockedUntil : 0;
+  for (const window of state.windows) {
+    if (window.resetAt > now && window.remaining < 2) retryAt = Math.max(retryAt, window.resetAt);
+  }
+  return retryAt;
 }
 
 export function observeProcoreBudget(windows: ProcoreBudgetWindow[], observation: ProcoreQuotaObservation | null, now: number) {

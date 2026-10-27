@@ -14,8 +14,8 @@ const fiveApps = { ...env, PROCORE_BILLING_ENABLED: 'true', PROCORE_BILLING_CLIE
   PROCORE_ANALYTICS_SYNC_ENABLED: 'true', PROCORE_ANALYTICS_SYNC_CLIENT_ID: 'analytics-client', PROCORE_ANALYTICS_SYNC_CLIENT_SECRET: 'analytics-secret' };
 
 test('Billing requires explicit activation and credentials distinct from all four existing apps', () => {
-  assert.equal(connection.billingProcoreConnection({}), 'shared');
-  assert.equal(connection.billingProcoreConnection({ ...fiveApps, PROCORE_BILLING_ENABLED: 'false' }), 'shared');
+  assert.throws(() => connection.billingProcoreConnection({}), /disabled/);
+  assert.throws(() => connection.billingProcoreConnection({ ...fiveApps, PROCORE_BILLING_ENABLED: 'false' }), /disabled/);
   assert.equal(connection.billingProcoreConnection(fiveApps), 'billing');
   assert.throws(() => connection.billingProcoreConnection({ ...fiveApps, PROCORE_BILLING_CLIENT_SECRET: '' }), /both/);
   for (const clientId of ['shared-client', 'pm-client', 'cm-client', 'analytics-client']) {
@@ -205,7 +205,7 @@ async function runWebhookBatch({ cooldown = null, failPm = false, fullSync = fal
   const until = new Date(Date.now() + 60_000);
   const route = load('src/app/api/webhooks/procore/process/route.ts', {
     'node:crypto': { randomUUID }, 'next/server': { NextResponse: Response }, '@/lib/prisma': { prisma },
-    '@/lib/procoreConnection': { ...connection, pmDashboardProcoreConnection: () => 'pm-dashboard' },
+    '@/lib/procoreConnection': { ...connection, pmDashboardProcoreConnection: () => 'pm-dashboard', analyticsSyncProcoreConnection: () => 'analytics-sync' },
     '@/lib/procore': { procoreConfig: { companyId: 'company' }, withProcoreLiveApiBypassForSyncSecret: (_req, fn) => fn() },
     '@/lib/procoreWebhookRecovery': { recoverStaleWebhookClaims: async () => ({ recovered: 0, failed: 0 }) },
     '@/lib/procoreQuotaControl': { getProcoreBackgroundCooldown: async () => connection.currentProcoreConnection() === cooldown ? until : null },
@@ -234,8 +234,8 @@ async function runWebhookBatch({ cooldown = null, failPm = false, fullSync = fal
   return { result, processed, updates };
 }
 
-test('mixed webhook batch processes PM events while the shared app is cooling down', async () => {
-  const { result, processed, updates } = await runWebhookBatch({ cooldown: 'shared' });
+test('mixed webhook batch processes PM events while the Analytics app is cooling down', async () => {
+  const { result, processed, updates } = await runWebhookBatch({ cooldown: 'analytics-sync' });
   assert.equal(processed.length, 2);
   assert.equal(result.claimed, 2);
   assert.equal(result.failed, 0);
@@ -312,7 +312,7 @@ test('Commitment Maker background task runner selects its own credentials and re
 
 test('Analytics sync requires explicit activation and distinct complete credentials',async()=>{
  const analytics={...env,PROCORE_ANALYTICS_SYNC_ENABLED:'true',PROCORE_ANALYTICS_SYNC_CLIENT_ID:'analytics-client',PROCORE_ANALYTICS_SYNC_CLIENT_SECRET:'analytics-secret'};
- assert.equal(connection.analyticsSyncProcoreConnection({}), 'shared');
+ assert.throws(() => connection.analyticsSyncProcoreConnection({}), /disabled/);
  assert.equal(connection.analyticsSyncProcoreConnection(analytics),'analytics-sync');
  assert.throws(()=>connection.analyticsSyncProcoreConnection({...analytics,PROCORE_ANALYTICS_SYNC_CLIENT_SECRET:''}),/both/);
  assert.throws(()=>connection.analyticsSyncProcoreConnection({...analytics,PROCORE_ANALYTICS_SYNC_CLIENT_ID:env.PROCORE_CLIENT_ID}),/distinct/);
@@ -330,7 +330,7 @@ test('authenticated sync selects Analytics but preserves accounting and explicit
  try {
   const request=new Request('http://internal');
   assert.equal(connection.withAuthenticatedSyncConnection(request,()=>connection.currentProcoreConnection()),'analytics-sync');
-  assert.equal(connection.withAuthenticatedSyncConnection(new Request('http://internal',{headers:{'x-procore-connection':'shared'}}),()=>connection.currentProcoreConnection()),'shared');
+  assert.throws(()=>connection.withAuthenticatedSyncConnection(new Request('http://internal',{headers:{'x-procore-connection':'shared'}}),()=>assert.fail('No shared bulk operation')),/dedicated/);
   assert.equal(connection.withProcoreConnection('pm-dashboard',()=>connection.withAuthenticatedSyncConnection(request,()=>connection.currentProcoreConnection())),'pm-dashboard');
   assert.equal(connection.withProcoreConnection('commitment-maker',()=>connection.withAuthenticatedSyncConnection(request,()=>connection.currentProcoreConnection())),'commitment-maker');
  }finally{keys.forEach((k,i)=>{if(saved[i]===undefined)delete process.env[k];else process.env[k]=saved[i]})}

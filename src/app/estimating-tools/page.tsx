@@ -75,6 +75,7 @@ function EstimatingToolsContent() {
   const [constants, setConstants] = useState<Constant[]>([]);
   const [rebarConstants, setRebarConstants] = useState<Constant[]>(defaultRebar);
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [recentCalcs, setRecentCalcs] = useState<Calculation[]>([]);
   const [aggregateTotals, setAggregateTotals] = useState({ cy: 0, tons: 0 });
@@ -128,27 +129,15 @@ function EstimatingToolsContent() {
 
   const fetchData = React.useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       // Fetch Projects (active only)
-      const projResponse = await fetch('/api/projects');
+      const projResponse = await fetch('/api/estimating-tools/projects', { cache: 'no-store' });
       const projResult = await projResponse.json();
-      const pData = projResult.success && Array.isArray(projResult.data) 
-        ? projResult.data.filter((p: Project) => !["Lost", "Archived"].includes(p.projectStatus || "") && !p.projectArchived)
-        : [];
-      
-      const uniqueMap = new Map();
-      pData.forEach((p: Project) => {
-        const nameKey = `${(p.projectName || "").toLowerCase()}-${(p.projectNumber || "").toLowerCase()}`;
-        if (!uniqueMap.has(p.id) && !uniqueMap.has(nameKey)) {
-          uniqueMap.set(p.id, p);
-          uniqueMap.set(nameKey, p);
-        }
-      });
-
-      const uniqueProjects = Array.from(new Set(uniqueMap.values())) as Project[];
-      setProjectsList(uniqueProjects.sort((a, b) => 
-        (a.projectName || "").localeCompare(b.projectName || "")
-      ));
+      if (!projResponse.ok || !projResult.success || !Array.isArray(projResult.data)) {
+        throw new Error('Unable to load estimating projects');
+      }
+      setProjectsList(projResult.data);
 
       // Fetch Constants
       const constResponse = await fetch('/api/estimating-constants');
@@ -174,6 +163,7 @@ function EstimatingToolsContent() {
       setAggregateTotals({ cy: 0, tons: 0 });
     } catch (error) {
       console.error("Error fetching data:", error);
+      setLoadError('Unable to load estimating options. Please refresh to try again.');
     } finally {
       setLoading(false);
     }
@@ -720,6 +710,7 @@ function EstimatingToolsContent() {
       </div>
 
       {/* Project Selector Bar */}
+      {loadError && <p role="alert" style={{ color: '#b91c1c' }}>{loadError}</p>}
       <div style={{ ...cardStyle, padding: "16px", marginBottom: "24px", background: "#15616D", borderColor: "#0e4048" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "16px", color: "white" }}>
           <div style={{ flex: 1 }}>

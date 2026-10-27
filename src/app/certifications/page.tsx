@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { Certification } from "@/types/certifications";
+import { certificationDaysRemaining, summarizeCertificationExpirations } from "@/lib/certificationReview";
 
 
 interface Employee {
@@ -19,7 +20,8 @@ function CertificationsContent() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "expiring" | "expired">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "expiring" | "expired" | "attention">("all");
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [notifying, setNotifying] = useState(false);
   const [notifyResult, setNotifyResult] = useState<{ success?: boolean; message?: string; count?: number } | null>(null);
 
@@ -38,29 +40,27 @@ function CertificationsContent() {
   }, []);
 
   async function loadData() {
+    setLoadError(null);
     try {
       const [certRes, empRes] = await Promise.all([
-        fetch('/api/certifications'),
-        fetch('/api/employees?isActive=true')
+        fetch('/api/certifications/expiration-review', { cache: 'no-store' }),
+        fetch('/api/certifications/employees', { cache: 'no-store' })
       ]);
 
       const certResult = await certRes.json();
       const empResult = await empRes.json();
 
-      if (certResult.success) {
-        setCertifications(certResult.data || []);
+      if (!certRes.ok || !certResult.success || !Array.isArray(certResult.data)
+        || !empRes.ok || !empResult.success || !Array.isArray(empResult.data)) {
+        throw new Error('Unable to load certification records');
       }
-
-      if (empResult.success) {
-        const empData = empResult.data?.map((emp: any) => ({
-          id: emp.id,
-          firstName: emp.firstName,
-          lastName: emp.lastName,
-        })) || [];
-        setEmployees(empData);
-      }
+      setCertifications(certResult.data);
+      setEmployees(empResult.data);
+      return certResult.data as Certification[];
     } catch (error) {
       console.error("Failed to load data:", error);
+      setLoadError('Unable to refresh certifications. Please try again.');
+      return null;
     } finally {
       setLoading(false);
     }
@@ -82,7 +82,7 @@ function CertificationsContent() {
 
       const result = await response.json();
       if (result.success && result.data) {
-        setCertifications([result.data, ...certifications]);
+        await loadData();
         setNewCert({
           employeeId: "",
           type: "",
@@ -116,57 +116,40 @@ function CertificationsContent() {
     }
   }
 
-  async function runNotificationCheck() {
+  async function reviewExpirations() {
     if (notifying) return;
     setNotifying(true);
     setNotifyResult(null);
     try {
-      const res = await fetch('/api/check-certifications');
-      const data = await res.json();
-      setNotifyResult(data);
-      if (data.success) {
-        // Show success, then clear
-        setTimeout(() => setNotifyResult(null), 5000);
+      const records = await loadData();
+      if (records) {
+        const summary = summarizeCertificationExpirations(records);
+        setSearchTerm('');
+        setStatusFilter('attention');
+        setNotifyResult({ success: true, message: `${summary.expired} expired; ${summary.expiring90} due within 90 days; ${summary.missingDate} missing or invalid dates.` });
+      } else {
+        setNotifyResult({ success: false, message: 'Review could not be refreshed. Please try again.' });
       }
     } catch (error) {
-      console.error("Notification check failed:", error);
+      console.error("Expiration review failed:", error);
       setNotifyResult({ success: false, message: "Connection error" });
     } finally {
       setNotifying(false);
     }
   }
 
-  const stats = useMemo(() => {
-    const now = new Date();
-    const thirtyDays = new Date();
-    thirtyDays.setDate(now.getDate() + 30);
-    const ninetyDays = new Date();
-    ninetyDays.setDate(now.getDate() + 90);
-
-    return {
-      total: certifications.length,
-      expired: certifications.filter(c => new Date(c.expirationDate) < now).length,
-      expiring30: certifications.filter(c => {
-        const d = new Date(c.expirationDate);
-        return d >= now && d <= thirtyDays;
-      }).length,
-      expiring90: certifications.filter(c => {
-        const d = new Date(c.expirationDate);
-        return d >= now && d <= ninetyDays;
-      }).length,
-    };
-  }, [certifications]);
+  const stats = useMemo(() => summarizeCertificationExpirations(certifications), [certifications]);
 
   const filteredCerts = useMemo(() => {
     const now = new Date();
-    const thirtyDays = new Date();
-    thirtyDays.setDate(now.getDate() + 30);
 
     return certifications.filter(c => {
       // Status filter
-      if (statusFilter === "expired" && new Date(c.expirationDate) >= now) return false;
-      if (statusFilter === "expiring" && (new Date(c.expirationDate) < now || new Date(c.expirationDate) > thirtyDays)) return false;
-      if (statusFilter === "active" && new Date(c.expirationDate) < now) return false;
+      const days = certificationDaysRemaining(c.expirationDate, now);
+      if (statusFilter === "expired" && (days === null || days >= 0)) return false;
+      if (statusFilter === "expiring" && (days === null || days < 0 || days > 30)) return false;
+      if (statusFilter === "active" && (days === null || days < 0)) return false;
+      if (statusFilter === "attention" && days !== null && days > 90) return false;
 
       // Search filter
       if (searchTerm) {
@@ -200,9 +183,9 @@ function CertificationsContent() {
             <div className="flex items-center gap-3">
               <h1 className="text-3xl font-bold text-gray-900 uppercase tracking-tighter">Certification Management</h1>
               <button 
-                onClick={runNotificationCheck}
+                onClick={reviewExpirations}
                 disabled={notifying}
-                title="Manually trigger email notifications for 30/60/90 day milestones"
+                title="Refresh saved records and review expired or upcoming credentials"
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
                   notifying 
                     ? "bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200" 
@@ -222,13 +205,13 @@ function CertificationsContent() {
                     <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                     </svg>
-                    Send Notifications
+                    Review Expirations
                   </>
                 )}
               </button>
               {notifyResult && (
                 <span className={`text-[10px] font-bold px-2 py-1 rounded border ${notifyResult.success ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"}`}>
-                  {notifyResult.message || (notifyResult.success ? `Success: Sent ${notifyResult.count} alerts` : "Failed")}
+                  {notifyResult.message}
                 </span>
               )}
             </div>
@@ -237,6 +220,7 @@ function CertificationsContent() {
         </div>
 
         {/* Form Grid */}
+        {loadError && <p role="alert" className="mb-4 text-red-700">{loadError}</p>}
         <div className="bg-white border border-gray-200 p-6 rounded-2xl mb-8 shadow-sm">
           <h3 className="text-xs font-black uppercase tracking-widest text-teal-800 mb-4 flex items-center gap-2 italic">
             <span className="w-2 h-2 bg-teal-500 rounded-full animate-pulse"></span>
@@ -327,7 +311,7 @@ function CertificationsContent() {
               className="flex-1 min-w-[300px] bg-gray-50 border-2 border-gray-100 rounded-xl px-4 py-2 text-gray-900 focus:outline-none focus:border-teal-500 font-bold"
             />
             <div className="flex gap-2">
-              {["all", "active", "expiring", "expired"].map((f) => (
+              {["all", "active", "expiring", "expired", "attention"].map((f) => (
                 <button
                   key={f}
                   onClick={() => setStatusFilter(f as any)}
@@ -362,18 +346,18 @@ function CertificationsContent() {
                 </tr>
               ) : (
                 filteredCerts.map((cert: any) => {
-                  const now = new Date();
-                  const thirtyDays = new Date();
-                  thirtyDays.setDate(now.getDate() + 30);
-                  const exp = new Date(cert.expirationDate);
+                  const days = certificationDaysRemaining(cert.expirationDate);
                   
                   let statusLabel = "ACTIVE";
                   let statusColor = "bg-green-100 text-green-800 border-green-200";
                   
-                  if (exp < now) {
+                  if (days === null) {
+                    statusLabel = "CHECK DATE";
+                    statusColor = "bg-orange-100 text-orange-800 border-orange-200";
+                  } else if (days < 0) {
                     statusLabel = "EXPIRED";
                     statusColor = "bg-red-100 text-red-800 border-red-200";
-                  } else if (exp <= thirtyDays) {
+                  } else if (days <= 90) {
                     statusLabel = "EXPIRING SOON";
                     statusColor = "bg-orange-100 text-orange-800 border-orange-200";
                   }

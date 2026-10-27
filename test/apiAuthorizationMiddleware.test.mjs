@@ -114,6 +114,21 @@ function assertPassed(response, label) {
   assert.equal(response.headers.get('x-middleware-next'), '1', label);
 }
 
+test('page-specific lookups work without granting full employee or project access', async () => {
+  for (const [permission, allowed, denied] of [
+    ['crew-management', '/api/crew-management/employees', '/api/employees'],
+    ['estimating-tools', '/api/estimating-tools/projects', '/api/projects'],
+    ['certifications', '/api/certifications/employees', '/api/employees'],
+    ['certifications', '/api/certifications/expiration-review', '/api/employees'],
+  ]) {
+    const app = harness({ identity: 'procore', cachedPermissions: [permission] });
+    assertPassed(await app.run(allowed), allowed);
+    assert.equal((await app.run(denied)).status, 403, denied);
+    assert.equal((await harness({ identity: 'procore', cachedPermissions: ['analytics'] }).run(allowed)).status, 403);
+    assert.equal((await harness({ identity: 'anonymous' }).run(allowed)).status, 401);
+  }
+});
+
 test('unmapped APIs fail closed before identity, cached permissions, or local development bypasses', async () => {
   for (const options of [
     { identity: 'auth0' }, { identity: 'procore' }, { identity: 'anonymous' },

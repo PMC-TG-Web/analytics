@@ -7,7 +7,6 @@ interface Employee {
   firstName: string;
   lastName: string;
   jobTitle: string;
-  email: string;
   isActive: boolean;
 }
 
@@ -40,12 +39,17 @@ function CrewManagementContent() {
       
       // Load employees and crew templates in parallel
       const [employeesResponse, crewTemplatesResponse] = await Promise.all([
-        fetch('/api/employees?isActive=true'),
-        fetch('/api/crew-templates')
+        fetch('/api/crew-management/employees', { cache: 'no-store' }),
+        fetch('/api/crew-templates', { cache: 'no-store' })
       ]);
       
       const employeesResult = await employeesResponse.json();
       const crewTemplatesResult = await crewTemplatesResponse.json();
+
+      if (!employeesResponse.ok || !employeesResult.success || !Array.isArray(employeesResult.data)
+        || !crewTemplatesResponse.ok || !crewTemplatesResult.success || !Array.isArray(crewTemplatesResult.data)) {
+        throw new Error('Unable to load crew data');
+      }
       
       const allEmployees = employeesResult.success ? employeesResult.data || [] : [];
       const crewTemplates = crewTemplatesResult.success ? crewTemplatesResult.data || [] : [];

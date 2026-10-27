@@ -177,6 +177,23 @@ test('route checkpoints exactly one stage and only completes after the final sta
   }
 });
 
+test('nightly budget refresh explicitly requests the complete project collection', async () => {
+  const previous = saved(steps.slice(0, 1), new Date().toISOString());
+  let requestBody;
+  const h = routeHarness(async (url, init) => {
+    assert.equal(new URL(url).pathname, '/api/procore/sync/budget-line-items');
+    requestBody = JSON.parse(init.body);
+    return Response.json({ success: true });
+  }, previous);
+  const result = await h.run();
+  assert.equal(requestBody.fetchAll, true, 'a page-limited budget response cannot complete the nightly stage');
+  assert.deepEqual(requestBody.projectIds, ['project']);
+  assert.equal(requestBody.perPage, 100);
+  assert.equal(requestBody.persist, true);
+  assert.equal(result.pending, true);
+  assert.equal(h.calls.checkpoints[0].steps.at(-1).step, 'budget-line-items');
+});
+
 test('body timeout records a retryable failure while retaining prior stage progress', async () => {
   const previous = saved(steps.slice(0, 1), new Date().toISOString());
   const h = routeHarness(async () => ({

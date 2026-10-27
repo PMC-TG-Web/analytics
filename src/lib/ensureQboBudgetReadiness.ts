@@ -15,8 +15,18 @@ export async function ensureQboBudgetReadiness(companyId: string, projectId: str
   // allow a snapshot to conceal an uncertain outstanding mutation.
   if (!previous?.lastError) {
     const snapshot = previous?.lastResult as { version?: number; projectNumber?: string; verifiedAt?: string; codes?: string[] } | null;
-    if (snapshot?.version === 1 && snapshot.projectNumber === projectNumber.trim() && Array.isArray(snapshot.codes) && snapshot.verifiedAt && recentBudgetCodesCover(codes, snapshot.codes.map(code => ({ code, verifiedAt: snapshot.verifiedAt! })))) return { ready: true, remaining: 0, message: 'Procore budget codes were recently verified.' };
-    const mirrored = await prisma.budgetLineItem.findMany({ where: { companyId, projectId }, select: { costCode: true, syncedAt: true } });
+    if (snapshot?.version === 1 && snapshot.projectNumber === projectNumber.trim() && Array.isArray(snapshot.codes) && snapshot.verifiedAt && recentBudgetCodesCover(codes, snapshot.codes.map(code => ({ code, verifiedAt: snapshot.verifiedAt! })))) {
+      const budgetSnapshot = await prisma.procoreBudgetSnapshotState.findUnique({
+        where: { companyId_projectId: { companyId, projectId } },
+        select: { lastCompleteAt: true },
+      });
+      // A newer complete source read supersedes previously verified code lists.
+      // Missing codes must go through the active mirror and existing live check.
+      if (!budgetSnapshot?.lastCompleteAt || budgetSnapshot.lastCompleteAt.getTime() <= new Date(snapshot.verifiedAt).getTime()) {
+        return { ready: true, remaining: 0, message: 'Procore budget codes were recently verified.' };
+      }
+    }
+    const mirrored = await prisma.budgetLineItem.findMany({ where: { companyId, projectId, sourceMissingAt: null }, select: { costCode: true, syncedAt: true } });
     if (recentBudgetCodesCover(codes, mirrored.map(row => ({ code: row.costCode || '', verifiedAt: row.syncedAt })))) return { ready: true, remaining: 0, message: 'Procore budget codes are present in the current synchronized budget.' };
   }
   return withBillingProcoreConnection(async () => {

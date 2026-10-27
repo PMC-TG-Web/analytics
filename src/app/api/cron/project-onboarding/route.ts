@@ -219,7 +219,7 @@ async function markRelatedQueuesCurrent(params: {
         COALESCE(NULLIF(BTRIM(project.bid_board_status), ''), NULLIF(BTRIM(project.status), '')) AS status,
         EXISTS (
           SELECT 1
-          FROM budgetlineitems budget
+          FROM budgetlineitems_active budget
           WHERE budget.company_id = project.company_id
             AND budget.project_id = project.procore_project_id
         ) AS has_budget

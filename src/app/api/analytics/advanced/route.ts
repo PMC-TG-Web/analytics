@@ -339,7 +339,7 @@ export async function GET(request: NextRequest) {
               COUNT(*)::text AS budget_line_items,
               COALESCE(SUM(amount), 0) AS budget_amount,
               COALESCE(SUM(original_budget_amount), 0) AS original_budget_amount
-            FROM budgetlineitems
+            FROM budgetlineitems_active
             WHERE company_id = $1
             GROUP BY company_id, project_id
           ),
@@ -462,7 +462,7 @@ export async function GET(request: NextRequest) {
             b.original_budget_amount,
             b.amount,
             b.synced_at::text
-          FROM budgetlineitems b
+          FROM budgetlineitems_active b
           LEFT JOIN pmc_project_identity cp
             ON cp.company_id = b.company_id
            AND cp.canonical_project_id = b.project_id
@@ -562,7 +562,7 @@ export async function GET(request: NextRequest) {
       prisma.$queryRawUnsafe<CountRow[]>(
         `
           SELECT COUNT(*)::text AS count
-          FROM budgetlineitems
+          FROM budgetlineitems_active
           WHERE company_id = $1
         `,
         companyId
@@ -594,7 +594,7 @@ export async function GET(request: NextRequest) {
       prisma.$queryRawUnsafe<CompanyCountRow[]>(
         `
           SELECT company_id, COUNT(*)::text AS count
-          FROM budgetlineitems
+          FROM budgetlineitems_active
           GROUP BY company_id
           ORDER BY COUNT(*) DESC
           LIMIT 10

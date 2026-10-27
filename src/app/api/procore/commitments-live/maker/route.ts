@@ -461,7 +461,7 @@ async function fetchCommitmentMakerPlanDataFromDatabase(companyId: string, proje
       },
     }),
     prisma.budgetLineItem.findMany({
-      where: { companyId, projectId },
+      where: { companyId, projectId, sourceMissingAt: null },
       select: {
         budgetLineItemId: true,
         costCode: true,

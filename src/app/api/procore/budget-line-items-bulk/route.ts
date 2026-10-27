@@ -129,7 +129,7 @@ export async function GET(request: NextRequest) {
             original_budget_amount,
             amount,
             synced_at::text
-          FROM budgetlineitems
+          FROM budgetlineitems_active
           WHERE company_id = $1
             AND project_id = ANY($2::text[])
           ORDER BY project_id, COALESCE(cost_code, '') ASC, COALESCE(name, '') ASC, id DESC

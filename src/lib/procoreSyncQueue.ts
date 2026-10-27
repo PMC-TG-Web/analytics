@@ -196,6 +196,8 @@ export async function seedPmcProjectSyncQueue(companyId: string, dataset: string
 }
 
 export async function seedProjectSyncQueue(companyId: string, dataset: string) {
+  // Structural refresh must discover projects before their first budget import.
+  // Existing due times, including deliberate retirement/parking, stay unchanged.
   return prisma.$executeRawUnsafe(
     `
       INSERT INTO procore_sync_project_states (
@@ -203,22 +205,26 @@ export async function seedProjectSyncQueue(companyId: string, dataset: string) {
         next_run_at, created_at, updated_at
       )
       SELECT
-        b.company_id,
-        b.project_id,
+        p.company_id,
+        p.procore_project_id,
         $2,
-        MAX(p.project_number),
-        MAX(p.project_name),
+        p.project_number,
+        p.project_name,
         NOW(),
         NOW(),
         NOW()
-      FROM budgetlineitems b
-      LEFT JOIN pmc_projects p
-        ON p.company_id = b.company_id
-       AND p.procore_project_id = b.project_id
-      WHERE b.company_id = $1
-        AND b.project_id IS NOT NULL
-        AND b.project_id <> ''
-      GROUP BY b.company_id, b.project_id
+      FROM pmc_projects p
+      WHERE p.company_id = $1
+        AND NULLIF(BTRIM(p.procore_project_id), '') IS NOT NULL
+        AND LOWER(BTRIM(p.project_name)) NOT LIKE '%template%'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM procore_sync_project_states onboarding
+          WHERE onboarding.company_id = p.company_id
+            AND onboarding.project_id = p.procore_project_id
+            AND onboarding.dataset = 'project_onboarding'
+            AND onboarding.last_result @> '{"reason":"internal_non_job_project"}'::jsonb
+        )
       ON CONFLICT (company_id, project_id, dataset)
       DO UPDATE SET
         project_number = COALESCE(EXCLUDED.project_number, procore_sync_project_states.project_number),

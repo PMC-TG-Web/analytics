@@ -782,7 +782,7 @@ async function fetchStoredBudgetLineItems(params: {
         wbs_code_id,
         line_item_type,
         payload
-      FROM budgetlineitems
+      FROM budgetlineitems_active
       WHERE company_id = $1
         AND project_id = $2
         AND wbs_code_id IS NOT NULL

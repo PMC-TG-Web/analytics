@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import type { Prisma } from '@prisma/client';
 
 type JsonObject = Record<string, unknown>;
 type JsonLike = string | number | boolean | null | JsonLike[] | { [key: string]: JsonLike };
@@ -204,93 +205,9 @@ export async function upsertBudgetLineItem(params: {
   sourceUpdatedAt?: string | Date | null;
   payload: JsonObject;
 }) {
-  const {
-    companyId,
-    projectId,
-    budgetLineItemId,
-    name,
-    costCode,
-    costCodeDescription,
-    wbsCodeId,
-    lineItemType,
-    uom,
-    quantity,
-    unitCost,
-    originalBudgetAmount,
-    amount,
-    calculationStrategy,
-    currencyIsoCode,
-    sourceCreatedAt,
-    sourceUpdatedAt,
-    payload,
-  } = params;
-
-  await prisma.$executeRawUnsafe(
-    `
-      INSERT INTO budgetlineitems (
-        company_id,
-        project_id,
-        budget_line_item_id,
-        name,
-        cost_code,
-        cost_code_description,
-        wbs_code_id,
-        line_item_type,
-        uom,
-        quantity,
-        unit_cost,
-        original_budget_amount,
-        amount,
-        calculation_strategy,
-        currency_iso_code,
-        source_created_at,
-        source_updated_at,
-        payload,
-        synced_at,
-        updated_at
-      )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::timestamptz,$17::timestamptz,$18::jsonb,NOW(),NOW())
-      ON CONFLICT (company_id, project_id, budget_line_item_id)
-      DO UPDATE SET
-        name = EXCLUDED.name,
-        cost_code = EXCLUDED.cost_code,
-        cost_code_description = EXCLUDED.cost_code_description,
-        wbs_code_id = EXCLUDED.wbs_code_id,
-        line_item_type = EXCLUDED.line_item_type,
-        uom = EXCLUDED.uom,
-        quantity = EXCLUDED.quantity,
-        unit_cost = EXCLUDED.unit_cost,
-        original_budget_amount = EXCLUDED.original_budget_amount,
-        amount = EXCLUDED.amount,
-        calculation_strategy = EXCLUDED.calculation_strategy,
-        currency_iso_code = EXCLUDED.currency_iso_code,
-        source_created_at = EXCLUDED.source_created_at,
-        source_updated_at = EXCLUDED.source_updated_at,
-        payload = EXCLUDED.payload,
-        synced_at = NOW(),
-        updated_at = NOW()
-    `,
-    companyId,
-    projectId,
-    budgetLineItemId,
-    name ?? null,
-    costCode ?? null,
-    costCodeDescription ?? null,
-    wbsCodeId ?? null,
-    lineItemType ?? null,
-    uom ?? null,
-    typeof quantity === 'number' && Number.isFinite(quantity) ? quantity : readNum(quantity),
-    typeof unitCost === 'number' && Number.isFinite(unitCost) ? unitCost : readNum(unitCost),
-    typeof originalBudgetAmount === 'number' && Number.isFinite(originalBudgetAmount) ? originalBudgetAmount : readNum(originalBudgetAmount),
-    typeof amount === 'number' && Number.isFinite(amount) ? amount : readNum(amount),
-    calculationStrategy ?? null,
-    currencyIsoCode ?? null,
-    normalizeTimestamp(sourceCreatedAt),
-    normalizeTimestamp(sourceUpdatedAt),
-    JSON.stringify(payload)
-  );
-
-  await syncUnpackedFieldsForBudgetLineItem(companyId, projectId, budgetLineItemId, payload);
+  const { companyId, ...item } = params;
+  await batchUpsertBudgetLineItems(companyId, [item]);
+  await syncUnpackedFieldsForBudgetLineItem(companyId, item.projectId, item.budgetLineItemId, item.payload);
 }
 
 export type BatchBudgetLineItem = {
@@ -313,11 +230,8 @@ export type BatchBudgetLineItem = {
   payload: JsonObject;
 };
 
-/**
- * Bulk-upsert many budget line items in a single SQL statement.
- * Skips the unpacked-fields table to stay well within Netlify's wall-clock limit.
- */
-export async function batchUpsertBudgetLineItems(
+async function writeBudgetLineItems(
+  tx: Prisma.TransactionClient,
   companyId: string,
   items: BatchBudgetLineItem[]
 ): Promise<number> {
@@ -344,7 +258,7 @@ export async function batchUpsertBudgetLineItems(
     payload: JSON.stringify(item.payload),
   }));
 
-  await prisma.$executeRawUnsafe(
+  await tx.$executeRawUnsafe(
     `
       INSERT INTO budgetlineitems (
         company_id,
@@ -387,8 +301,8 @@ export async function batchUpsertBudgetLineItems(
         t.source_created_at::timestamptz,
         t.source_updated_at::timestamptz,
         t.payload::jsonb,
-        NOW(),
-        NOW()
+        clock_timestamp(),
+        clock_timestamp()
       FROM jsonb_to_recordset($1::jsonb) AS t(
         company_id TEXT,
         project_id TEXT,
@@ -426,11 +340,152 @@ export async function batchUpsertBudgetLineItems(
         source_created_at = EXCLUDED.source_created_at,
         source_updated_at = EXCLUDED.source_updated_at,
         payload = EXCLUDED.payload,
-        synced_at = NOW(),
-        updated_at = NOW()
+        source_missing_at = NULL,
+        synced_at = clock_timestamp(),
+        updated_at = clock_timestamp()
     `,
     JSON.stringify(records)
   );
 
   return items.length;
+}
+
+/** Capture database time before the first request in a project snapshot. */
+export async function startBudgetSnapshot(): Promise<Date> {
+  const rows = await prisma.$queryRawUnsafe<Array<{ started_at: Date }>>(
+    'SELECT clock_timestamp() AS started_at',
+  );
+  const startedAt = rows[0]?.started_at;
+  if (!(startedAt instanceof Date) || !Number.isFinite(startedAt.getTime())) {
+    throw new Error('Could not establish the budget snapshot start time.');
+  }
+  return startedAt;
+}
+
+type BudgetSnapshotParams = {
+  companyId: string;
+  projectId: string;
+  items: BatchBudgetLineItem[];
+  startedAt: Date;
+  complete: boolean;
+  reconcileAbsent: boolean;
+};
+
+/** Persist one proven source scope atomically; retain absent rows as evidence. */
+export async function persistBudgetSnapshot(params: BudgetSnapshotParams): Promise<{
+  upserted: number;
+  missing: number;
+  reconciled: boolean;
+  complete: boolean;
+}> {
+  const companyId = params.companyId.trim();
+  const projectId = params.projectId.trim();
+  if (!companyId || !projectId) throw new Error('Budget snapshot requires an explicit company and project.');
+  if (!(params.startedAt instanceof Date) || !Number.isFinite(params.startedAt.getTime())) {
+    throw new Error('Budget snapshot requires a valid database start time.');
+  }
+  if (params.reconcileAbsent && !params.complete) {
+    throw new Error('An incomplete budget snapshot cannot reconcile absent rows.');
+  }
+  const ids = new Set<string>();
+  const items = params.items.map((item) => {
+    const id = item.budgetLineItemId.trim();
+    if (item.projectId.trim() !== projectId || !id) {
+      throw new Error('Budget snapshot contains a missing line ID or a different project.');
+    }
+    if (ids.has(id)) throw new Error('Budget snapshot contains duplicate source line IDs.');
+    ids.add(id);
+    return { ...item, projectId, budgetLineItemId: id };
+  });
+
+  return prisma.$transaction(async (tx) => {
+    // A project lock also fences an initially empty scope without a row to lock.
+    await tx.$executeRawUnsafe(
+      'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+      `budget:${companyId}:${projectId}`,
+    );
+    const rows = await tx.$queryRawUnsafe<Array<{
+      superseded: boolean;
+      active_count: number;
+    }>>(
+      `
+        SELECT
+          COALESCE((SELECT last_write_at > $3::timestamptz FROM procore_budget_snapshot_states
+                    WHERE company_id = $1 AND project_id = $2), FALSE)
+            OR COALESCE(MAX(GREATEST(synced_at, updated_at)) > $3::timestamptz, FALSE) AS superseded,
+          COUNT(*) FILTER (WHERE source_missing_at IS NULL)::integer AS active_count
+        FROM budgetlineitems
+        WHERE company_id = $1 AND project_id = $2
+      `,
+      companyId,
+      projectId,
+      params.startedAt,
+    );
+    const existing = rows[0];
+    if (!existing) throw new Error('Could not verify the existing budget snapshot.');
+    // Compare in PostgreSQL so a newer write within the same millisecond cannot
+    // disappear when its microsecond timestamp is converted to a JavaScript Date.
+    if (existing.superseded) {
+      throw new Error('Budget snapshot was superseded by a newer write; fetch a fresh snapshot.');
+    }
+    if (params.complete && items.length === 0 && existing.active_count > 0) {
+      throw new Error('An unexpectedly empty budget snapshot cannot replace existing active rows.');
+    }
+
+    const upserted = await writeBudgetLineItems(tx, companyId, items);
+    const reconciled = params.complete && params.reconcileAbsent;
+    const missing = reconciled ? await tx.$executeRawUnsafe(
+      `
+        UPDATE budgetlineitems
+        SET source_missing_at = clock_timestamp(), synced_at = clock_timestamp(), updated_at = clock_timestamp()
+        WHERE company_id = $1 AND project_id = $2
+          AND source_missing_at IS NULL
+          AND NOT (budget_line_item_id = ANY($3::text[]))
+      `,
+      companyId,
+      projectId,
+      [...ids],
+    ) : 0;
+    // Record even an initially empty completed snapshot. Row timestamps alone
+    // cannot prevent an older concurrent read from filling that empty scope.
+    await tx.$executeRawUnsafe(
+      `
+        INSERT INTO procore_budget_snapshot_states (
+          company_id, project_id, last_write_at, last_complete_at, last_snapshot_started_at, source_count
+        ) VALUES (
+          $1, $2, clock_timestamp(), CASE WHEN $4 THEN clock_timestamp() ELSE NULL END,
+          $3::timestamptz, CASE WHEN $4 THEN $5::integer ELSE NULL END
+        )
+        ON CONFLICT (company_id, project_id) DO UPDATE SET
+          last_write_at = clock_timestamp(),
+          last_snapshot_started_at = EXCLUDED.last_snapshot_started_at,
+          last_complete_at = CASE WHEN $4 THEN EXCLUDED.last_complete_at ELSE procore_budget_snapshot_states.last_complete_at END,
+          source_count = CASE WHEN $4 THEN EXCLUDED.source_count ELSE procore_budget_snapshot_states.source_count END
+      `,
+      companyId,
+      projectId,
+      params.startedAt,
+      reconciled,
+      items.length,
+    );
+    return { upserted, missing, reconciled, complete: params.complete };
+  }, { timeout: 30_000, maxWait: 10_000 });
+}
+
+/** Compatibility imports remain partial and never infer deletion from absence. */
+export async function batchUpsertBudgetLineItems(companyId: string, items: BatchBudgetLineItem[]): Promise<number> {
+  const projects = new Map<string, BatchBudgetLineItem[]>();
+  for (const item of items) {
+    const projectId = item.projectId.trim();
+    const rows = projects.get(projectId) || [];
+    rows.push(item);
+    projects.set(projectId, rows);
+  }
+  let upserted = 0;
+  for (const [projectId, projectItems] of projects) {
+    const startedAt = await startBudgetSnapshot();
+    const result = await persistBudgetSnapshot({ companyId, projectId, items: projectItems, startedAt, complete: false, reconcileAbsent: false });
+    upserted += result.upserted;
+  }
+  return upserted;
 }

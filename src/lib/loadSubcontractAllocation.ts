@@ -19,7 +19,7 @@ export async function loadSubcontractAllocation(companyId: string, projectId: st
   const proposalId = String(primary.id);
   const [lines, budgets, orders, estimateCache] = await Promise.all([
     prisma.procoreEstimateLineItem.findMany({ where: { companyId, bidBoardProjectId, proposalId }, orderBy: [{ groupId: 'asc' }, { lineItemId: 'asc' }] }),
-    prisma.budgetLineItem.findMany({ where: { companyId, projectId }, orderBy: { budgetLineItemId: 'asc' } }),
+    prisma.budgetLineItem.findMany({ where: { companyId, projectId, sourceMissingAt: null }, orderBy: { budgetLineItemId: 'asc' } }),
     prisma.purchaseOrderContract.findMany({ where: { procoreCompanyId: companyId, procoreProjectId: projectId, procoreDeletedAt: null },
       include: { lineItemContractDetails: { where: { procoreCompanyId: companyId, procoreProjectId: projectId }, orderBy: { id: 'asc' } } }, orderBy: { id: 'asc' } }),
     prisma.procoreCommitmentEstimateCache.findUnique({ where: { companyId_projectId: { companyId, projectId } }, select: { snapshot: true } }),

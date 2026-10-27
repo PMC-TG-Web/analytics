@@ -107,7 +107,7 @@ export async function GET(request: NextRequest) {
           ),
           budget AS (
             SELECT project_id, SUM(COALESCE(quantity, 0))::double precision AS original_hours
-            FROM budgetlineitems
+            FROM budgetlineitems_active
             WHERE company_id = $1 AND cost_code ~* '\\.L$'
             GROUP BY project_id
           ),

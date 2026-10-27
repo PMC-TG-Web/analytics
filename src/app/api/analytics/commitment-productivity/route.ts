@@ -158,7 +158,7 @@ export async function GET(request: NextRequest) {
                 )
               ) AS labor_description,
               SUM(COALESCE(b.quantity, 0))::double precision AS original_expected_hours
-            FROM budgetlineitems b
+            FROM budgetlineitems_active b
             WHERE b.company_id = $1
               AND ($2::text IS NULL OR b.project_id = $2)
               AND b.cost_code ~* '\\.L$'

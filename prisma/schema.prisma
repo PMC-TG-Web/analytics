@@ -1532,6 +1532,8 @@ model BudgetLineItem {
   calculationStrategy  String?   @map("calculation_strategy")
   currencyIsoCode      String?   @map("currency_iso_code")
   sourceUpdatedAt      DateTime? @map("source_updated_at") @db.Timestamptz(6)
+  // Observation time of absence from a complete source collection; retain evidence.
+  sourceMissingAt      DateTime? @map("source_missing_at") @db.Timestamptz(6)
 
   @@unique([companyId, projectId, budgetLineItemId])
   @@index([budgetLineItemId], map: "idx_budgetlineitems_budget_line_item_id")
@@ -1541,6 +1543,19 @@ model BudgetLineItem {
   @@index([syncedAt(sort: Desc)], map: "idx_budgetlineitems_synced_at")
   @@index([wbsCodeId], map: "idx_budgetlineitems_wbs_code_id")
   @@map("budgetlineitems")
+}
+
+// Serializes budget publication, including an empty snapshot with no row timestamps.
+model ProcoreBudgetSnapshotState {
+  companyId             String    @map("company_id")
+  projectId             String    @map("project_id")
+  lastWriteAt           DateTime  @default(now()) @map("last_write_at") @db.Timestamptz(6)
+  lastCompleteAt        DateTime? @map("last_complete_at") @db.Timestamptz(6)
+  lastSnapshotStartedAt DateTime? @map("last_snapshot_started_at") @db.Timestamptz(6)
+  sourceCount           Int?      @map("source_count")
+
+  @@id([companyId, projectId])
+  @@map("procore_budget_snapshot_states")
 }
 
 model BudgetLineItemUnpackedField {

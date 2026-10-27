@@ -100,6 +100,7 @@ async function runStep(params: {
         persist: true,
         persistUnpackedFields: false,
         forceUserOAuth: false,
+        ...(params.step === "budget-line-items" ? { fetchAll: true } : {}),
         syncScope: params.syncScope,
       }),
       signal: AbortSignal.timeout(params.timeoutMs ?? 4 * 60_000),

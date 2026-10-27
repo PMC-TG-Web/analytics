@@ -88,7 +88,7 @@ async function loadPreview(companyId: string, projectId: string | null, kind: Ad
             b.company_id,
             b.project_id,
             SUM(COALESCE(b.quantity, 0))::numeric AS original_expected_hours
-          FROM budgetlineitems b
+          FROM budgetlineitems_active b
           WHERE b.company_id = $1
             AND ($2::text IS NULL OR b.project_id = $2)
             AND UPPER(REGEXP_REPLACE(BTRIM(b.cost_code), '\\.L$', '', 'i')) = '01-300-10-20'

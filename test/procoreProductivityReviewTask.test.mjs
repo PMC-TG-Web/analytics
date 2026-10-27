@@ -271,6 +271,54 @@ test('office handoff retry finds its tag on later pages without another mutation
   assert.equal(calls, 2);
 });
 
+test('office handoff resolves both fixed recipients from paginated Procore email_address fields', async () => {
+  const mutations = [];
+  const { ensureProductivityOfficeReviewTask } = loadModule(async (path, token, options, companyId) => {
+    assert.equal(companyId, officeParams.companyId);
+    if (options?.method) {
+      assert.equal(options.method, 'POST');
+      mutations.push(JSON.parse(options.body).task_item);
+      return { id: 99 };
+    }
+    if (!path.includes('/users?')) return [];
+    return path.includes('page=1&')
+      ? Array.from({ length: 100 }, (_, i) => ({ id: i + 10, email_address: `other${i}@example.com` }))
+      : [
+        { id: 1, email_address: ' TODD@pmcdecor.com ', is_active: true },
+        { id: 2, email_address: 'david@pmcdecor.com', is_active: true },
+        { id: 3, email_address: 'pm@pmcdecor.com', is_active: true },
+      ];
+  });
+  await ensureProductivityOfficeReviewTask(officeParams);
+  assert.equal(mutations.length, 1);
+  assert.equal(mutations[0].assigned_id, 1);
+  assert.deepEqual(mutations[0].assignee_ids, [1, 2]);
+  assert.deepEqual(mutations[0].distribution_member_ids, []);
+  assert.equal(mutations[0].due_date, undefined);
+});
+
+for (const [label, candidates] of [
+  ['missing', []],
+  ['inactive', [{ id: 2, email_address: 'david@pmcdecor.com', is_active: false }]],
+  ['ambiguous', [
+    { id: 2, email_address: 'david@pmcdecor.com', is_active: true },
+    { id: 3, email_address: 'DAVID@pmcdecor.com', is_active: true },
+  ]],
+  ['invalid ID', [{ id: 'invalid', email_address: 'david@pmcdecor.com', is_active: true }]],
+  ['conflicting legacy email', [{ id: 2, email_address: 'other@pmcdecor.com', email: 'david@pmcdecor.com', is_active: true }]],
+]) {
+  test(`office handoff does not create a partial task when email_address recipient is ${label}`, async () => {
+    const { ensureProductivityOfficeReviewTask } = loadModule(async (path, token, options) => {
+      assert.equal(options?.method, undefined, 'No task mutation is allowed');
+      return path.includes('/users?') ? [
+        { id: 1, email_address: 'todd@pmcdecor.com', is_active: true },
+        ...candidates,
+      ] : [];
+    });
+    await assert.rejects(ensureProductivityOfficeReviewTask(officeParams), /david@pmcdecor.com/);
+  });
+}
+
 test('office handoff fails without both exact active assignees and never creates a partial task', async () => {
   const { ensureProductivityOfficeReviewTask } = loadModule(async (path, token, options) => {
     assert.notEqual(options?.method, 'POST');

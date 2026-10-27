@@ -286,8 +286,9 @@ export async function ensureProductivityOfficeReviewTask(params: {
     path: `/rest/v1.0/projects/${encodeURIComponent(params.projectId)}/users?company_id=${encodeURIComponent(params.companyId)}`,
   });
   const assigneeIds = ['todd@pmcdecor.com', 'david@pmcdecor.com'].map((email) => {
+    // The project directory returns email_address; older responses use email/login.
     const matches = users.filter((user) => user.is_active !== false
-      && String(user.email || user.login || '').trim().toLowerCase() === email);
+      && String(user.email_address || user.email || user.login || '').trim().toLowerCase() === email);
     const id = matches.length === 1 ? readNumber(matches[0].id) : null;
     if (!id || !Number.isSafeInteger(id) || id <= 0) {
       throw new Error(`${email} must resolve to one active Procore project user before creating the office review task.`);

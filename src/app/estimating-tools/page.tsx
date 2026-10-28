@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect } from "react";
+import { rebarSpecifications } from "@/lib/rebarSpecifications";
 
 export default function EstimatingToolsPage() {
   return <EstimatingToolsContent />;
@@ -41,6 +42,8 @@ interface Constant {
   weightPerFoot?: number;
 }
 
+const defaultRebar = rebarSpecifications.map(specification => ({ ...specification }));
+
 interface PierResult {
   volume: number;
   formsSF: number;
@@ -62,16 +65,6 @@ interface SpreadFooterResult {
 }
 
 function EstimatingToolsContent() {
-  // Default fallback data in case database is empty or slow
-  const defaultRebar = [
-    { size: "#3", weightPerFoot: 0.376, overlap: 1.38 },
-    { size: "#4", weightPerFoot: 0.668, overlap: 1.83 },
-    { size: "#5", weightPerFoot: 1.043, overlap: 2.29 },
-    { size: "#6", weightPerFoot: 1.502, overlap: 2.75 },
-    { size: "#7", weightPerFoot: 2.044, overlap: 3.21 },
-    { size: "#8", weightPerFoot: 2.67, overlap: 3.67 },
-  ];
-
   const [constants, setConstants] = useState<Constant[]>([]);
   const [rebarConstants, setRebarConstants] = useState<Constant[]>(defaultRebar);
   const [saving, setSaving] = useState(false);
@@ -167,7 +160,7 @@ function EstimatingToolsContent() {
     } finally {
       setLoading(false);
     }
-  }, [spreadFooterRebarSize, footerRebarSize, selectedProjectId]);
+  }, [spreadFooterRebarSize, footerRebarSize]);
 
   useEffect(() => {
     fetchData();

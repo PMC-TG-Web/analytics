@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { expandAssignedPermissions, USER_PERMISSIONS } from "@/lib/permissions";
 import { canAccessNavigationLink, createNavigationPermissionRefresh } from "@/lib/navigationPermissions";
+import { isLocalDeveloperRequest } from "@/lib/developerIdentity";
 
 const AUTH_LOGOUT_SIGNAL_KEY = "analytics-auth-logout";
 const AUTH_LOGOUT_SIGNAL_CHANNEL = "analytics-auth-logout";
@@ -19,6 +20,7 @@ interface NavLink {
   label: string;
   page: string;
   fallbackPage?: string;
+  localOnly?: boolean;
 }
 
 const navLinks: NavLink[] = [
@@ -31,6 +33,7 @@ const navLinks: NavLink[] = [
   { href: "/kpi", label: "KPI", page: "kpi" },
   { href: "/wip", label: "WIP", page: "wip" },
   { href: "/crew-management", label: "Crew Management", page: "crew-management" },
+  { href: "/crew-scorecard", label: "Crew Scorecard", page: "analytics", localOnly: true },
   { href: "/estimating-tools", label: "Estimating", page: "estimating-tools" },
   { href: "/constants", label: "Constants", page: "constants" },
   { href: "/employees", label: "Employees", page: "employees" },
@@ -76,6 +79,11 @@ export default function Navigation({
   const isGlobalNavigationManaged = useContext(GlobalNavigationContext);
   const [permissionsLoaded, setPermissionsLoaded] = useState(false);
   const [permissionsFailed, setPermissionsFailed] = useState(false);
+  const [localPreview, setLocalPreview] = useState(false);
+
+  useEffect(() => {
+    setLocalPreview(isLocalDeveloperRequest({ nextUrl: { hostname: window.location.hostname } }));
+  }, []);
 
   const [permissionSnapshot, setPermissionSnapshot] = useState<{
     email: string;
@@ -175,7 +183,7 @@ export default function Navigation({
     failed: permissionsFailed,
   });
 
-  const visibleNavLinks = navLinks.filter(canAccessLink);
+  const visibleNavLinks = navLinks.filter(link => (!link.localOnly || localPreview) && canAccessLink(link));
   const visibleScheduleLinks = scheduleLinks.filter(canAccessLink);
 
   const renderNavLink = (link: NavLink) => {

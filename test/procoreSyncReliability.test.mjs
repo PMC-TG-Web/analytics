@@ -782,8 +782,8 @@ test("full project reconciliation has timeout headroom and rejects truncated res
   );
 
   assert.match(allProjectsRoute, /mapWithConcurrency\(allProjectStages, writeConcurrency/);
-  assert.match(allProjectsRoute, /mapWithConcurrency\(allV1Projects, writeConcurrency/);
-  assert.match(allProjectsRoute, /mapWithConcurrency\(allBidBoardProjects, writeConcurrency/);
+  assert.match(allProjectsRoute, /mapWithConcurrency\(allV1Projects, 1,/);
+  assert.match(allProjectsRoute, /mapWithConcurrency\(allBidBoardProjects, 1,/);
   assert.match(backgroundWorker, /result\?\.success === true/);
   assert.doesNotMatch(backgroundWorker, /result\?\.success !== false/);
 });

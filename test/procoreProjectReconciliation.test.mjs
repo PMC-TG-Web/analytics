@@ -99,6 +99,16 @@ test('provider cooldown preserves its deadline for the background retry loop', a
   assert.equal(result.rateLimitUntil, until);
 });
 
+test('large identity-conflict diagnostics cannot hide the persistence error in the bounded log', async () => {
+  const f = fixture({ run: async () => Response.json({ success: true, summary: {
+    identityConflicts: Array.from({ length: 100 }, () => ({ reason: 'ambiguous-legacy-projects', externalId: 'project-a' })),
+    errors: ['Header persistence rejected'],
+  } }) });
+  assert.equal((await f.run()).success, false);
+  assert.match(f.updates[0].data.error, /Header persistence rejected/);
+  assert.ok(f.updates[0].data.error.length <= 4000);
+});
+
 test('a failed log creation still releases the acquired lease', async () => {
   const f = fixture({ failCreate: true });
   assert.equal((await f.run()).success, false);

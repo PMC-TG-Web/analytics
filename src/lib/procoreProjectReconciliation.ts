@@ -35,7 +35,12 @@ export function runProjectReconciliation(params: { origin: string; secret: strin
       const rateLimitUntil = procoreSyncRateLimitUntil(detail)?.toISOString() || headerUntil || undefined;
       const success = response.ok && detail?.success === true && !rateLimited
         && !procoreSyncDetailHasErrors(detail) && !procoreSyncDetailHasErrors(detail?.summary);
-      const error = success ? null : JSON.stringify(detail || `Project reconciliation returned HTTP ${response.status}`).slice(0, 4_000);
+      // Identity conflicts can fill the log before its trailing errors. Keep
+      // persistence failures first so a complete-but-failed pass is actionable.
+      const errors = Array.isArray(detail?.summary?.errors) ? detail.summary.errors : [];
+      const error = success ? null : JSON.stringify(errors.length
+        ? { errors, identityConflictCount: detail.summary.identityConflicts?.length || 0 }
+        : detail || `Project reconciliation returned HTTP ${response.status}`).slice(0, 4_000);
       const totalMs = Date.now() - startedAt;
       await prisma.syncLog.update({ where: { id: logId }, data: {
         finishedAt: new Date(), success, totalMs, error,

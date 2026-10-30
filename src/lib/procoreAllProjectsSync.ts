@@ -1230,7 +1230,10 @@ export async function runAllProjectsSync(
 
     // 3. Persist exact canonical headers, then resolve the legacy scheduling row.
     // Identity conflicts retain the source mirrors and leave legacy records untouched.
-    await mapWithConcurrency(allV1Projects, writeConcurrency, async (p) => {
+    // Identity resolution uses Serializable predicate reads across legacy rows.
+    // Parallel headers conflict even for different source IDs; the background
+    // runtime has room to persist them serially without weakening identity.
+    await mapWithConcurrency(allV1Projects, 1, async (p) => {
       try {
         const procoreId = String(p.id || '').trim();
         if (!procoreId) return;
@@ -1348,7 +1351,7 @@ export async function runAllProjectsSync(
     }
 
     // 4. Process Bid Board Projects
-    await mapWithConcurrency(allBidBoardProjects, writeConcurrency, async (bb) => {
+    await mapWithConcurrency(allBidBoardProjects, 1, async (bb) => {
       try {
         const bidId = String(bb.id || bb.bid_board_project_id || '').trim();
         if (!bidId) return;

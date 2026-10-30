@@ -97,6 +97,25 @@ test('PM quota and worker SQL is isolated from shared controls without changing 
         await queue.releaseProcoreWorker(company, worker.leaseId);
         assert.equal((await queue.acquireProcoreWorker(company, 1)).reason, 'rate_limit_cooldown');
       });
+      // Approval polling shares Analytics' mirror lease but spends CM quota.
+      // These rows live only in the temporary tables above.
+      const approvalCompany = 'test-approval-company';
+      await connection.withProcoreConnection('analytics-sync', async () => {
+        await queue.setProcoreRateLimit({ companyId: approvalCompany, until });
+        const approval = await queue.acquireProcoreWorker(approvalCompany, 1, 'commitment-maker');
+        assert.equal(approval.acquired, true, 'Analytics quota must not block a CM reader');
+        assert.equal(approval.control.rate_limit_until, null, 'Return the outbound app cooldown');
+        const contender = await queue.acquireProcoreWorker(approvalCompany, 1, 'commitment-maker');
+        assert.equal(contender.reason, 'worker_busy', 'Both readers must contend for the same data lease');
+        await queue.releaseProcoreWorker(approvalCompany, 'wrong-owner');
+        assert.equal((await queue.acquireProcoreWorker(approvalCompany, 1, 'commitment-maker')).reason, 'worker_busy');
+        await queue.releaseProcoreWorker(approvalCompany, approval.leaseId);
+        assert.equal((await queue.acquireProcoreWorker(approvalCompany, 1)).reason, 'rate_limit_cooldown', 'Ordinary Analytics still honors its own quota');
+        await connection.withProcoreConnection('commitment-maker', () => queue.setProcoreRateLimit({ companyId: approvalCompany, until }));
+        const deferred = await queue.acquireProcoreWorker(approvalCompany, 1, 'commitment-maker');
+        assert.equal(deferred.reason, 'rate_limit_cooldown');
+        assert.equal(deferred.control.rate_limit_until.toISOString(), until.toISOString());
+      });
       throw rollback;
     }, { timeout: 15_000 });
   } catch (error) {

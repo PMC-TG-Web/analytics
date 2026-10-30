@@ -62,8 +62,9 @@ export function commitmentMakerProcoreConnection(env: NodeJS.ProcessEnv = proces
   const id = env.PROCORE_COMMITMENT_MAKER_CLIENT_ID?.trim();
   const secret = env.PROCORE_COMMITMENT_MAKER_CLIENT_SECRET?.trim();
   if (!id || !secret) throw new Error('Configure both PROCORE_COMMITMENT_MAKER_CLIENT_ID and PROCORE_COMMITMENT_MAKER_CLIENT_SECRET.');
-  if (id === env.PROCORE_CLIENT_ID?.trim() || id === env.PROCORE_PM_DASHBOARD_CLIENT_ID?.trim()) {
-    throw new Error('Commitment Maker must use its own Procore OAuth client, distinct from Analytics and PM Dashboard.');
+  if ([env.PROCORE_CLIENT_ID, env.PROCORE_PM_DASHBOARD_CLIENT_ID, env.PROCORE_ANALYTICS_SYNC_CLIENT_ID, env.PROCORE_BILLING_CLIENT_ID]
+    .some(value => value?.trim() === id)) {
+    throw new Error('Commitment Maker must use its own Procore OAuth client, distinct from the other apps.');
   }
   return 'commitment-maker';
 }

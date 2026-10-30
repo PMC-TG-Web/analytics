@@ -1,4 +1,4 @@
-import { procoreCoordinationTables } from '@/lib/procoreConnection';
+import { procoreCoordinationTables, type ProcoreConnection } from '@/lib/procoreConnection';
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -561,8 +561,16 @@ export async function seedSingletonSyncQueue(params: {
   );
 }
 
-export async function acquireProcoreWorker(companyId: string, leaseMinutes = 8) {
+export async function acquireProcoreWorker(companyId: string, leaseMinutes = 8, quotaConnection?: ProcoreConnection) {
   const table = procoreCoordinationTables().controls;
+  // Some readers use a dedicated app while updating the same canonical mirror.
+  // Keep the caller's data lease but admit against the outbound app's quota.
+  const quotaTable = procoreCoordinationTables(quotaConnection).controls;
+  const quotaAvailable = table === quotaTable
+    ? '(rate_limit_until IS NULL OR rate_limit_until <= NOW())'
+    : `NOT EXISTS (SELECT 1 FROM ${quotaTable} quota WHERE quota.company_id = $1 AND quota.rate_limit_until > NOW())`;
+  const quotaUntil = table === quotaTable ? 'rate_limit_until'
+    : `(SELECT quota.rate_limit_until FROM ${quotaTable} quota WHERE quota.company_id = $1) AS rate_limit_until`;
   const leaseId = randomUUID();
   await prisma.$executeRawUnsafe(
     `
@@ -580,9 +588,9 @@ export async function acquireProcoreWorker(companyId: string, leaseMinutes = 8) 
           worker_locked_until = NOW() + ($3 * INTERVAL '1 minute'),
           updated_at = NOW()
       WHERE company_id = $1
-        AND (rate_limit_until IS NULL OR rate_limit_until <= NOW())
+        AND ${quotaAvailable}
         AND (worker_locked_until IS NULL OR worker_locked_until <= NOW())
-      RETURNING worker_locked_by, worker_locked_until, rate_limit_until
+      RETURNING worker_locked_by, worker_locked_until, ${quotaUntil}
     `,
     companyId,
     leaseId,
@@ -593,7 +601,7 @@ export async function acquireProcoreWorker(companyId: string, leaseMinutes = 8) 
 
   const current = await prisma.$queryRawUnsafe<ControlRow[]>(
     `
-      SELECT worker_locked_by, worker_locked_until, rate_limit_until
+      SELECT worker_locked_by, worker_locked_until, ${quotaUntil}
       FROM ${table}
       WHERE company_id = $1
     `,

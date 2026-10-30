@@ -1,4 +1,4 @@
-import { withAnalyticsSyncProcoreConnection } from '@/lib/procoreConnection';
+import { commitmentMakerProcoreConnection, withAnalyticsSyncProcoreConnection, withProcoreConnection } from '@/lib/procoreConnection';
 import { NextRequest, NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
@@ -185,12 +185,23 @@ async function runPostInConnection(request: NextRequest) {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
 
+  // Automatic approval work must never fall back to the sign-in app.
+  let approvalConnection;
+  try {
+    approvalConnection = commitmentMakerProcoreConnection();
+    if (approvalConnection !== 'commitment-maker') throw new Error('Enable the dedicated Commitment Maker app for approval polling.');
+  } catch (error) {
+    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : 'Commitment Maker connection unavailable.' }, { status: 503 });
+  }
+
   return withProcoreLiveApiBypassForSyncSecret(request, async () => {
     const companyId = String(procoreConfig.companyId || "").trim();
     if (!companyId) {
       return NextResponse.json({ success: false, error: "PROCORE_COMPANY_ID is not configured." }, { status: 503 });
     }
-    const worker = await acquireProcoreWorker(companyId, 3);
+    // Analytics still owns the mirror-write lease. Only the credential, quota,
+    // request gate and usage accounting move to Commitment Maker.
+    const worker = await acquireProcoreWorker(companyId, 3, approvalConnection);
     if (!worker.acquired) {
       return NextResponse.json({
         success: true,
@@ -225,60 +236,63 @@ async function runPostInConnection(request: NextRequest) {
       logId = log?.id ?? null;
 
       try {
-        const accessToken = await getClientCredentialsToken();
-        let potentialChangeOrdersScanned = 0;
-        let packagesScanned = 0;
-        const potentialChangeOrders = await fetchAll({
-          accessToken,
-          companyId,
-          pathForPage: (page) => `/rest/v1.0/potential_change_orders?project_id=${encodeURIComponent(project!.projectId)}&page=${page}&per_page=100`,
-        });
-        for (const record of potentialChangeOrders) {
-          if (await persistPotentialChangeOrder({ companyId, projectId: project.projectId, record })) {
-            potentialChangeOrdersScanned += 1;
-          }
-        }
-
-        const primeContracts = await fetchAll({
-          accessToken,
-          companyId,
-          pathForPage: (page) => `/rest/v1.0/prime_contracts?project_id=${encodeURIComponent(project!.projectId)}&page=${page}&per_page=100`,
-        });
-        for (const contract of primeContracts) {
-          const contractId = text(contract.id);
-          if (!contractId) continue;
-          const packages = await fetchAll({
+        return await withProcoreConnection(approvalConnection, async () => {
+          const accessToken = await getClientCredentialsToken();
+          let potentialChangeOrdersScanned = 0;
+          let packagesScanned = 0;
+          const potentialChangeOrders = await fetchAll({
             accessToken,
             companyId,
-            pathForPage: (page) => `/rest/v1.0/change_order_packages?project_id=${encodeURIComponent(project!.projectId)}&contract_id=${encodeURIComponent(contractId)}&page=${page}&per_page=100`,
+            pathForPage: (page) => `/rest/v1.0/potential_change_orders?project_id=${encodeURIComponent(project!.projectId)}&page=${page}&per_page=100`,
           });
-          for (const record of packages) {
-            if (await persistChangeOrderPackage({ companyId, projectId: project.projectId, contractId, record })) {
-              packagesScanned += 1;
+          for (const record of potentialChangeOrders) {
+            if (await persistPotentialChangeOrder({ companyId, projectId: project.projectId, record })) {
+              potentialChangeOrdersScanned += 1;
             }
           }
-        }
 
-        const apiRequests = getCurrentProcoreRequestMetrics().apiRequests;
-        const nextRunMinutes = await approvalPollingMinutes(companyId, project.projectId);
-        const result = { selection, potentialChangeOrdersScanned, packagesScanned, apiRequests, nextRunMinutes };
-        await finishProjectSync({ project, success: true, nextRunMinutes, result });
-        const queue = await getSyncQueueStats(companyId, DATASET);
-        if (logId !== null) {
-          await prisma.syncLog.update({
-            where: { id: logId },
-            data: { finishedAt: new Date(), success: true, totalMs: Date.now() - startedAt, steps: [selection, result] },
-          }).catch(() => undefined);
-        }
-        return NextResponse.json({
-          success: true,
-          dataset: DATASET,
-          projectId: project.projectId,
-          projectsScanned: 1,
-          potentialChangeOrdersScanned,
-          packagesScanned,
-          apiRequests,
-          queue,
+          const primeContracts = await fetchAll({
+            accessToken,
+            companyId,
+            pathForPage: (page) => `/rest/v1.0/prime_contracts?project_id=${encodeURIComponent(project!.projectId)}&page=${page}&per_page=100`,
+          });
+          for (const contract of primeContracts) {
+            const contractId = text(contract.id);
+            if (!contractId) continue;
+            const packages = await fetchAll({
+              accessToken,
+              companyId,
+              pathForPage: (page) => `/rest/v1.0/change_order_packages?project_id=${encodeURIComponent(project!.projectId)}&contract_id=${encodeURIComponent(contractId)}&page=${page}&per_page=100`,
+            });
+            for (const record of packages) {
+              if (await persistChangeOrderPackage({ companyId, projectId: project.projectId, contractId, record })) {
+                packagesScanned += 1;
+              }
+            }
+          }
+
+          const apiRequests = getCurrentProcoreRequestMetrics().apiRequests;
+          const nextRunMinutes = await approvalPollingMinutes(companyId, project.projectId);
+          const result = { selection, potentialChangeOrdersScanned, packagesScanned, apiRequests, nextRunMinutes, connection: approvalConnection };
+          await finishProjectSync({ project, success: true, nextRunMinutes, result });
+          const queue = await getSyncQueueStats(companyId, DATASET);
+          if (logId !== null) {
+            await prisma.syncLog.update({
+              where: { id: logId },
+              data: { finishedAt: new Date(), success: true, totalMs: Date.now() - startedAt, steps: [selection, result] },
+            }).catch(() => undefined);
+          }
+          return NextResponse.json({
+            success: true,
+            dataset: DATASET,
+            projectId: project.projectId,
+            projectsScanned: 1,
+            potentialChangeOrdersScanned,
+            packagesScanned,
+            apiRequests,
+            connection: approvalConnection,
+            queue,
+          });
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

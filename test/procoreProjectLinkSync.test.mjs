@@ -192,5 +192,5 @@ test("the five-minute scheduler continuously drains the Project Home link queue"
   assert.match(scheduledSync, /api\/cron\/project-link-sync/);
   assert.match(scheduledSync, /projectLinkResponse\.ok/);
   assert.match(scheduledSync, /projectLinkStatus: projectLinkResponse\.status/);
-  assert.match(projectLinkRoute, /waitingForTemplateDocuments \? 15 : 24 \* 60/);
+  assert.match(projectLinkRoute, /nextRunMinutes: polling\.nextRunMinutes/);
 });

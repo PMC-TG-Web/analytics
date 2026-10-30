@@ -184,26 +184,29 @@ const handler = async (request: Request) => {
       result: projectLinkResult?.result,
     }));
 
-    const response = await fetch(`${baseUrl}/api/cron/project-onboarding`, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-sync-secret": expected },
-      body: "{}",
-    });
-    const result = await response.json().catch(() => null);
-    onboarding = { status: response.status, result };
-    console.log(JSON.stringify({
-      event: "project-onboarding-background",
-      status: response.status,
-      success: result?.success,
-      skipped: result?.skipped,
-      reason: result?.reason,
-      projectId: result?.projectId,
-      totalMs: result?.totalMs,
-    }));
-    const rateLimited = Array.isArray(result?.steps)
-      && result.steps.some((step: { rateLimited?: boolean }) => step?.rateLimited === true);
-    if (rateLimited) {
-      break secondaryWork;
+    for (let stage = 0; stage < 9 && Date.now() + 60_000 < deadline; stage += 1) {
+      const response = await fetch(`${baseUrl}/api/cron/project-onboarding`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-sync-secret": expected },
+        body: "{}",
+      });
+      const result = await response.json().catch(() => null);
+      onboarding = { status: response.status, result };
+      console.log(JSON.stringify({
+        event: "project-onboarding-background",
+        status: response.status,
+        success: result?.success,
+        skipped: result?.skipped,
+        reason: result?.reason,
+        projectId: result?.projectId,
+        totalMs: result?.totalMs,
+      }));
+      const rateLimited = Array.isArray(result?.steps)
+        && result.steps.some((step: { rateLimited?: boolean }) => step?.rateLimited === true);
+      if (result?.deferred || rateLimited) {
+        break secondaryWork;
+      }
+      if (!result?.pending || !result?.success) break;
     }
 
     for (let index = 0; index < 2 && Date.now() < deadline; index += 1) {

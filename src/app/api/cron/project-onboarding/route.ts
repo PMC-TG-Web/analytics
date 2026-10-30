@@ -22,9 +22,10 @@ import { procoreQuotaObservation } from "@/lib/procoreRateLimit";
 import { shouldParkProjectOnboarding } from "@/lib/projectOnboardingPolicy";
 import { withProcoreLiveApiBypassForSyncSecret } from "@/lib/procore";
 import { maintainProjectWebhooks } from "@/lib/procoreWebhookMaintenance";
+import { onboardingProgress, ONBOARDING_STEPS, ONBOARDING_STAGE_TIMEOUT_MS } from "@/lib/procoreOnboardingProgress";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+export const maxDuration = 60;
 
 const COMPANY_ID = (process.env.PROCORE_COMPANY_ID || "598134325805519").trim();
 const DATASET = "project_onboarding";
@@ -86,7 +87,7 @@ async function runStep(params: {
         "x-sync-secret": params.secret,
       },
       body: JSON.stringify(params.body),
-      signal: AbortSignal.timeout(4 * 60_000),
+      signal: AbortSignal.timeout(ONBOARDING_STAGE_TIMEOUT_MS),
     });
     const detail = await responseDetail(response);
     const rateLimited = procoreSyncResponseIsRateLimited(response.status, detail);
@@ -294,7 +295,7 @@ async function runPostInConnection(request: NextRequest) {
     return NextResponse.json({ success: false, error: "PROCORE_SYNC_SECRET is not configured" }, { status: 503 });
   }
 
-  const worker = await acquireProcoreWorker(COMPANY_ID);
+  const worker = await acquireProcoreWorker(COMPANY_ID, 2);
   if (!worker.acquired) {
     return NextResponse.json({
       success: true,
@@ -313,6 +314,8 @@ async function runPostInConnection(request: NextRequest) {
       companyId: COMPANY_ID,
       dataset: DATASET,
       leaseId: worker.leaseId,
+      leaseMinutes: 2,
+      retryAfterInterruptedClaim: true,
     });
     if (!project) {
       const maintenance = await withProcoreLiveApiBypassForSyncSecret(request, () => maintainProjectWebhooks({
@@ -365,12 +368,13 @@ async function runPostInConnection(request: NextRequest) {
       persistUnpackedFields: false,
       forceUserOAuth: false,
     };
-    const actualsWindow = procoreLookbackWindow(new Date(), 45);
+    const progress = onboardingProgress<StepResult>(project.lastResult);
+    const actualsWindow = procoreLookbackWindow(new Date(progress.cycleStartedAt), 45);
     const actualsBody = {
       ...commonProjectBody,
       ...actualsWindow,
     };
-    const steps: StepResult[] = [];
+    const steps: StepResult[] = [...progress.steps];
 
     // Registration owns a separate retry record; a failure cannot be hidden by
     // an otherwise successful onboarding job that parks itself for a year.
@@ -378,7 +382,7 @@ async function runPostInConnection(request: NextRequest) {
       companyId: COMPANY_ID, projectId: project!.projectId, leaseId: worker.leaseId,
     }));
     const webhookStep: StepResult = {
-      step: "project-webhooks", status: webhookMaintenance.completed ? "ok" : "error",
+      step: "project-webhooks", status: webhookMaintenance.success && !webhookMaintenance.deferred ? "ok" : "error",
       httpStatus: webhookMaintenance.success ? 200 : 500,
       rateLimited: webhookMaintenance.deferred,
       rateLimitUntil: webhookMaintenance.rateLimitUntil,
@@ -386,17 +390,24 @@ async function runPostInConnection(request: NextRequest) {
       detail: webhookMaintenance,
     };
 
-    const headerStep = await runStep({
-      origin,
-      secret,
-      step: "bid-board-projects",
-      path: "/api/procore/sync/bid-board-projects",
-      body: { companyId: COMPANY_ID },
-    });
-    steps.push(headerStep);
+    // One ingestion stage per HTTP request fits the platform runtime. The
+    // background wrapper drains continuations while its own deadline allows.
+    // Registration is itself an API stage. Let the next invocation ingest so
+    // registration plus a slow dataset cannot exhaust the HTTP time budget.
+    const nextStep = webhookMaintenance.skipped ? ONBOARDING_STEPS[steps.length] : null;
+    if (nextStep === "bid-board-projects") {
+      const headerStep = await runStep({
+        origin,
+        secret,
+        step: "bid-board-projects",
+        path: "/api/procore/sync/bid-board-projects",
+        body: { companyId: COMPANY_ID },
+      });
+      steps.push(headerStep);
+    }
 
-    let bidBoardIds: string[] = [];
-    if (headerStep.status === "ok") {
+    let bidBoardIds: string[] = progress.bidBoardIds;
+    if (nextStep === "estimate-proposal-line-items") {
       bidBoardIds = await linkedBidBoardIds(COMPANY_ID, project.projectId);
       if (!bidBoardIds.length) {
         steps.push({
@@ -448,15 +459,18 @@ async function runPostInConnection(request: NextRequest) {
       { step: "timecard-entries", path: "/api/procore/sync/timecard-entries", body: actualsBody },
       { step: "productivity-logs", path: "/api/procore/sync/productivity-projects", body: actualsBody },
     ]) {
-      if (steps.some((step) => step.status === "error")) break;
+      if (stage.step !== nextStep) continue;
       steps.push(await runStep({ origin, secret, ...stage }));
     }
 
-    const success = steps.length === 8 && steps.every((step) => step.status === "ok");
+    const success = steps.length === ONBOARDING_STEPS.length && steps.every((step) => step.status === "ok");
+    const pending = !success && steps.every((step) => step.status === "ok");
+    const checkpoint = { cycleStartedAt: progress.cycleStartedAt, bidBoardIds,
+      steps: steps.filter((step) => step.status === "ok") };
     const limited = steps.find((step) => step.rateLimited) || (webhookStep.rateLimited ? webhookStep : undefined);
     const failedStep = steps.find((step) => step.status === "error");
     const waitingForProcore = failedStep?.httpStatus === 202 || failedStep?.httpStatus === 404;
-    const error = success ? null : JSON.stringify(failedStep?.detail || "Project onboarding failed").slice(0, 4_000);
+    const error = success || pending ? null : JSON.stringify(failedStep?.detail || "Project onboarding failed").slice(0, 4_000);
     const rateLimitUntil = limited?.rateLimitUntil ? new Date(limited.rateLimitUntil) : null;
     if (rateLimitUntil) {
       if (!limited?.rateLimitInherited) {
@@ -474,19 +488,28 @@ async function runPostInConnection(request: NextRequest) {
         bidBoardIds,
       });
     }
+    const result = { selection, bidBoardIds, webhookStep, steps,
+      ...(success ? {} : { onboardingProgress: checkpoint }) };
     if (rateLimitUntil) {
       await deferProjectSync({
         project,
         until: rateLimitUntil,
-        result: { selection, bidBoardIds, webhookStep, steps, deferredBy: "procore-rate-limit" },
+        result: { ...result, deferredBy: "procore-rate-limit" },
       });
+    } else if (pending) {
+      await prisma.$executeRawUnsafe(
+        `UPDATE procore_sync_project_states SET next_run_at = NOW(),
+          last_result = $5::jsonb, locked_by = NULL, locked_until = NULL, updated_at = NOW()
+         WHERE company_id = $1 AND project_id = $2 AND dataset = $3 AND locked_by = $4`,
+        COMPANY_ID, project.projectId, DATASET, worker.leaseId, JSON.stringify(result),
+      );
     } else {
       await finishProjectSync({
         project,
         success,
         nextRunMinutes: success ? 365 * 24 * 60 : waitingForProcore ? 30 : 15,
         error,
-        result: { selection, bidBoardIds, webhookStep, steps },
+        result,
       });
     }
 
@@ -496,7 +519,7 @@ async function runPostInConnection(request: NextRequest) {
         where: { id: logId },
         data: {
           finishedAt: new Date(),
-          success: success || Boolean(rateLimitUntil),
+          success: success || pending || Boolean(rateLimitUntil),
           totalMs,
           steps: [selection, webhookStep, ...steps] as object[],
           error: rateLimitUntil ? null : error,
@@ -504,8 +527,9 @@ async function runPostInConnection(request: NextRequest) {
       }).catch(() => undefined);
     }
     return NextResponse.json({
-      success: success || Boolean(rateLimitUntil),
+      success: success || pending || Boolean(rateLimitUntil),
       completed: success,
+      pending,
       deferred: Boolean(rateLimitUntil),
       companyId: COMPANY_ID,
       dataset: DATASET,
@@ -515,7 +539,7 @@ async function runPostInConnection(request: NextRequest) {
       totalMs,
       webhookStep,
       steps,
-    }, { status: success || rateLimitUntil ? 200 : 207 });
+    }, { status: success || pending || rateLimitUntil ? 200 : 207 });
   } finally {
     if (project) {
       await prisma.$executeRawUnsafe(

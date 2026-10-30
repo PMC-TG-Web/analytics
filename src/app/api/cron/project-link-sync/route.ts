@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getRequiredSyncSecret } from "@/lib/cronSync";
+import { cachedCommitmentMakerLink, projectLinkPolling } from "@/lib/procoreProjectLinkPolling";
 import {
   getClientCredentialsToken,
   getCurrentProcoreRequestMetrics,
@@ -103,10 +104,10 @@ async function run(request: NextRequest) {
       return NextResponse.json({ success: true, skipped: true, reason: "no_project_due", dataset: DATASET });
     }
 
+    const result: Record<string, unknown> = {};
     try {
       const token = await getClientCredentialsToken();
       const errors: string[] = [];
-      const result: Record<string, unknown> = {};
       try {
         result.jobSchedule = await syncJobScheduleProjectLink({
           token,
@@ -120,11 +121,14 @@ async function run(request: NextRequest) {
         errors.push(`Job Schedule: ${message}`);
       }
       try {
-        result.commitmentMaker = await syncCommitmentMakerProjectLink({
-          token,
-          companyId: COMPANY_ID,
-          projectId: project.projectId,
-        });
+        result.commitmentMaker = cachedCommitmentMakerLink(project.lastResult, Boolean(explicitProjectId)) || {
+          ...await syncCommitmentMakerProjectLink({
+            token,
+            companyId: COMPANY_ID,
+            projectId: project.projectId,
+          }),
+          checkedAt: new Date().toISOString(),
+        };
       } catch (error) {
         if (errorStatus(error) === 429) throw error;
         const message = error instanceof Error ? error.message : String(error);
@@ -138,15 +142,14 @@ async function run(request: NextRequest) {
       const jobScheduleStatus = String(
         (result.jobSchedule as { status?: unknown } | undefined)?.status || "",
       );
-      const waitingForTemplateDocuments = [
-        "missing_folder",
-        "missing_file",
-        "missing_file_url",
-      ].includes(jobScheduleStatus);
+      const polling = projectLinkPolling(project.lastResult, jobScheduleStatus,
+        (result.commitmentMaker as { checkedAt?: unknown })?.checkedAt);
+      result.missingDocumentChecks = polling.missingDocumentChecks;
+      result.nextRunMinutes = polling.nextRunMinutes;
       await finishProjectSync({
         project,
         success: true,
-        nextRunMinutes: waitingForTemplateDocuments ? 15 : 24 * 60,
+        nextRunMinutes: polling.nextRunMinutes,
         result,
       });
       const queue = await getSyncQueueStats(COMPANY_ID, DATASET);
@@ -176,7 +179,7 @@ async function run(request: NextRequest) {
         await deferProjectSync({
           project,
           until: rateLimitUntil,
-          result: { deferredBy: "procore-rate-limit" },
+          result: { ...project.lastResult as object, ...result, deferredBy: "procore-rate-limit" },
         });
       } else {
         await finishProjectSync({
@@ -184,6 +187,7 @@ async function run(request: NextRequest) {
           success: false,
           nextRunMinutes: 30,
           error: message.slice(0, 4_000),
+          result: { ...project.lastResult as object, ...result },
         });
       }
       return NextResponse.json({

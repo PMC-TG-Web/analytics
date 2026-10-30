@@ -48,7 +48,9 @@ export async function maintainProjectWebhooks(params: { companyId: string; lease
       data: { nextRunAt: new Date(), lastError: null },
     });
   }
-  const project = await claimDueProject({ ...params, dataset: PROJECT_WEBHOOK_DATASET });
+  // Onboarding may name a project on every continuation. Its independent
+  // registration schedule still owns verification and failure retries.
+  const project = await claimDueProject({ ...params, dataset: PROJECT_WEBHOOK_DATASET, respectDueTime: true });
   if (!project) return { success: true, skipped: true, reason: "no_project_due", dataset: PROJECT_WEBHOOK_DATASET };
   if (!eligible.some((candidate) => candidate.procoreProjectId === project.projectId)) {
     await parkProjectSync({ project, reason: "Excluded from project webhook maintenance by current canonical project status." });

@@ -398,6 +398,7 @@ export async function persistBudgetSnapshot(params: BudgetSnapshotParams): Promi
     return { ...item, projectId, budgetLineItemId: id };
   });
 
+  // Production Accelerate rejects timeout options above its 15-second limit.
   return prisma.$transaction(async (tx) => {
     // A project lock also fences an initially empty scope without a row to lock.
     await tx.$executeRawUnsafe(
@@ -469,7 +470,7 @@ export async function persistBudgetSnapshot(params: BudgetSnapshotParams): Promi
       items.length,
     );
     return { upserted, missing, reconciled, complete: params.complete };
-  }, { timeout: 30_000, maxWait: 10_000 });
+  }, { timeout: 15_000, maxWait: 10_000 });
 }
 
 /** Compatibility imports remain partial and never infer deletion from absence. */

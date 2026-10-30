@@ -773,7 +773,7 @@ test("middleware allows secret-authenticated reconciliation routes", async () =>
 
 test("full project reconciliation has timeout headroom and rejects truncated responses", async () => {
   const allProjectsRoute = await readFile(
-    new URL("../src/app/api/procore/sync/all-projects/route.ts", import.meta.url),
+    new URL("../src/lib/procoreAllProjectsSync.ts", import.meta.url),
     "utf8",
   );
   const backgroundWorker = await readFile(

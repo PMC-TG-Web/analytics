@@ -119,7 +119,7 @@ test('multiple known bids cannot select an empty project link, while its establi
 });
 
 const routes = [
-  'src/app/api/procore/sync/all-projects/route.ts',
+  'src/lib/procoreAllProjectsSync.ts',
   'src/app/api/webhooks/procore/process/route.ts',
 ];
 for (const path of routes) {

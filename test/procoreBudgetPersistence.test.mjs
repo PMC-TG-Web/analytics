@@ -17,7 +17,8 @@ function fixture({ fail, supersededAtDatabasePrecision = false } = {}) {
       assert.equal(sql, 'SELECT clock_timestamp() AS started_at');
       return [{ started_at: new Date(state.clock) }];
     },
-    $transaction: async operation => {
+    $transaction: async (operation, options) => {
+      assert.ok(options.timeout > 0 && options.timeout <= 15_000, "Production Accelerate rejects larger transaction timeouts");
       state.transactions++;
       const rows = structuredClone(state.rows), snapshots = structuredClone(state.snapshots);
       const tx = {

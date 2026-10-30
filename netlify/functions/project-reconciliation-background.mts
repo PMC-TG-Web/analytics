@@ -9,27 +9,29 @@ const handler = async (request: Request) => {
   }
   const baseUrl = (process.env.APP_BASE_URL || process.env.URL || "").replace(/\/$/, "");
   if (!baseUrl) return Response.json({ success: false, error: "No base URL configured" }, { status: 503 });
+  const { runProjectReconciliation } = await import("../../src/lib/procoreProjectReconciliation.ts");
 
   const deadline = Date.now() + 13 * 60_000;
   let cooldownWaits = 0;
-  while (Date.now() < deadline) {
-    const response = await fetch(`${baseUrl}/api/cron/project-reconciliation`, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-sync-secret": secret },
-      body: "{}",
-      signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
+  let busyWaits = 0;
+  while (Date.now() < deadline - 30_000) {
+    const result = await runProjectReconciliation({
+      origin: baseUrl, secret,
+      signal: AbortSignal.timeout(Math.max(1, deadline - Date.now() - 30_000)),
     });
-    const result = await response.json().catch(() => null);
-    const completed = response.ok && result?.success === true;
+    const completed = result?.success === true;
     console.log(JSON.stringify({
       event: "project-reconciliation-background",
-      status: response.status,
       success: result?.success,
       completed,
-      totalMs: result?.totalMs,
-      summary: result?.detail?.summary,
+      totalMs: 'totalMs' in result ? result.totalMs : undefined,
     }));
-    if (!completed && procoreSyncResponseIsRateLimited(response.status, result)) {
+    if (!completed && 'reason' in result && result.reason === 'worker_busy' && busyWaits < 120) {
+      busyWaits += 1;
+      await new Promise(resolve => setTimeout(resolve, 1_000));
+      continue;
+    }
+    if (!completed && procoreSyncResponseIsRateLimited(200, result)) {
       const plan = procoreWorkerRetryPlan({
         deferred: true,
         rateLimitUntil: procoreSyncRateLimitUntil(result),
@@ -40,7 +42,7 @@ const handler = async (request: Request) => {
         continue;
       }
     }
-    return Response.json({ success: completed, status: response.status, result }, {
+    return Response.json({ success: completed, result }, {
       status: completed ? 200 : 500,
     });
   }

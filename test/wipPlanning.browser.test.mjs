@@ -69,6 +69,13 @@ test('PM edits month cells, retains hidden months and notes, and scrolls the gri
     assert.ok(await grid.evaluate(element => element.scrollHeight > element.clientHeight * 3));
     const header = grid.locator('thead th').first();
     const originalHeader = await header.boundingBox();
+    const workload = grid.getByRole('row').filter({ hasText: 'Monthly workload' });
+    const workloadLabel = workload.locator('td').first();
+    const originalWorkload = await workloadLabel.boundingBox();
+    const firstProject = await row.boundingBox();
+    assert.ok(originalWorkload.y >= originalHeader.y + originalHeader.height - 2, 'workload totals appear below the month headings');
+    assert.ok(originalWorkload.y + originalWorkload.height <= firstProject.y + 2, 'workload totals appear above the projects');
+    assert.equal(await workload.locator('td').nth(3).innerText(), '400 h', 'top workload row retains saved monthly totals');
     await topScroll.evaluate(element => { element.scrollLeft = 300; });
     await page.waitForFunction(() => document.querySelector('[aria-label="WIP allocation grid"]').scrollLeft === 300);
     await grid.evaluate(element => { element.scrollTop = 1200; });
@@ -78,9 +85,11 @@ test('PM edits month cells, retains hidden months and notes, and scrolls the gri
     const topBox = await topScroll.boundingBox();
     assert.ok(topBox.height >= 16, 'top scrollbar has a usable visible height');
     assert.ok(topBox.y >= 0 && topBox.y + topBox.height < 1000, 'top scrollbar is visible without reaching the last job');
-    const footerBox = await grid.locator('tfoot td').first().boundingBox();
+    const workloadBox = await workloadLabel.boundingBox();
     const gridBox = await grid.boundingBox();
-    assert.ok(footerBox.y + footerBox.height <= gridBox.y + gridBox.height + 2, 'workload totals remain in the table viewport');
+    assert.ok(Math.abs(originalWorkload.y - workloadBox.y) < 2, 'workload totals remain fixed vertically');
+    assert.ok(Math.abs(originalWorkload.x - workloadBox.x) < 2, 'workload label remains fixed horizontally');
+    assert.ok(workloadBox.y + workloadBox.height < gridBox.y + gridBox.height / 2, 'workload totals remain at the top of the table viewport');
     await grid.evaluate(element => { element.scrollLeft = 250; });
     await page.waitForFunction(() => document.querySelector('[aria-label="Scroll months horizontally"]').scrollLeft === 250);
     await grid.evaluate(element => { element.scrollTop = 0; element.scrollLeft = 0; });

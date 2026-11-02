@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { resolveEstimateActualHours } from "@/lib/kpiEstimateHours";
 import KpiWinRateRow from "@/components/KpiWinRateRow";
 import KpiActualSalesRow, { useKpiActualSales } from "@/components/KpiActualSalesRow";
+import KpiActualHoursRow from "@/components/KpiActualHoursRow";
 import KpiScheduledHoursRow, { useWipScheduledHours } from "@/components/KpiScheduledHoursRow";
 import KpiScheduledSalesRow, { useWipScheduledSales } from "@/components/KpiScheduledSalesRow";
 import {
@@ -2843,7 +2844,7 @@ function KPIPageContent({
               </thead>
               <tbody>
                 {(() => {
-                  const salesCardRows = getSortedCardRows("Sales By Month").filter((row) => normalizeCardName((row?.kpi || "").toString()) !== "scheduled hours");
+                  const salesCardRows = getSortedCardRows("Sales By Month").filter((row) => !["scheduled hours", "actual hours", "act hrs", "act hours"].includes(normalizeCardName((row?.kpi || "").toString())));
                   const firstGoalRowIndex = salesCardRows.findIndex((row) => {
                     const label = (row.kpi || "").toLowerCase();
                     return label.includes("goal") || label.includes("allowance");
@@ -2859,6 +2860,7 @@ function KPIPageContent({
                       {renderCardRows("Sales By Month", "#E06C00", nonGoalRows.slice(0, actualSalesIndex >= 0 ? actualSalesIndex : insertAfter), 0)}
                       <KpiActualSalesRow year={selectedManagedYear} data={actualSales} />
                       <KpiWinRateRow year={selectedManagedYear} />
+                      <KpiActualHoursRow year={selectedManagedYear} data={actualSales} />
                       {renderCardRows("Sales By Month", "#E06C00", nonGoalRows.slice(insertAfter), insertAfter)}
                       {renderCardRows("Sales By Month", "#E06C00", goalRows, nonGoalRows.length)}
                     </>

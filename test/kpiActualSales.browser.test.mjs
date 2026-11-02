@@ -5,10 +5,10 @@ import http from 'node:http';
 import { createRequire } from 'node:module';
 import { chromium } from 'playwright-core';
 
-test('Actual Sales shows contract months, switches years, exposes missing dates, and refreshes safely', { skip: process.env.WIP_BROWSER_TEST !== '1', timeout: 60_000 }, async () => {
+test('Actual Sales and Hours share contract months, switch years, expose source issues, and refresh safely', { skip: process.env.WIP_BROWSER_TEST !== '1', timeout: 60_000 }, async () => {
   const require = createRequire(import.meta.url);
   const esbuild = require(process.env.WIP_TEST_ESBUILD || path.join(process.env.APPDATA, 'npm/node_modules/netlify-cli/node_modules/esbuild/lib/main.js'));
-  const entry = `import React,{useState}from'react';import{createRoot}from'react-dom/client';import Row,{useKpiActualSales}from ${JSON.stringify(path.resolve('src/components/KpiActualSalesRow.tsx'))};function App(){const data=useKpiActualSales();const[year,setYear]=useState('2026');return <><select aria-label="Year" value={year} onChange={e=>setYear(e.target.value)}><option>2026</option><option>2027</option></select><table><tbody><Row data={data} year={year}/><tr><td>Rolling Win Rate</td></tr></tbody></table></>}createRoot(document.getElementById('root')).render(<App/>);`;
+  const entry = `import React,{useState}from'react';import{createRoot}from'react-dom/client';import Row,{useKpiActualSales}from ${JSON.stringify(path.resolve('src/components/KpiActualSalesRow.tsx'))};import Hours from ${JSON.stringify(path.resolve('src/components/KpiActualHoursRow.tsx'))};function App(){const data=useKpiActualSales();const[year,setYear]=useState('2026');return <><select aria-label="Year" value={year} onChange={e=>setYear(e.target.value)}><option>2026</option><option>2027</option></select><table><tbody><Row data={data} year={year}/><tr><td>Rolling Win Rate</td></tr><Hours data={data} year={year}/></tbody></table></>}createRoot(document.getElementById('root')).render(<App/>);`;
   const built = await esbuild.build({ stdin: { contents: entry, resolveDir: process.cwd(), loader: 'tsx' }, write: false, bundle: true, platform: 'browser', jsx: 'automatic', define: { 'process.env.NODE_ENV': '"test"' } });
   const server = http.createServer((req, res) => {
     res.setHeader('content-type', req.url === '/bundle.js' ? 'application/javascript' : 'text/html');
@@ -19,43 +19,67 @@ test('Actual Sales shows contract months, switches years, exposes missing dates,
   try {
     browser = await chromium.launch({ channel: 'msedge', headless: true });
     const page = await browser.newPage();
-    let failed = false, january = 100000;
+    let failed = false, january = 100000, januaryHours = 1000, hoursMissing = false;
     const methods = [], errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.route('**/api/kpi/actual-sales', route => {
       methods.push(route.request().method());
-      return route.fulfill(failed ? { status: 503, json: { error: 'Actual sales are unavailable. Please retry.' } } : { json: { data: { months: { '2026-01': january, '2027-02': 200000 }, years: ['2026','2027'], projects: [{ projectId: 'p1', bidBoardId: 'b1', projectName: 'Project X', customer: 'Example', projectNumber: '2601', contractDate: '2026-01-31', value: january }], excluded: [{ projectId: 'p2', projectName: 'Project Y', reason: 'Missing or invalid Contract Date.' }] } } });
+      const project = { projectId: 'p1', bidBoardId: 'b1', projectName: 'Project X', customer: 'Example', projectNumber: '2601', contractDate: '2026-01-31', value: january };
+      return route.fulfill(failed ? { status: 503, json: { error: 'Actual sales are unavailable. Please retry.' } } : { json: { data: { months: { '2026-01': january, '2027-02': 200000 }, years: ['2026','2027'], projects: [project], excluded: [{ projectId: 'p2', projectName: 'Project Y', reason: 'Missing or invalid Contract Date.' }], hours: { months: { '2026-01': hoursMissing ? null : januaryHours, '2027-02': 2000 }, projects: [{ ...project, estimatedHours: januaryHours + 200, projectManagementHours: 200, hours: hoursMissing ? null : januaryHours, issue: hoursMissing ? 'Waiting for estimated line-item hours to synchronize.' : null }] } } } });
     });
     await page.goto(`http://127.0.0.1:${server.address().port}`);
     const row = page.getByRole('row', { name: 'Actual Sales', exact: true });
+    const hoursRow = page.getByRole('row', { name: 'Actual Hours', exact: true });
+    const hoursMonth = date => hoursRow.locator(`td[title="Sold estimate hours excluding PM · ${date}"]`);
     const month = date => row.locator(`td[title="Contract sales · ${date}"]`);
     await month('2026-01').waitFor();
     assert.equal(await month('2026-01').innerText(), '$100,000');
     assert.equal(await month('2026-02').innerText(), '$0');
     assert.equal(await row.locator('td').last().innerText(), '$100,000');
+    assert.equal(await hoursMonth('2026-01').innerText(), '1,000');
+    assert.equal(await hoursRow.locator('td').last().innerText(), '1,000');
+    await hoursMonth('2026-01').getByRole('button').click();
+    const hoursDetails = page.getByRole('region', { name: 'Actual hours project breakdown' });
+    await hoursDetails.getByText('Project X', { exact: true }).waitFor();
+    assert.equal(await hoursDetails.getByText('1,200', { exact: true }).count(), 1);
+    assert.equal(await hoursDetails.getByText('200', { exact: true }).count(), 1);
     await month('2026-01').getByRole('button').click();
     const details = page.getByRole('region', { name: 'Actual sales project breakdown' });
     await details.getByText('Project X', { exact: true }).waitFor();
     assert.ok(await details.getByText('2026-01-31', { exact: true }).count());
     await page.getByLabel('Year').selectOption('2027');
     assert.equal(await details.count(), 0);
+    assert.equal(await hoursDetails.count(), 0);
+    assert.equal(await hoursMonth('2027-02').innerText(), '2,000');
     assert.equal(await month('2027-02').innerText(), '$200,000');
     await row.getByRole('button', { name: '1 need review' }).click();
     await details.getByText('Project Y: Missing or invalid Contract Date.', { exact: true }).waitFor();
     await details.getByRole('button', { name: 'Close breakdown' }).click();
     await page.getByLabel('Year').selectOption('2026');
-    january = 120000;
+    january = 120000; januaryHours = 1400;
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await page.waitForFunction(() => document.querySelector('td[title="Contract sales · 2026-01"]')?.textContent === '$120,000');
+    assert.equal(await hoursMonth('2026-01').innerText(), '1,400');
+    hoursMissing = true;
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await hoursMonth('2026-01').getByRole('button', { name: 'Needs review' }).waitFor();
+    assert.equal(await hoursRow.locator('td').last().innerText(), 'Needs review');
+    assert.equal(await month('2026-01').innerText(), '$120,000');
+    await hoursMonth('2026-01').getByRole('button').click();
+    await hoursDetails.getByText('Waiting for estimated line-item hours to synchronize.', { exact: true }).waitFor();
     failed = true;
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await row.getByRole('status').waitFor();
+    await hoursRow.getByRole('status').waitFor();
+    assert.equal(await hoursDetails.count(), 0);
     assert.equal(await row.locator('td[title^="Contract sales"]').count(), 0);
-    failed = false;
+    failed = false; hoursMissing = false;
     await row.getByRole('button', { name: 'Retry' }).click();
     await month('2026-01').waitFor();
     assert.equal(await month('2026-01').innerText(), '$120,000');
     assert.equal(await row.locator('input').count(), 0);
+    assert.equal(await hoursRow.locator('input').count(), 0);
+    assert.equal(await hoursMonth('2026-01').innerText(), '1,400');
     assert.ok(methods.every(method => method === 'GET'));
     assert.deepEqual(errors, []);
   } finally {

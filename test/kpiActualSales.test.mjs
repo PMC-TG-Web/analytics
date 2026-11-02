@@ -56,6 +56,53 @@ test('Accepted projects contribute full value by contract month and still requir
   assert.equal(calculateKpiActualSales([{ ...accepted, projectArchived: true }], dates, canonical).projects.length, 0);
 });
 
+const withHours = { ...project, selectedProposalId: 'proposal-1', hours: 1200, pmcGroup: { PM: 200 }, customFields: { estimateLineCount: 12 } };
+
+test('sold hours follow the exact sales projects and contract months, excluding PM like WIP', () => {
+  const projects = [
+    withHours,
+    { ...withHours, bidBoardId: 'other-bid', hours: 999999 },
+    { ...withHours, bidBoardId: 'bid-2', procoreProjectId: 'project-2', status: 'Accepted', hours: 500, pmcGroup: {} },
+    { ...withHours, bidBoardId: 'bid-3', procoreProjectId: 'project-3', status: 'Complete', hours: 250, pmcGroup: { PM: 25 } },
+    { ...withHours, bidBoardId: 'lost', procoreProjectId: 'lost', status: 'Lost' },
+  ];
+  const report = calculateKpiActualSales(projects, dates, canonical);
+  assert.deepEqual(report.hours.months, { '2026-01': 1500, '2027-01': 225 });
+  assert.deepEqual(report.hours.projects.map(({ projectId, bidBoardId, contractDate }) => ({ projectId, bidBoardId, contractDate })),
+    report.projects.map(({ projectId, bidBoardId, contractDate }) => ({ projectId, bidBoardId, contractDate })));
+  assert.equal(report.hours.projects.find(p => p.projectId === 'project-1').projectManagementHours, 200);
+  assert.deepEqual(calculateKpiActualSales(projects.slice(0, 2), dates, []).hours.projects, []);
+});
+
+test('missing or invalid estimate hours mark the whole affected month unavailable while sales remain intact', () => {
+  for (const broken of [
+    { selectedProposalId: null }, { customFields: { estimateLineCount: 0 } },
+    { hours: NaN }, { hours: -1 }, { pmcGroup: { PM: -1 } },
+    { pmcGroup: { PM: 1300 } }, { pmcGroup: { PM: NaN } }, { pmcGroup: undefined },
+  ]) {
+    const invalid = { ...withHours, ...broken };
+    const valid = { ...withHours, bidBoardId: 'bid-2', procoreProjectId: 'project-2' };
+    for (const inputs of [[invalid, valid], [valid, invalid]]) {
+      const report = calculateKpiActualSales(inputs, dates, canonical);
+      assert.equal(report.months['2026-01'], 200000);
+      assert.equal(report.hours.months['2026-01'], null);
+      const entry = report.hours.projects.find(p => p.projectId === 'project-1');
+      assert.equal(entry.hours, null);
+      assert.ok(entry.issue);
+    }
+  }
+});
+
+test('confirmed zero production hours are valid and decimal hours retain the WIP precision', () => {
+  const report = calculateKpiActualSales([
+    { ...withHours, hours: 200 },
+    { ...withHours, bidBoardId: 'bid-2', procoreProjectId: 'project-2', hours: 200.123456 },
+  ], dates, canonical);
+  assert.equal(report.hours.months['2026-01'], 0.1235);
+  assert.equal(report.hours.projects.find(p => p.projectId === 'project-1').hours, 0);
+  assert.ok(report.hours.projects.every(p => p.issue === null));
+});
+
 function moduleFrom(file, mocks) {
   const compiled = ts.transpileModule(readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const module = { exports: {} };
@@ -69,11 +116,13 @@ test('loader reuses Financial WIP date loader with company-scoped canonical IDs 
   try {
     const api = moduleFrom('src/lib/loadKpiActualSales.ts', {
       '@/lib/prisma': { prisma: { pmcProject: { findMany: async query => { assert.deepEqual(query, { where: { companyId: 'company' }, select: { procoreProjectId: true, bidBoardId: true } }); return canonical; } } } },
-      '@/lib/estimatingDashboard': { loadEstimatingDashboardProjects: async () => [project] },
+      '@/lib/estimatingDashboard': { loadEstimatingDashboardProjects: async () => [withHours] },
       '@/lib/loadFinancialSoldDates': { loadFinancialWipSoldDates: async company => { assert.equal(company, 'company'); if (fail) throw new Error('date source failed'); return dates; } },
       '@/lib/kpiActualSales': { calculateKpiActualSales },
     });
-    assert.equal((await api.loadKpiActualSales()).months['2026-01'], 100000);
+    const report = await api.loadKpiActualSales();
+    assert.equal(report.months['2026-01'], 100000);
+    assert.equal(report.hours.months['2026-01'], 1000);
     fail = true; await assert.rejects(api.loadKpiActualSales(), /date source failed/);
   } finally { if (previous === undefined) delete process.env.PROCORE_COMPANY_ID; else process.env.PROCORE_COMPANY_ID = previous; }
 });

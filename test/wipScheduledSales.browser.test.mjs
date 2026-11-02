@@ -20,11 +20,13 @@ test('KPI shows read-only WIP revenue by year, refreshes on return, and recovers
     browser = await chromium.launch({ channel: 'msedge', headless: true });
     const page = await browser.newPage();
     let failed = false, october = 400.25;
+    let unscheduledProjects = [{ id: 'p1', projectId: 'p1', projectName: 'Project awaiting allocation', projectNumber: '2601', customer: 'Example customer', hours: 1000, status: 'Needs allocation', reason: 'No saved WIP allocation.' },
+      { id: 'p2', projectId: 'p2', projectName: 'Imported project', projectNumber: '2602', customer: 'Example customer', hours: 250, status: 'Import needs review', reason: 'Imported percentages need review and a saved 100% allocation.' }];
     const methods = [], errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.route('**/api/kpi/scheduled-sales', route => {
       methods.push(route.request().method());
-      return route.fulfill(failed ? { status: 503, json: { error: 'Scheduled revenue is unavailable. Please retry.' } } : { json: { data: { months: { '2026-10': october, '2026-11': 400, '2027-01': 200 }, years: ['2026','2027'], planCount: 1, excludedDraftCount: 1, localOnly: true } } });
+      return route.fulfill(failed ? { status: 503, json: { error: 'Scheduled revenue is unavailable. Please retry.' } } : { json: { data: { months: { '2026-10': october, '2026-11': 400, '2027-01': 200 }, years: ['2026','2027'], planCount: 1, excludedDraftCount: 1, localOnly: true, unscheduledProjects } } });
     });
     await page.goto(`http://127.0.0.1:${server.address().port}`);
     const row = page.getByRole('row', { name: 'Scheduled', exact: true });
@@ -33,6 +35,18 @@ test('KPI shows read-only WIP revenue by year, refreshes on return, and recovers
     assert.equal(await month('2026-10').innerText(), '$400');
     assert.equal(await month('2026-01').innerText(), '$0');
     assert.equal(await row.locator('td').last().innerText(), '$800');
+    const summary = page.locator('summary').filter({ hasText: 'Not scheduled' });
+    const pending = page.getByRole('region', { name: 'Projects not scheduled' });
+    assert.equal(await summary.innerText(), 'Not scheduled (2 projects)');
+    assert.equal(await pending.isVisible(), false);
+    await summary.click();
+    await pending.getByText('Project awaiting allocation').waitFor();
+    assert.equal(await pending.getByText('1,000', { exact: true }).count(), 1);
+    assert.equal(await pending.getByText('Import needs review').count(), 1);
+    assert.equal(await pending.getByRole('link', { name: 'Open WIP' }).getAttribute('href'), '/wip');
+    const scheduledBox = await row.boundingBox(), summaryBox = await summary.boundingBox();
+    assert.ok(summaryBox.y >= scheduledBox.y + scheduledBox.height - 1, 'the dropdown appears below Scheduled');
+    if (process.env.WIP_SCREENSHOT) await page.screenshot({ path: process.env.WIP_SCREENSHOT, fullPage: true });
     await month('2026-10').getByRole('button').click();
     assert.deepEqual(await page.evaluate(() => window.details), { year: '2026', month: 10 });
     await row.locator('td').last().getByRole('button').click();
@@ -41,6 +55,7 @@ test('KPI shows read-only WIP revenue by year, refreshes on return, and recovers
     assert.equal(await row.locator('input').count(), 0);
     await page.getByLabel('Year').selectOption('2027');
     assert.equal(await month('2027-01').innerText(), '$200');
+    assert.equal(await summary.innerText(), 'Not scheduled (2 projects)', 'unscheduled projects remain visible across report years');
     assert.equal(await row.locator('td').last().innerText(), '$200');
     await page.getByLabel('Year').selectOption('');
     assert.equal(await row.locator('td').count(), 25);
@@ -49,11 +64,17 @@ test('KPI shows read-only WIP revenue by year, refreshes on return, and recovers
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await page.waitForFunction(() => document.querySelector('td[title="WIP revenue · 2026-10"]')?.textContent === '$500');
     assert.equal(await row.locator('td').last().innerText(), '$1,100');
+    unscheduledProjects = [];
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await page.waitForFunction(() => document.querySelector('summary')?.textContent === 'Not scheduled (0 projects)');
+    await pending.getByText('All current In Progress projects have saved WIP allocations.', { exact: true }).waitFor();
+    assert.equal(await pending.getByText('Project awaiting allocation').count(), 0);
     failed = true;
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await row.getByRole('status').waitFor();
     assert.match(await row.innerText(), /unavailable/);
     assert.equal(await row.locator('td[title^="WIP revenue"]').count(), 0, 'failed refresh does not present stale totals as current');
+    assert.equal(await summary.count(), 0, 'a failed refresh does not show a stale unscheduled list');
     failed = false;
     await row.getByRole('button', { name: 'Retry' }).click();
     await month('2026-10').waitFor();

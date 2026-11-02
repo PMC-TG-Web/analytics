@@ -1,8 +1,8 @@
 import { prisma } from '@/lib/prisma';
 import { loadEstimatingDashboardProjects } from '@/lib/estimatingDashboard';
 import { readWipLocalStore, wipLocalStorePath } from '@/lib/wipLocalStore';
-import { calculateWipScheduledSales, type WipScheduledSales } from '@/lib/wipScheduledSales';
-import type { WipPlan } from '@/lib/wipPlanning';
+import { buildWipUnscheduledProjects, calculateWipScheduledSales, type WipScheduledSales } from '@/lib/wipScheduledSales';
+import { buildWipProjects, type WipPlan } from '@/lib/wipPlanning';
 import { loadWipReportProjects } from '@/lib/wipReportStore';
 import { addWipReportSales } from '@/lib/wipReportTotals';
 
@@ -16,7 +16,11 @@ export async function loadWipScheduledSales(): Promise<WipScheduledSales> {
       .map(plan => [plan.projectId, { source: plan.source, allocations: plan.allocations } as unknown as WipPlan]),
   );
   // The estimating loader reads company-scoped synchronized mirrors, never the live API.
-  const projects = Object.keys(plans).length ? await loadEstimatingDashboardProjects() : [];
+  const [projects, canonical] = await Promise.all([
+    loadEstimatingDashboardProjects(),
+    prisma.pmcProject.findMany({ where: { companyId }, select: { procoreProjectId: true, bidBoardId: true, projectManager: true } }),
+  ]);
   const draftIds = local ? Object.keys(local.drafts) : (await prisma.wipImportDraft.findMany({ where: { companyId, projectId: { notIn: Object.keys(plans) } }, select: { projectId: true } })).map(draft => draft.projectId);
-  return addWipReportSales({ ...calculateWipScheduledSales(plans, projects), excludedDraftCount: draftIds.length, localOnly: !!local }, await loadWipReportProjects(companyId, [...Object.keys(plans), ...draftIds]));
+  const unscheduledProjects = buildWipUnscheduledProjects(buildWipProjects(projects, canonical), Object.keys(plans), draftIds);
+  return addWipReportSales({ ...calculateWipScheduledSales(plans, projects), unscheduledProjects, excludedDraftCount: draftIds.length, localOnly: !!local }, await loadWipReportProjects(companyId, [...Object.keys(plans), ...draftIds]));
 }

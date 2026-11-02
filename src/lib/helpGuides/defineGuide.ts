@@ -2,6 +2,7 @@ import { HELP_GUIDE_SUMMARIES } from './catalog.ts';
 import type { GuideStep, HelpGuide } from './types.ts';
 
 type GuideDetails = {
+  updated?: string;
   purpose: string;
   steps: GuideStep[];
   data: string[];
@@ -16,7 +17,7 @@ export function defineGuide(slug: string, details: GuideDetails): HelpGuide {
   if (!summary) throw new Error(`Missing help catalog entry: ${slug}`);
   return {
     ...summary,
-    updated: '2026-10-08',
+    updated: details.updated ?? '2026-10-08',
     sections: [
       { id: 'purpose', title: 'What this page is for', blocks: [{ type: 'paragraph', text: details.purpose }] },
       { id: 'using', title: 'Your first visit', blocks: [{ type: 'steps', items: details.steps }] },

@@ -42,6 +42,7 @@
 - Reuse the existing retry, queue, canonicalization, permissions, and analytics helpers before creating parallel implementations.
 - Add or update a focused `node:test` case for changed business logic. Tests may import `.ts` modules directly under the repository's Node 22 setup.
 - Update `docs/architecture.md` when a change moves an entry point, source of truth, identifier contract, worker flow, or validation command.
+- Keep the affected in-app Info/Help guides in `src/lib/helpGuides/` current in the same release as user-facing changes. Update the instructions, calculations, sources, refresh behavior, and troubleshooting that changed, and set each reviewed guide's `updated` date. Check the guide catalog when its summary or first action changes.
 
 ## Validation
 

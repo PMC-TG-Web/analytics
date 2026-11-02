@@ -2,12 +2,13 @@ import { defineGuide } from './defineGuide.ts';
 
 export const adminGuides = [
   defineGuide('manage-kpis', {
+    updated: '2026-11-02',
     purpose: 'Maintain the saved monthly rows used by KPI cards. Use this page when a target or manually maintained measure needs updating.',
     steps: [{ title: 'Choose card and year', body: 'Open Edit Card and confirm Editing year before entering values.' }, { title: 'Edit the intended row', body: 'Check the KPI Name and monthly column. Add Row creates a new saved measure; preserve the intended units.' }, { title: 'Save and verify', body: 'Use Save Changes, then inspect the same card and year on KPI. For hours by pay period, calculate and review the distribution before Save Hours.' }],
-    data: ['Saved KPI cards and their yearly/monthly values supply this editor.', 'Calculated KPI rows also exist on the dashboard. Editing a saved card does not rewrite the source project or accounting data behind calculated measures.'],
+    data: ['Saved KPI cards and their yearly/monthly values supply this editor.', 'Sales by Month Actual Sales and Actual Hours are calculated from the same sold projects and Contract Date months; Actual Hours excludes Project Management. Scheduled revenue and Scheduled Hours use saved WIP allocations, with reviewed historical report imports included separately. Manual card values do not override these calculated rows.'],
     terms: [['Editing year', 'The year receiving the saved monthly changes.'], ['Pay Period', 'The date interval used to distribute an entered hours total.'], ['Calculated Distribution', 'The proposed split to review before saving hours.']],
     example: 'Entering a new sales goal in next year’s card does not change this year’s Actual Sales. Check both the measure and editing year.',
-    checks: ['If an edit appears missing, reopen the same card and year and confirm the save completed.', 'Check whether the dashboard row is saved or calculated before attempting to correct it here.'],
+    checks: ['If an edit appears missing, reopen the same card and year and confirm the save completed.', 'For an unscheduled job, open KPI’s Not scheduled dropdown beneath Scheduled, then Open WIP. Review and save the job’s monthly allocation at 100%; entering a manual KPI card value does not schedule it. WIP access is required.', 'For incorrect Actual Sales or Sales by Month Actual Hours, inspect the KPI project details and correct the project’s source data. Allow synchronization and refresh KPI before comparing again.'],
   }),
   defineGuide('procore', {
     purpose: 'An integration workspace for checking the Procore connection, inspecting source data, synchronizing records, and performing controlled maintenance. Ordinary report review usually starts from Projects, Analytics, or the financial pages.',

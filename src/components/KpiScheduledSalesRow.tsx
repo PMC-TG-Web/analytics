@@ -16,6 +16,8 @@ export default function KpiScheduledSalesRow({ months, data, onDetails }: {
   const format = (value: number) => value.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
   const buttonStyle = { background: 'transparent', border: 'none', color: '#15616D', cursor: 'pointer', fontWeight: 700, fontSize: 12, textDecoration: 'underline', padding: 0 };
   const total = values.reduce((sum, value) => sum + value, 0);
+  const unscheduledHours = report?.unscheduledProjects?.reduce((sum, project) => sum + (project.hours ?? 0), 0) ?? 0;
+  const missingUnscheduledHours = report?.unscheduledProjects?.filter(project => project.hours === null).length ?? 0;
   return <><tr aria-label="Scheduled" style={{ borderBottom: '1px solid #eee', backgroundColor: '#fff' }}>
     <th scope="row" title="Full project sales value × saved WIP monthly percentage" style={{ padding: '4px 6px', textAlign: 'left', color: '#15616D', fontWeight: 700, fontSize: 13 }}>Scheduled<span style={{ display: 'block', fontSize: 10, fontWeight: 400 }}>From WIP</span></th>
     {error ? <td colSpan={months.length + 1} role="status" style={{ padding: 6, fontSize: 12 }}>{error} <button onClick={retry} style={{ textDecoration: 'underline' }}>Retry</button></td>
@@ -36,6 +38,11 @@ export default function KpiScheduledSalesRow({ months, data, onDetails }: {
               <td style={{ padding: 5, textAlign: 'right' }}>{project.hours === null ? '—' : project.hours.toLocaleString('en-US', { maximumFractionDigits: 1 })}</td>
               <td style={{ padding: 5 }}>{project.status}<span style={{ display: 'block', color: '#666', fontSize: 11 }}>{project.reason}</span></td>
             </tr>)}</tbody>
+            <tfoot><tr aria-label="Unscheduled hours total" style={{ borderTop: '2px solid #15616D', backgroundColor: '#eaf3ef', color: '#15616D', fontWeight: 700 }}>
+              <th scope="row" colSpan={2} style={{ padding: 5 }}>{missingUnscheduledHours ? 'Known unscheduled hours' : 'Total unscheduled hours'}</th>
+              <td style={{ padding: 5, textAlign: 'right' }}>{missingUnscheduledHours === report.unscheduledProjects.length ? '—' : unscheduledHours.toLocaleString('en-US', { maximumFractionDigits: 1 })}</td>
+              <td style={{ padding: 5, fontSize: 11, fontWeight: 400 }}>{missingUnscheduledHours > 0 && `Total incomplete · ${missingUnscheduledHours} ${missingUnscheduledHours === 1 ? 'project has' : 'projects have'} missing hours`}</td>
+            </tr></tfoot>
           </table></div> : <p>All current In Progress projects have saved WIP allocations.</p>}
           <a href="/wip" style={{ display: 'inline-block', marginTop: 8, color: '#15616D', textDecoration: 'underline', fontWeight: 600 }}>Open WIP</a>
         </section>

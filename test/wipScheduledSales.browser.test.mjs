@@ -21,7 +21,7 @@ test('KPI shows read-only WIP revenue by year, refreshes on return, and recovers
     const page = await browser.newPage();
     let failed = false, october = 400.25;
     let unscheduledProjects = [{ id: 'p1', projectId: 'p1', projectName: 'Project awaiting allocation', projectNumber: '2601', customer: 'Example customer', hours: 1000, status: 'Needs allocation', reason: 'No saved WIP allocation.' },
-      { id: 'p2', projectId: 'p2', projectName: 'Imported project', projectNumber: '2602', customer: 'Example customer', hours: 250, status: 'Import needs review', reason: 'Imported percentages need review and a saved 100% allocation.' }];
+      { id: 'p2', projectId: 'p2', projectName: 'Imported project', projectNumber: '2602', customer: 'Example customer', hours: 250.4, status: 'Import needs review', reason: 'Imported percentages need review and a saved 100% allocation.' }];
     const methods = [], errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.route('**/api/kpi/scheduled-sales', route => {
@@ -44,6 +44,10 @@ test('KPI shows read-only WIP revenue by year, refreshes on return, and recovers
     assert.equal(await pending.getByText('1,000', { exact: true }).count(), 1);
     assert.equal(await pending.getByText('Import needs review').count(), 1);
     assert.equal(await pending.getByRole('link', { name: 'Open WIP' }).getAttribute('href'), '/wip');
+    const hoursTotal = pending.getByRole('row', { name: 'Unscheduled hours total', exact: true });
+    assert.equal(await hoursTotal.locator('td').first().innerText(), '1,250.4');
+    assert.equal(await hoursTotal.getByRole('rowheader').innerText(), 'Total unscheduled hours');
+    assert.equal(await pending.locator('table > tfoot').getByRole('row').count(), 1);
     const scheduledBox = await row.boundingBox(), summaryBox = await summary.boundingBox();
     assert.ok(summaryBox.y >= scheduledBox.y + scheduledBox.height - 1, 'the dropdown appears below Scheduled');
     if (process.env.WIP_SCREENSHOT) await page.screenshot({ path: process.env.WIP_SCREENSHOT, fullPage: true });
@@ -56,6 +60,7 @@ test('KPI shows read-only WIP revenue by year, refreshes on return, and recovers
     await page.getByLabel('Year').selectOption('2027');
     assert.equal(await month('2027-01').innerText(), '$200');
     assert.equal(await summary.innerText(), 'Not scheduled (2 projects)', 'unscheduled projects remain visible across report years');
+    assert.equal(await hoursTotal.locator('td').first().innerText(), '1,250.4');
     assert.equal(await row.locator('td').last().innerText(), '$200');
     await page.getByLabel('Year').selectOption('');
     assert.equal(await row.locator('td').count(), 25);
@@ -64,11 +69,21 @@ test('KPI shows read-only WIP revenue by year, refreshes on return, and recovers
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await page.waitForFunction(() => document.querySelector('td[title="WIP revenue · 2026-10"]')?.textContent === '$500');
     assert.equal(await row.locator('td').last().innerText(), '$1,100');
+    unscheduledProjects = [{ ...unscheduledProjects[0] }, { ...unscheduledProjects[1], hours: null, status: 'Needs source review' }];
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await hoursTotal.getByText('Total incomplete · 1 project has missing hours', { exact: true }).waitFor();
+    assert.equal(await hoursTotal.locator('td').first().innerText(), '1,000');
+    assert.equal(await hoursTotal.getByRole('rowheader').innerText(), 'Known unscheduled hours');
+    unscheduledProjects = [unscheduledProjects[1]];
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await page.waitForFunction(() => document.querySelector('summary')?.textContent === 'Not scheduled (1 project)');
+    assert.equal(await hoursTotal.locator('td').first().innerText(), '—', 'unknown hours do not become a zero total');
     unscheduledProjects = [];
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await page.waitForFunction(() => document.querySelector('summary')?.textContent === 'Not scheduled (0 projects)');
     await pending.getByText('All current In Progress projects have saved WIP allocations.', { exact: true }).waitFor();
     assert.equal(await pending.getByText('Project awaiting allocation').count(), 0);
+    assert.equal(await hoursTotal.count(), 0, 'the empty list does not retain an old total');
     failed = true;
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await row.getByRole('status').waitFor();

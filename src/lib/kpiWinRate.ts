@@ -123,6 +123,7 @@ export function calculateWinRate(
   policy: WinRatePolicy = { groups: [], excludedSources: [] },
   year: number | null = null,
   asOf = new Date(),
+  startYear = KPI_WIN_RATE_START_YEAR,
 ): WinRateReport {
   const rules = mergeWinRateGroups(policy.groups);
   const byName = new Map(rules.flatMap(g => g.names.map(n => [winRateName(n), g] as const)));
@@ -158,7 +159,7 @@ export function calculateWinRate(
     if (!Number.isFinite(Date.parse(createdDate))) { missingCreatedDates++; continue; }
     // Apply the reporting start after deduplication so a 2025 project copied
     // into the current instance in 2026 does not become a new 2026 bid.
-    if (Number(createdDate.slice(0, 4)) < KPI_WIN_RATE_START_YEAR) continue;
+    if (Number(createdDate.slice(0, 4)) < startYear) continue;
     all.push({ key, name: preferred.projectName, createdDate, status: qualifying.state.replace(/_/g, ' '), won: Boolean(winner), bid: qualifying.state !== 'ESTIMATING', sources: rows.map(r => ({ companyId: r.companyId, bidBoardId: r.bidBoardId, status: r.state.replace(/_/g, ' ') })) });
   }
   all.sort((a, b) => a.createdDate.localeCompare(b.createdDate) || a.name.localeCompare(b.name));

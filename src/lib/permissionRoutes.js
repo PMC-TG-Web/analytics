@@ -137,6 +137,7 @@ const API_PERMISSION_RULES = [
   { prefix: '/api/estimating-constants', permission: 'estimating-tools' },
   { prefix: '/api/estimates', permission: 'estimating-tools' },
   { prefix: '/api/kpi-cards', permission: 'kpi' },
+  { prefix: '/api/kpi/estimates', permission: 'kpi' },
   { prefix: '/api/kpi', permission: 'kpi' },
   { prefix: '/api/equipment-assignments', permission: 'equipment' },
   { prefix: '/api/equipment', permission: 'equipment' },

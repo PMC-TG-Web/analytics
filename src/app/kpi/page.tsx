@@ -2,6 +2,11 @@
 import React, { useCallback, useEffect, useState, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
 import { resolveEstimateActualHours } from "@/lib/kpiEstimateHours";
+import { KpiEstimateDetails, type EstimateSelection } from "@/components/KpiEstimatePreview";
+import KpiEstimateAmount from "@/components/KpiEstimateAmount";
+import { useKpiReport } from "@/components/useKpiReport";
+import type { EstimatePreviewReport } from "@/lib/kpiEstimatePreview";
+import { isCalculatedEstimateMonth, resolvePublishedEstimateMonth, totalEstimateAmounts } from "@/lib/kpiEstimateMonthly";
 import KpiWinRateRow from "@/components/KpiWinRateRow";
 import KpiActualSalesRow, { useKpiActualSales } from "@/components/KpiActualSalesRow";
 import KpiActualHoursRow from "@/components/KpiActualHoursRow";
@@ -818,6 +823,12 @@ function KPIPageContent({
   const wipScheduledHours = useWipScheduledHours();
   const wipScheduledSales = useWipScheduledSales();
   const actualSales = useKpiActualSales();
+  const estimateReport = useKpiReport<EstimatePreviewReport>('/api/kpi/estimates');
+  const [estimateSelection, setEstimateSelection] = useState<EstimateSelection>(null);
+  const openEstimateDetails = (year: string, month: number | null) => {
+    setEstimateSelection({ year, month: year && month ? `${year}-${String(month).padStart(2, '0')}` : null });
+    document.getElementById('estimate-calculation-details')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
   const selectedManagedYear = yearFilter || String(new Date().getFullYear());
   const ytdMonthCutoff = Math.min(Math.max(1, new Date().getMonth() + 1), 12);
   const [cardLoadWarning, setCardLoadWarning] = useState<string>("");
@@ -952,6 +963,7 @@ function KPIPageContent({
   };
 
   const beginEditKpiCell = (year: string, month: number, field: "bidSubmittedSales" | "estimates" | "estimatesActualHours", currentValue: number) => {
+    if ((field === "bidSubmittedSales" || field === "estimatesActualHours") && isCalculatedEstimateMonth(year, month)) return;
     setEditingCell({ year, month, field });
     setEditValue(Number.isFinite(currentValue) ? String(currentValue) : "");
   };
@@ -1542,6 +1554,15 @@ function KPIPageContent({
     ...bidSubmittedSalesByMonth,
     ...manualBidSubmittedSalesByMonth,
   };
+  // Charts and both bid-dollar tables share the October cutover calculation.
+  const calculatedEstimateKeys = new Set([...Object.keys(effectiveBidSubmittedSalesByMonth), ...Object.keys(estimateReport.report?.months ?? {})]);
+  for (const key of calculatedEstimateKeys) {
+    const [year, month] = key.split('-');
+    if (!isCalculatedEstimateMonth(year, Number(month))) continue;
+    const amount = resolvePublishedEstimateMonth(year, Number(month), 'sales', 0, estimateReport.report, estimateReport.error);
+    if (amount.pending || amount.failed) delete effectiveBidSubmittedSalesByMonth[key];
+    else effectiveBidSubmittedSalesByMonth[key] = amount.value;
+  }
   const bidSubmittedSalesMonths = Object.keys(effectiveBidSubmittedSalesByMonth).sort();
   const bidSubmittedSalesYears = Array.from(new Set(bidSubmittedSalesMonths.map((month) => month.split("-")[0]))).sort();
 
@@ -2255,7 +2276,7 @@ function KPIPageContent({
           style={{ height: 160, overflowX: "auto", overflowY: "hidden" }}
         >
           <div style={{ minWidth: salesByMonthMinWidth, height: "100%" }}>
-            {wipScheduledSales.error || !wipScheduledSales.report ? <div role="status" style={{ padding: 12, color: "#666" }}>{wipScheduledSales.error || "Loading WIP revenue…"}</div> : (filteredScheduledSalesMonths.length > 0 || filteredBidSubmittedSalesMonths.length > 0) ? (
+            {wipScheduledSales.error || !wipScheduledSales.report || estimateReport.error || !estimateReport.report ? <div role="status" style={{ padding: 12, color: "#666" }}>{wipScheduledSales.error || estimateReport.error || "Loading revenue and estimates…"}</div> : (filteredScheduledSalesMonths.length > 0 || filteredBidSubmittedSalesMonths.length > 0) ? (
               <CombinedSalesLineChart
                 scheduledMonths={filteredScheduledSalesMonths}
                 scheduledSalesByMonth={filteredScheduledSalesByMonth}
@@ -2302,11 +2323,8 @@ function KPIPageContent({
                       const manualValue = kpiData.find((k: any) => k.year === year && k.month === month)?.bidSubmittedSales;
                       const calculatedValue = bidSubmittedSalesYearMonthMap[year]?.[month] || 0;
                       const isManual = manualValue !== undefined && manualValue !== null;
-                      return {
-                        month,
-                        sales: isManual ? manualValue : calculatedValue,
-                        isManual,
-                      };
+                      const amount = resolvePublishedEstimateMonth(year, month, 'sales', Number(isManual ? manualValue : calculatedValue), estimateReport.report, estimateReport.error);
+                      return { month, sales: amount.value, isManual: isManual && !amount.calculated, amount };
                     });
                     const hasManualBidSubmitted = bidSubmittedMonthValues.some(({ isManual }) => isManual);
                     const bidSubmittedTotal = bidSubmittedMonthValues.reduce((sum, { sales }) => sum + sales, 0);
@@ -2318,7 +2336,7 @@ function KPIPageContent({
                       <KpiScheduledSalesRow months={monthNames.map((_, index) => ({ year, month: index + 1 }))} data={wipScheduledSales} onDetails={openScheduledSalesDetails} />
                       <tr style={{ borderBottom: "1px solid #eee", backgroundColor: (yearIndex * 2 + 1) % 2 === 0 ? "#ffffff" : "#f9f9f9" }}>
                         <td style={{ padding: "4px 6px", color: (yearIndex * 2 + 1) % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 13 }}>Bid Subm.</td>
-                        {bidSubmittedMonthValues.map(({ month, sales, isManual }, idx) => {
+                        {bidSubmittedMonthValues.map(({ month, sales, isManual, amount }, idx) => {
                           
                           return (
                             <td 
@@ -2331,7 +2349,7 @@ function KPIPageContent({
                                 fontSize: 12
                               }}
                             >
-                              {sales > 0 && !isManual ? (
+                              {amount.calculated ? <KpiEstimateAmount amount={amount} dollars onDetails={() => openEstimateDetails(year, month)} /> : sales > 0 && !isManual ? (
                                 <button
                                   type="button"
                                   onClick={() => openKpiDrilldown(`Bid Submitted ${monthNames[idx]} ${year}`, bidSubmittedSalesProjectsByMonth, { year, month, valueLabel: "Data Point (Sales)", valuePrefix: "$" })}
@@ -2344,7 +2362,10 @@ function KPIPageContent({
                           );
                         })}
                         <td style={{ padding: "4px 6px", textAlign: "center", color: (yearIndex * 2 + 1) % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                          {bidSubmittedTotal > 0 && !hasManualBidSubmitted ? (
+                          {bidSubmittedMonthValues.some(row => row.amount.calculated) ? <div>
+                            <KpiEstimateAmount amount={totalEstimateAmounts(bidSubmittedMonthValues.map(row => row.amount))} dollars onDetails={() => openEstimateDetails(year, null)} />
+                            <div style={{ fontSize: 10 }}>YTD <KpiEstimateAmount amount={totalEstimateAmounts(bidSubmittedMonthValues.filter(row => row.month <= ytdMonthCutoff).map(row => row.amount))} dollars onDetails={() => openEstimateDetails(year, null)} /></div>
+                          </div> : bidSubmittedTotal > 0 && !hasManualBidSubmitted ? (
                             <button
                               type="button"
                               onClick={() => openKpiDrilldown(`Bid Submitted ${year} Total`, bidSubmittedSalesProjectsByMonth, { year, month: null, valueLabel: "Data Point (Sales)", valuePrefix: "$" })}
@@ -2384,13 +2405,8 @@ function KPIPageContent({
                   const manualValue = kpiData.find((k: any) => k.year === year && k.month === month)?.bidSubmittedSales;
                   const calculatedValue = bidSubmittedSalesYearMonthMap[year]?.[month] || 0;
                   const isManual = manualValue !== undefined && manualValue !== null;
-                  return {
-                    year,
-                    month,
-                    label,
-                    sales: isManual ? manualValue : calculatedValue,
-                    isManual,
-                  };
+                  const amount = resolvePublishedEstimateMonth(year, month, 'sales', Number(isManual ? manualValue : calculatedValue), estimateReport.report, estimateReport.error);
+                  return { year, month, label, sales: amount.value, isManual: isManual && !amount.calculated, amount };
                 });
                 const hasManualBidSubmitted = bidSubmittedValues.some(({ isManual }) => isManual);
                 const bidSubmittedTotal = bidSubmittedValues.reduce((sum, { sales }) => sum + sales, 0);
@@ -2416,7 +2432,7 @@ function KPIPageContent({
                       <KpiScheduledSalesRow months={allYearMonths} data={wipScheduledSales} onDetails={openScheduledSalesDetails} />
                       <tr style={{ borderBottom: "1px solid #eee", backgroundColor: "#f9f9f9" }}>
                         <td style={{ padding: "4px 6px", color: "#E06C00", fontWeight: 700, fontSize: 13 }}>Bid Subm.</td>
-                        {bidSubmittedValues.map(({ year, month, sales, isManual }, idx) => {
+                        {bidSubmittedValues.map(({ year, month, sales, isManual, amount }, idx) => {
                           return (
                             <td 
                               key={idx} 
@@ -2428,7 +2444,7 @@ function KPIPageContent({
                                 fontSize: 12
                               }}
                             >
-                              {sales > 0 && !isManual ? (
+                              {amount.calculated ? <KpiEstimateAmount amount={amount} dollars onDetails={() => openEstimateDetails(year, month)} /> : sales > 0 && !isManual ? (
                                 <button
                                   type="button"
                                   onClick={() => openKpiDrilldown(`Bid Submitted ${monthNames[month - 1]} ${year}`, bidSubmittedSalesProjectsByMonth, { year, month, valueLabel: "Data Point (Sales)", valuePrefix: "$" })}
@@ -2441,7 +2457,10 @@ function KPIPageContent({
                           );
                         })}
                         <td style={{ padding: "4px 6px", textAlign: "center", color: "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                          {bidSubmittedTotal > 0 && !hasManualBidSubmitted ? (
+                          {bidSubmittedValues.some(row => row.amount.calculated) ? <div>
+                            <KpiEstimateAmount amount={totalEstimateAmounts(bidSubmittedValues.map(row => row.amount))} dollars onDetails={() => openEstimateDetails('', null)} />
+                            <div style={{ fontSize: 10 }}>YTD <KpiEstimateAmount amount={totalEstimateAmounts(bidSubmittedValues.filter(row => row.month <= ytdMonthCutoff).map(row => row.amount))} dollars onDetails={() => openEstimateDetails('', null)} /></div>
+                          </div> : bidSubmittedTotal > 0 && !hasManualBidSubmitted ? (
                             <button
                               type="button"
                               onClick={() => openKpiDrilldown(`Bid Submitted Total (All Years)`, bidSubmittedSalesProjectsByMonth, { year: null, month: null, valueLabel: "Data Point (Sales)", valuePrefix: "$" })}
@@ -2473,8 +2492,9 @@ function KPIPageContent({
         {/* Estimates Table - using Bid Submitted data */}
         <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4 }}>
           <h3 style={{ color: "#15616D", marginBottom: 8, fontSize: 14, fontWeight: 700 }}>Estimates by Month</h3>
+          <div id="estimate-calculation-details" style={{ scrollMarginTop: 130 }}><KpiEstimateDetails year={yearFilter} data={estimateReport} selection={estimateSelection} onSelect={setEstimateSelection} /></div>
           <p style={{ color: "#6b7280", margin: "0 0 8px", fontSize: 11 }}>
-            Double-click any <strong>Bids Submitted</strong> or <strong>Act Hrs</strong> month cell to override that month value when a single year is selected.
+            From October 2026, dollars and full hours including PM are calculated from new estimates and supported rebid changes. Earlier months keep saved figures; double-click a historical month to edit it. Click a calculated amount for its sources.
           </p>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", minWidth: baseKpiTableMinWidth, borderCollapse: "collapse", tableLayout: "fixed", fontSize: 13 }}>
@@ -2491,7 +2511,7 @@ function KPIPageContent({
               </thead>
               <tbody>
                 {(() => {
-                  const estimateYears = bidSubmittedSalesYears.filter(year => !yearFilter || year === yearFilter);
+                  const estimateYears = Array.from(new Set([...bidSubmittedSalesYears, ...(estimateReport.report?.years ?? []), selectedManagedYear])).sort().filter(year => !yearFilter || year === yearFilter);
                   const rowColors = ["#15616D", "#E06C00"];
                   let rowIndex = 0;
 
@@ -2504,11 +2524,8 @@ function KPIPageContent({
                       const manualValue = kpiData.find((k: any) => k.year === year && k.month === month)?.bidSubmittedSales;
                       const calculatedValue = bidSubmittedSalesYearMonthMap[year]?.[month] || 0;
                       const isManual = manualValue !== undefined && manualValue !== null;
-                      return {
-                        month,
-                        value: isManual ? manualValue : calculatedValue,
-                        isManual,
-                      };
+                      const amount = resolvePublishedEstimateMonth(year, month, 'sales', Number(isManual ? manualValue : calculatedValue), estimateReport.report, estimateReport.error);
+                      return { month, value: amount.value, isManual: isManual && !amount.calculated, amount };
                     });
                     const hasManualBidsSubmitted = bidsMonthValues.some(({ isManual }) => isManual);
                     const bidsTotal = bidsMonthValues.reduce((sum, { value }) => sum + value, 0);
@@ -2519,7 +2536,7 @@ function KPIPageContent({
                     rows.push(
                       <tr key={year} style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
                         <td style={{ padding: "4px 6px", color: bidsColor, fontWeight: 700, fontSize: 13 }}>{yearFilter ? "Bids Submitted" : `Bids Submitted ${year}`}</td>
-                        {bidsMonthValues.map(({ month, value, isManual }, idx) => {
+                        {bidsMonthValues.map(({ month, value, isManual, amount }, idx) => {
                           const isEditing =
                             editingCell?.year === year &&
                             editingCell?.month === month &&
@@ -2527,7 +2544,7 @@ function KPIPageContent({
                           return (
                             <td
                               key={month}
-                              onDoubleClick={() => beginEditKpiCell(year, month, "bidSubmittedSales", Number(value) || 0)}
+                              onDoubleClick={!amount.calculated ? () => beginEditKpiCell(year, month, "bidSubmittedSales", Number(value) || 0) : undefined}
                               style={{
                                 padding: "4px 2px",
                                 textAlign: "center",
@@ -2536,9 +2553,9 @@ function KPIPageContent({
                                 fontSize: 12,
                                 cursor: "pointer",
                               }}
-                              title="Double-click to edit"
+                              title={amount.calculated ? "Calculated from saved estimates" : "Double-click to edit"}
                             >
-                              {isEditing ? (
+                              {amount.calculated ? <KpiEstimateAmount amount={amount} dollars onDetails={() => openEstimateDetails(year, month)} /> : isEditing ? (
                                 <input
                                   ref={inputRef}
                                   value={editValue}
@@ -2563,7 +2580,10 @@ function KPIPageContent({
                           );
                         })}
                         <td style={{ padding: "4px 6px", textAlign: "center", color: bidsColor, fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                          {bidsTotal > 0 && !hasManualBidsSubmitted ? (
+                          {bidsMonthValues.some(row => row.amount.calculated) ? <div>
+                            <KpiEstimateAmount amount={totalEstimateAmounts(bidsMonthValues.map(row => row.amount))} dollars onDetails={() => openEstimateDetails(year, null)} />
+                            <div style={{ fontSize: 10 }}>YTD <KpiEstimateAmount amount={totalEstimateAmounts(bidsMonthValues.filter(row => row.month <= ytdMonthCutoff).map(row => row.amount))} dollars onDetails={() => openEstimateDetails(year, null)} /></div>
+                          </div> : bidsTotal > 0 && !hasManualBidsSubmitted ? (
                             <button
                               type="button"
                               onClick={() => openKpiDrilldown(`Bids Submitted ${year} Total`, bidSubmittedSalesProjectsByMonth, { year, month: null, valueLabel: "Data Point (Sales)", valuePrefix: "$" })}
@@ -2592,6 +2612,7 @@ function KPIPageContent({
                   );
                   const allActHoursYears = Array.from(new Set<string>([
                     ...KPI_CARD_YEARS.map(String),
+                    ...(estimateReport.report?.years ?? []),
                     ...Object.keys(bidSubmittedHoursYearMonthMap),
                     ...kpiData
                       .map((entry) => String(((entry ?? {}) as Record<string, unknown>).year || '').trim())
@@ -2605,11 +2626,9 @@ function KPIPageContent({
                     });
                     const manualValueRaw = ((matchingEntry ?? {}) as Record<string, unknown>).estimatesActualHours;
                     const calculatedValue = bidSubmittedHoursYearMonthMap[targetYear]?.[month] || 0;
-                    return resolveEstimateActualHours(
-                      manualValueRaw,
-                      getKpiCardValue(savedActualHoursRow?.values, targetYear, month),
-                      calculatedValue,
-                    );
+                    const historical = resolveEstimateActualHours(manualValueRaw, getKpiCardValue(savedActualHoursRow?.values, targetYear, month), calculatedValue);
+                    const amount = resolvePublishedEstimateMonth(targetYear, month, 'hours', historical.hours, estimateReport.report, estimateReport.error);
+                    return { hours: amount.value, isManual: historical.isManual && !amount.calculated, amount };
                   };
 
                   const actHoursMonthValues = monthNames.map((_, idx) => {
@@ -2620,6 +2639,7 @@ function KPIPageContent({
                         month,
                         hours: resolved.hours,
                         isManual: resolved.isManual,
+                        amount: resolved.amount,
                       };
                     }
 
@@ -2629,15 +2649,17 @@ function KPIPageContent({
                         return {
                           hours: acc.hours + resolved.hours,
                           isManual: acc.isManual || resolved.isManual,
+                          amount: totalEstimateAmounts([acc.amount, resolved.amount]),
                         };
                       },
-                      { hours: 0, isManual: false }
+                      { hours: 0, isManual: false, amount: totalEstimateAmounts([]) }
                     );
 
                     return {
                       month,
                       hours: aggregated.hours,
                       isManual: aggregated.isManual,
+                      amount: aggregated.amount,
                     };
                   });
                   const hasManualActHours = actHoursMonthValues.some(({ isManual }) => isManual);
@@ -2706,7 +2728,7 @@ function KPIPageContent({
                       rows.push(
                         <tr key={`managed-${managedRow.kpi}`} style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
                           <td style={{ padding: "4px 6px", color: rowColor, fontWeight: 700, fontSize: 13 }}>{managedRow.kpi || "Actual Hours"}</td>
-                          {actHoursMonthValues.map(({ month, hours, isManual }, idx) => {
+                          {actHoursMonthValues.map(({ month, hours, isManual, amount }, idx) => {
                             const isEditing =
                               Boolean(yearFilter) &&
                               editingCell?.year === yearFilter &&
@@ -2716,7 +2738,7 @@ function KPIPageContent({
                             return (
                               <td
                                 key={month}
-                                onDoubleClick={yearFilter ? () => beginEditKpiCell(yearFilter, month, "estimatesActualHours", Number(hours) || 0) : undefined}
+                                onDoubleClick={yearFilter && !amount.calculated ? () => beginEditKpiCell(yearFilter, month, "estimatesActualHours", Number(hours) || 0) : undefined}
                                 style={{
                                   padding: "4px 2px",
                                   textAlign: "center",
@@ -2725,9 +2747,9 @@ function KPIPageContent({
                                   fontSize: 12,
                                   cursor: yearFilter ? "pointer" : "default",
                                 }}
-                                title={yearFilter ? "Double-click to edit" : "Select a single year to edit"}
+                                title={amount.calculated ? "Calculated from saved estimates" : yearFilter ? "Double-click to edit" : "Select a single year to edit"}
                               >
-                                {isEditing ? (
+                                {amount.calculated ? <KpiEstimateAmount amount={amount} onDetails={() => openEstimateDetails(yearFilter, month)} /> : isEditing ? (
                                   <input
                                     ref={inputRef}
                                     value={editValue}
@@ -2757,7 +2779,10 @@ function KPIPageContent({
                               const ytdTotal = actHoursMonthValues
                                 .filter(({ month }) => month <= ytdMonthCutoff)
                                 .reduce((sum, { hours }) => sum + hours, 0);
-                              return total > 0 && !hasManualActHours ? (
+                              return actHoursMonthValues.some(row => row.amount.calculated) ? <div>
+                                <KpiEstimateAmount amount={totalEstimateAmounts(actHoursMonthValues.map(row => row.amount))} onDetails={() => openEstimateDetails(yearFilter, null)} />
+                                <div style={{ fontSize: 10 }}>YTD <KpiEstimateAmount amount={totalEstimateAmounts(actHoursMonthValues.filter(row => row.month <= ytdMonthCutoff).map(row => row.amount))} onDetails={() => openEstimateDetails(yearFilter, null)} /></div>
+                              </div> : total > 0 && !hasManualActHours ? (
                                 <button
                                   type="button"
                                   onClick={() => openKpiDrilldown(yearFilter ? `Act Hrs ${yearFilter} Total` : "Act Hrs Total (All Years)", bidSubmittedHoursProjectsByMonth, { year: yearFilter || null, month: null, valueLabel: "Data Point (Hours)", valuePrefix: "" })}

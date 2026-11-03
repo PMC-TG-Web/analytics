@@ -1,0 +1,144 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { calculateEstimatePreview, hasEstimateVersions } from '../src/lib/kpiEstimatePreview.ts';
+import { resolvePermissionForPath } from '../src/lib/permissions.ts';
+
+const company = '598134325805519', old = '598134325658789';
+const bid = (id, status = 'BID_SUBMITTED', extra = {}) => ({ companyId: company, bidBoardId: id, projectName: `Job ${id}`, status, payload: { created_on: '2026-10-02' }, ...extra });
+const value = (id, extra = {}) => ({ bidBoardId: id, selectedProposalId: `p${id}`, hours: 1100, sales: 100000, customFields: { estimateLineCount: 10 }, ...extra });
+const proposal = (id, extra = {}) => ({ bidBoardId: id, proposalId: `p${id}`, name: 'Original', type: 'ESTIMATE', primary: true, order: 1, updatedAt: '2026-10-05T12:00:00Z', hours: 1100, sales: 100000, ...extra });
+const policy = { groups: [], excludedSources: [] };
+const run = (bids, values, proposals = null, rules = policy, canonical = []) => calculateEstimatePreview(bids, values, proposals ?? values.filter(v => v.selectedProposalId).map(v => proposal(v.bidBoardId, { hours: v.customFields.estimateLineCount > 0 ? v.hours : null, sales: v.sales })), rules, canonical, new Date('2026-11-02T12:00:00Z'));
+
+test('current qualifying statuses share Created Date months for dollars and full hours, including completed short jobs', () => {
+  const statuses = ['ESTIMATING', 'ESTIMATED', 'BID_SUBMITTED', 'ACCEPTED', 'IN_PROGRESS', 'COMPLETE', 'LOST', 'DELAYED', 'TO_DO', 'INVITATION'];
+  const result = run(statuses.map((status, i) => bid(String(i), status)), statuses.map((_, i) => value(String(i))));
+  assert.equal(result.projects.length, 6);
+  assert.deepEqual(result.months['2026-10'], { count: 6, hours: 6600, sales: 600000, missingHours: 0, missingSales: 0, rebids: 0 });
+  // PM is part of the full 1,100 estimate hours; it is never deducted here.
+  assert.equal(result.projects.find(p => p.status === 'COMPLETE').hours, 1100);
+});
+
+test('approved reporting source and original dates survive migration and contractor duplicates', () => {
+  const rules = { groups: [{ key: 'one', names: ['Old Job', 'New Name'], preferredSource: `${company}:b`, sourceIds: [`${old}:a`, `${company}:b`, `${company}:c`], createdDate: '2026-10-03' }], excludedSources: [] };
+  const result = run([bid('a', 'BID_SUBMITTED', { companyId: old, projectName: 'Old Job' }), bid('b', 'IN_PROGRESS', { projectName: 'New Name', payload: { created_on: '2026-11-01' } }), bid('c', 'BID_SUBMITTED', { projectName: 'New Name' })], [value('b'), value('c', { sales: 120000 })], null, rules);
+  assert.equal(result.projects.length, 1);
+  assert.equal(result.projects[0].bidBoardId, 'b');
+  assert.equal(result.months['2026-10'].sales, 100000);
+  assert.equal(result.months['2026-11'], undefined);
+  assert.equal(result.projects[0].sourceCount, 2);
+});
+
+test('current Lost status supersedes frozen old Bid Submitted status', () => {
+  const result = run([bid('a', 'BID_SUBMITTED', { companyId: old, projectName: 'Same' }), bid('b', 'LOST', { projectName: 'Same' })], [value('b')]);
+  assert.equal(result.projects.length, 0);
+});
+
+test('one count for matching customer copies, with differing estimates flagged instead of added', () => {
+  const bids = [bid('a', 'BID_SUBMITTED', { projectName: 'New Job' }), bid('b', 'ACCEPTED', { projectName: 'New-Job' })];
+  const equal = run(bids, [value('a'), value('b')]);
+  assert.equal(equal.months['2026-10'].count, 1);
+  assert.equal(equal.months['2026-10'].sales, 100000);
+  const conflict = run(bids, [value('a'), value('b', { sales: 200000 })]);
+  assert.equal(conflict.projects[0].sales, null);
+  assert.equal(conflict.projects[0].hours, null);
+  assert.equal(conflict.months['2026-10'].missingSales, 1);
+  assert.match(conflict.projects[0].issues[0], /Customer copies/);
+});
+
+test('explicit execution-project identity combines renamed boards and selects its canonical bid', () => {
+  const bids = [bid('a', 'COMPLETE', { procoreProjectId: 'execution1', projectName: 'First' }), bid('b', 'COMPLETE', { procoreProjectId: 'execution1', projectName: 'Renamed' })];
+  const result = run(bids, [value('a'), value('b', { sales: 200000 })], null, policy, [{ procoreProjectId: 'execution1', bidBoardId: 'b' }]);
+  assert.equal(result.projects.length, 1);
+  assert.equal(result.projects[0].bidBoardId, 'b');
+  assert.equal(result.months['2026-10'].sales, 200000);
+});
+
+test('missing estimates, missing hours, and zero estimates remain distinct', () => {
+  const result = run([bid('a', 'COMPLETE', { companyId: old }), bid('b'), bid('c'), bid('d')], [value('b', { customFields: { estimateLineCount: 0 } }), value('c', { hours: 0, sales: 0 }), value('d', { selectedProposalId: null, hours: 0, sales: 0, customFields: {} })]);
+  assert.equal(result.projects.find(p => p.name === 'Job a').sales, null);
+  assert.equal(result.projects.find(p => p.name === 'Job b').hours, null);
+  assert.equal(result.projects.find(p => p.name === 'Job c').hours, 0);
+  assert.equal(result.projects.find(p => p.name === 'Job c').sales, 0);
+  assert.equal(result.projects.find(p => p.name === 'Job d').sales, null);
+  assert.deepEqual(result.months['2026-10'], { count: 4, hours: 0, sales: 100000, missingHours: 3, missingSales: 2, rebids: 0 });
+});
+
+test('a later update without a unique newer primary does not invent a rebid', () => {
+  const result = run([bid('a', 'IN_PROGRESS', { payload: { created_on: '2026-10-02', updated_at: '2026-10-30' } })], [value('a')], [proposal('a'), proposal('a', { proposalId: 'copy', name: 'Revised', hours: 1300, sales: 125000 }), proposal('a', { proposalId: 'co', type: 'CHANGE_ORDER' })]);
+  assert.equal(result.months['2026-11'], undefined);
+  assert.equal(result.months['2026-10'].sales, 0);
+  assert.equal(result.months['2026-10'].missingSales, 1);
+  assert.equal(result.projects[0].proposals.length, 2);
+  assert.equal(hasEstimateVersions(result.projects[0]), true);
+  const copies = run([bid('a', 'COMPLETE', { projectName: 'Same' }), bid('b', 'COMPLETE', { projectName: 'Same' })], [value('a'), value('b')], [proposal('a'), proposal('b')]);
+  assert.equal(hasEstimateVersions(copies.projects[0]), false);
+});
+
+test('newer primary contributes only the signed difference; prior-year projects can be rebid this year', () => {
+  const versions = [proposal('a', { primary: false, order: 1, updatedAt: '2025-12-05T12:00:00Z', hours: 1000, sales: 100000 }), proposal('a', { proposalId: 'new', name: 'Revised', order: 2, updatedAt: '2026-10-05T12:00:00Z', hours: 1300, sales: 125000 })];
+  const result = run([bid('a', 'COMPLETE', { payload: { created_on: '2025-12-02' } })], [value('a')], versions);
+  assert.equal(result.months['2025-12'], undefined);
+  assert.deepEqual(result.months['2026-10'], { count: 1, hours: 300, sales: 25000, missingHours: 0, missingSales: 0, rebids: 1 });
+  assert.deepEqual(result.years, ['2026']);
+});
+
+test('October cutover excludes earlier initial bids even when a single estimate was updated later', () => {
+  const result = run([
+    bid('old', 'COMPLETE', { payload: { created_on: '2026-09-30' } }),
+    bid('new', 'COMPLETE', { payload: { created_on: '2026-10-01' } }),
+  ], [value('old'), value('new')]);
+  assert.equal(result.startDate, '2026-10-01');
+  assert.deepEqual(result.projects.map(project => project.name), ['Job new']);
+  assert.equal(result.months['2026-09'], undefined);
+  assert.deepEqual(result.months['2026-10'], { count: 1, hours: 1100, sales: 100000, missingHours: 0, missingSales: 0, rebids: 0 });
+});
+
+test('cutover uses the Eastern rebid date and keeps only the signed delta from a September bid', () => {
+  const bids = [bid('a', 'COMPLETE', { payload: { created_on: '2026-09-01' } })];
+  const earlier = proposal('a', { primary: false, updatedAt: '2026-09-02T12:00:00Z', hours: 1000, sales: 100000 });
+  const revised = proposal('a', { proposalId: 'new', order: 2, updatedAt: '2026-10-01T03:59:59Z', hours: 900, sales: 95000 });
+  assert.deepEqual(run(bids, [value('a')], [earlier, revised]).months, {});
+  const result = run(bids, [value('a')], [earlier, { ...revised, updatedAt: '2026-10-01T04:00:00Z' }]);
+  assert.deepEqual(result.months, { '2026-10': { count: 1, hours: -100, sales: -5000, missingHours: 0, missingSales: 0, rebids: 1 } });
+  assert.equal(result.projects[0].events[1].previous.hours, 1000, 'earlier versions remain available for the comparison');
+});
+
+test('a migration copy created in October does not recount a pre-cutover project', () => {
+  const rules = { groups: [{ key: 'one', names: [], preferredSource: `${company}:b`, sourceIds: [`${old}:a`, `${company}:b`], createdDate: '2026-09-03' }], excludedSources: [] };
+  const result = run([bid('a', 'BID_SUBMITTED', { companyId: old }), bid('b')], [value('b')], null, rules);
+  assert.deepEqual(result.months, {});
+  assert.equal(result.projects.length, 0);
+});
+
+test('new project and newer primary in the same month net to the primary, counting the project once', () => {
+  const versions = [proposal('a', { primary: false, order: 1, updatedAt: '2026-10-03T12:00:00Z', hours: 1000, sales: 100000 }), proposal('a', { proposalId: 'new', name: 'Revised', order: 2, updatedAt: '2026-10-05T12:00:00Z', hours: 900, sales: 95000 })];
+  const result = run([bid('a', 'COMPLETE')], [value('a')], versions);
+  assert.deepEqual(result.months['2026-10'], { count: 1, hours: 900, sales: 95000, missingHours: 0, missingSales: 0, rebids: 1 });
+});
+
+test('archived, excluded, template, missing-source and prefixed copies do not enter totals', () => {
+  const bids = ['archived', 'deleted', 'is_template', 'sync_missing_from_procore'].map(flag => bid(flag, 'COMPLETE', { payload: { created_on: '2026-10-02', [flag]: true } }));
+  bids.push(bid('excluded'), bid(`${company}:copy`), bid('valid'));
+  const result = run(bids, bids.map(b => value(b.bidBoardId)), [], { groups: [], excludedSources: [`${company}:excluded`] });
+  assert.deepEqual(result.projects.map(p => p.name), ['Job valid']);
+});
+
+test('missing Created Date does not fall back to sync time; pre-cutover history stays outside preview totals', () => {
+  const result = run([bid('a', 'COMPLETE', { payload: { updated_at: '2026-10-02' } }), bid('b', 'COMPLETE', { payload: { created_on: '2025-01-02' } })], [value('a'), value('b')]);
+  assert.equal(result.projects.length, 0);
+  assert.equal(result.missingCreatedDates, 1);
+});
+
+test('preview requires KPI permission, development mode and read-only database loading', () => {
+  assert.equal(resolvePermissionForPath('/api/kpi/estimate-preview'), 'kpi');
+  const route = readFileSync(new URL('../src/app/api/kpi/estimate-preview/route.ts', import.meta.url), 'utf8');
+  assert.match(route, /NODE_ENV !== 'development'/);
+  assert.match(route, /getRequestUserEmail/);
+  assert.match(route, /hasDatabasePageAccess\(prisma, actor, 'kpi'\)/);
+  assert.match(route, /private, no-store/);
+  assert.doesNotMatch(route, /export async function (POST|PUT|PATCH|DELETE)/);
+  const loader = readFileSync(new URL('../src/lib/loadKpiEstimatePreview.ts', import.meta.url), 'utf8');
+  assert.doesNotMatch(loader, /\.(create|update|upsert|delete|executeRaw)\s*\(|makeRequest|fetch\(/);
+});

@@ -1858,6 +1858,20 @@ model procore_proposal_line_items_live {
   @@index([synced_at(sort: Desc)])
 }
 
+/// Append-only old-instance estimate evidence, separate from live Procore mirrors.
+model KpiLegacyEstimateSnapshot {
+  id           String   @id @default(cuid())
+  companyId    String   @map("company_id")
+  bidBoardId   String   @map("bid_board_id")
+  snapshotHash String   @map("snapshot_hash") @db.VarChar(64)
+  snapshot     Json
+  capturedAt   DateTime @default(now()) @map("captured_at") @db.Timestamptz(6)
+
+  @@unique([companyId, bidBoardId, snapshotHash], map: "kpi_legacy_estimate_identity_key")
+  @@index([companyId, bidBoardId, capturedAt], map: "kpi_legacy_estimate_latest_idx")
+  @@map("kpi_legacy_estimate_snapshots")
+}
+
 /// Normalized estimating proposal header used by commitment/productivity analytics.
 model ProcoreEstimateProposal {
   id                  BigInt    @id @default(autoincrement())

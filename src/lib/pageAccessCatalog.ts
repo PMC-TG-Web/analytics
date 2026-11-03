@@ -1,7 +1,7 @@
 import { APP_PAGES } from './generated/appPages.js';
 import { PAGE_REDIRECTS, SYSTEM_PAGE_NOTES, resolveDiscoveredPagePermission } from './appPagePolicy.js';
 import { resolvePermissionForPath } from './permissionRoutes.js';
-import { pagePermission } from './independentPagePermissions.js';
+import { pagePermission, supportingPageParents } from './independentPagePermissions.js';
 import { HELP_GUIDE_SUMMARIES } from './helpGuides/catalog.ts';
 
 export const PERMISSION_LABELS: Record<string, string> = {
@@ -35,6 +35,7 @@ export type PageAccessEntry = {
   permission: string | null;
   section: 'Pages' | 'Help guides' | 'System and redirected pages' | 'Other access';
   note: string;
+  parentPaths: string[];
 };
 
 export function readablePageName(pathname: string): string {
@@ -53,6 +54,7 @@ function pageEntry(path: string, helpLabel?: string, pages = APP_PAGES): PageAcc
     : guide?.pageLabel || readablePageName(path);
   return {
     id: path, label, path,
+    parentPaths: systemNote || destination ? [] : supportingPageParents(path),
     permission: systemNote || destination ? null : pagePermission(path),
     section: systemNote || destination ? 'System and redirected pages' : helpLabel ? 'Help guides' : 'Pages',
     note: systemNote || (destination ? `Opens ${HELP_GUIDE_SUMMARIES.find(g => g.pagePath === destination)?.pageLabel || destination}; manage access on that page.` : PAGE_NOTES[path] || (permission === 'diagnostics' ? 'Diagnostics may be disabled in production.' : '')),
@@ -67,6 +69,11 @@ export function buildPageAccessCatalog(pages = APP_PAGES): PageAccessEntry[] {
 }
 
 export const PAGE_ACCESS_CATALOG = buildPageAccessCatalog();
+
+export function includedPageParents(entry: PageAccessEntry, effective: readonly string[]) {
+  return entry.parentPaths.filter(path => effective.includes(pagePermission(path)))
+    .map(path => PAGE_ACCESS_CATALOG.find(parent => parent.path === path)?.label || readablePageName(path));
+}
 
 export function filterPageAccessCatalog(query: string, entries = PAGE_ACCESS_CATALOG) {
   const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);

@@ -171,7 +171,7 @@ test('administrator can grant and revoke Billing Analytics separately from Analy
   }
 });
 
-test('every page is independently selectable in employee and template pickers with search', { skip: !enabled, timeout: 120_000 }, async () => {
+test('separate main pages are independently selectable in employee and template pickers with search', { skip: !enabled, timeout: 120_000 }, async () => {
   const { browser, page, writes, unexpectedWrites } = await openFixture({ permissions: ['OWNER'], employeePermissions: ['analytics'] });
   try {
     await page.getByRole('row').filter({ hasText: 'Linked Person' }).getByRole('button', { name: 'Edit', exact: true }).click();
@@ -203,6 +203,43 @@ test('every page is independently selectable in employee and template pickers wi
     await page.getByRole('button', { name: 'Manage Access Templates', exact: true }).click();
     await page.getByRole('searchbox', { name: 'Search navigation permissions' }).fill('/procore/commitments-live/maker');
     assert.equal(await page.getByRole('checkbox', { name: 'Commitment Maker', exact: true }).count(), 1);
+    assert.deepEqual(unexpectedWrites, []);
+  } finally { await browser.close(); }
+});
+
+test('main pages automatically include Help and supporting views in employee and template pickers', { skip: !enabled, timeout: 120_000 }, async () => {
+  const { browser, page, writes, unexpectedWrites } = await openFixture({ permissions: ['OWNER'], employeePermissions: ['!page:/help/billing-analytics'] });
+  try {
+    const row = page.getByRole('row').filter({ hasText: 'Linked Person' });
+    await row.getByRole('button', { name: 'Edit', exact: true }).click();
+    const billing = page.getByRole('checkbox', { name: 'Billing Analytics', exact: true });
+    const help = page.getByRole('checkbox', { name: 'Help: Billing analytics', exact: true });
+    assert.equal(await help.isChecked(), false);
+    assert.equal(await help.isDisabled(), false);
+    await billing.check();
+    assert.equal(await help.isChecked(), true);
+    assert.equal(await help.isDisabled(), true);
+    assert.equal(await help.locator('..').getByText('Included with Billing Analytics.', { exact: true }).count(), 1);
+    await page.getByRole('button', { name: 'Update Employee', exact: true }).click();
+    await page.getByRole('heading', { name: 'Edit Employee', exact: true }).waitFor({ state: 'hidden' });
+    assert.deepEqual(writes.at(-1).body.navigationPermissions, ['!page:/help/billing-analytics', 'page:/accounting/billing-analytics']);
+    await row.getByRole('button', { name: 'Edit', exact: true }).click();
+    assert.equal(await help.isChecked(), true);
+    assert.equal(await help.isDisabled(), true);
+    const search = page.getByRole('searchbox', { name: 'Search navigation permissions' });
+    await search.fill('billing');
+    if (process.env.SUPPORTING_PAGES_SCREENSHOT) await search.locator('..').screenshot({ path: process.env.SUPPORTING_PAGES_SCREENSHOT });
+    await billing.uncheck();
+    assert.equal(await help.isChecked(), false);
+    assert.equal(await help.isDisabled(), false);
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await page.getByRole('button', { name: 'Manage Access Templates', exact: true }).click();
+    await page.getByRole('checkbox', { name: 'My Work', exact: true }).check();
+    for (const name of ['Open Changes', 'Help: My Work', 'Help: Open Changes']) {
+      const support = page.getByRole('checkbox', { name, exact: true });
+      assert.equal(await support.isChecked(), true, name);
+      assert.equal(await support.isDisabled(), true, name);
+    }
     assert.deepEqual(unexpectedWrites, []);
   } finally { await browser.close(); }
 });

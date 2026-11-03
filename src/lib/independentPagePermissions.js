@@ -32,6 +32,37 @@ export const denyPagePermission = pathname => `!${pagePermission(pathname)}`;
 export const PAGE_PATHS = APP_PAGES.flatMap(page => page.pathname === '/help/[slug]'
   ? HELP_GUIDE_SUMMARIES.map(guide => `/help/${guide.slug}`) : [page.pathname]);
 
+// Help relationships come from the guide catalog automatically. Other supporting
+// views are explicit: folder nesting alone must not grant a separate report/tool.
+export const SUPPORTING_PAGE_PARENTS = {
+  ...Object.fromEntries(HELP_GUIDE_SUMMARIES.map(guide => [`/help/${guide.slug}`, [guide.pagePath]])),
+  '/analytics/productivity': ['/analytics'],
+  '/pm-dashboard/changes': ['/pm-dashboard'],
+  '/procore/review': ['/procore/test'],
+  '/procore/review/projects': ['/procore/test'],
+  '/procore/review/bid-board': ['/procore/test'],
+  '/procore/review/bid-board-search': ['/procore/test'],
+};
+
+export function supportingPageParents(pathname) {
+  return SUPPORTING_PAGE_PARENTS[pathname] || [];
+}
+
+export function includeSupportingPageAccess(permissions) {
+  const result = new Set(permissions);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const [child, parents] of Object.entries(SUPPORTING_PAGE_PARENTS)) {
+      if (!result.has(pagePermission(child)) && parents.some(parent => result.has(pagePermission(parent)))) {
+        result.add(pagePermission(child));
+        changed = true;
+      }
+    }
+  }
+  return [...result];
+}
+
 export function independentPermissionForPath(pathname) {
   const normalized = pathname.length > 1 ? pathname.replace(/\/$/, '') : pathname;
   if (Object.hasOwn(SYSTEM_PAGE_NOTES, normalized)) return null;
@@ -61,7 +92,9 @@ export function expandIndependentPagePermissions(legacyPermissions) {
     if (override(path) ?? inherited) result.add(pagePermission(path));
     else result.delete(pagePermission(path));
   }
-  return [...result];
+  // A main-page grant includes its supporting pages even if an older individual
+  // denial remains saved. Removing the main grant leaves standalone choices intact.
+  return includeSupportingPageAccess([...result]);
 }
 
 export function updateIndependentPagePermission(assigned, path, enabled) {

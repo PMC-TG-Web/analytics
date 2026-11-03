@@ -7,11 +7,11 @@ import { fileURLToPath } from 'node:url';
 import { discoverAppPages, generateAppPageInventory, pageRouteFromFile, watchAppPageInventory } from '../scripts/lib/appPageInventory.mjs';
 import { APP_PAGES } from '../src/lib/generated/appPages.js';
 import { resolveDiscoveredPagePermission } from '../src/lib/appPagePolicy.js';
-import { buildPageAccessCatalog, filterPageAccessCatalog, PAGE_ACCESS_CATALOG } from '../src/lib/pageAccessCatalog.ts';
+import { buildPageAccessCatalog, filterPageAccessCatalog, includedPageParents, PAGE_ACCESS_CATALOG } from '../src/lib/pageAccessCatalog.ts';
 import { expandAssignedPermissions, NAVIGATION_PERMISSION_OPTIONS } from '../src/lib/permissions.ts';
 import { resolvePermissionForPath } from '../src/lib/permissionRoutes.js';
 import { HELP_GUIDE_SUMMARIES } from '../src/lib/helpGuides/catalog.ts';
-import { pagePermission, updateIndependentPagePermission, apiPagePermissions } from '../src/lib/independentPagePermissions.js';
+import { pagePermission, updateIndependentPagePermission, apiPagePermissions, SUPPORTING_PAGE_PARENTS, PAGE_PATHS } from '../src/lib/independentPagePermissions.js';
 import { createPermissionCookieValue, verifyPermissionCookieValue } from '../src/lib/permissionCookie.ts';
 
 test('every app page and help guide appears in the generated access catalog', () => {
@@ -48,8 +48,8 @@ test('each page has its own control while private restrictions and redirects rem
   assert.ok(filterPageAccessCatalog('/procore/commitments-live/maker').some(entry => entry.label === 'Commitment Maker'));
 });
 
-test('granting or revoking each page affects only that page, including inherited role grants', () => {
-  const entries = PAGE_ACCESS_CATALOG.filter(entry => entry.permission);
+test('granting or revoking main pages preserves other main pages and administrative roles', () => {
+  const entries = PAGE_ACCESS_CATALOG.filter(entry => entry.permission && !entry.parentPaths.length);
   assert.equal(new Set(entries.map(entry => entry.permission)).size, entries.length);
   for (const starting of [[], ['analytics'], ['OWNER'], ['ADMIN']]) {
     const before = expandAssignedPermissions(starting);
@@ -64,6 +64,46 @@ test('granting or revoking each page affects only that page, including inherited
       for (const role of starting.filter(role => ['ADMIN', 'OWNER'].includes(role))) assert.ok(updated.includes(role));
     }
   }
+});
+
+test('every Help guide and declared supporting view is included with its main page', () => {
+  for (const guide of HELP_GUIDE_SUMMARIES) {
+    assert.deepEqual(SUPPORTING_PAGE_PARENTS[`/help/${guide.slug}`], [guide.pagePath]);
+  }
+  for (const [child, parents] of Object.entries(SUPPORTING_PAGE_PARENTS)) {
+    assert.ok(PAGE_PATHS.includes(child), child);
+    for (const parent of parents) {
+      assert.ok(PAGE_PATHS.includes(parent), parent);
+      const effective = expandAssignedPermissions([pagePermission(parent), `!${pagePermission(child)}`]);
+      assert.ok(effective.includes(pagePermission(child)), `${parent} includes ${child}, despite an older separate denial`);
+      const entry = PAGE_ACCESS_CATALOG.find(entry => entry.path === child);
+      if (entry.permission) assert.ok(includedPageParents(entry, effective).length > 0, child);
+    }
+  }
+  const visit = (path, ancestors = []) => {
+    assert.ok(!ancestors.includes(path), `cyclic supporting-page relationship: ${[...ancestors, path]}`);
+    for (const parent of SUPPORTING_PAGE_PARENTS[path] || []) visit(parent, [...ancestors, path]);
+  };
+  for (const path of Object.keys(SUPPORTING_PAGE_PARENTS)) visit(path);
+});
+
+test('supporting access is transitive, reversible, and preserves separately selected pages', () => {
+  const selected = ['page:/analytics', '!page:/analytics/productivity', '!page:/help/field-productivity'];
+  const effective = expandAssignedPermissions(selected);
+  assert.ok(effective.includes('page:/analytics/productivity'));
+  const productivityHelp = HELP_GUIDE_SUMMARIES.find(guide => guide.pagePath === '/analytics/productivity');
+  assert.ok(effective.includes(pagePermission(`/help/${productivityHelp.slug}`)));
+  for (const path of ['/analytics/monthly-hours', '/market-outlook', '/accounting/billing-analytics', '/procore/commitments-live/allocation']) {
+    assert.ok(!effective.includes(pagePermission(path)), `Analytics does not include ${path}`);
+  }
+  const revoked = expandAssignedPermissions(updateIndependentPagePermission(selected, '/analytics', false));
+  assert.ok(!revoked.includes('page:/analytics/productivity'));
+  assert.ok(!revoked.includes(pagePermission(`/help/${productivityHelp.slug}`)));
+  const standalone = ['page:/pm-dashboard', 'page:/pm-dashboard/changes'];
+  const withoutMain = expandAssignedPermissions(updateIndependentPagePermission(standalone, '/pm-dashboard', false));
+  assert.ok(withoutMain.includes('page:/pm-dashboard/changes'));
+  assert.ok(!withoutMain.includes('page:/pm-dashboard'));
+  assert.deepEqual(includedPageParents(PAGE_ACCESS_CATALOG.find(entry => entry.path === '/pm-dashboard/changes'), withoutMain), []);
 });
 
 test('Financial WIP and Commitment Maker grants cannot authorize sibling data APIs', () => {
@@ -88,6 +128,7 @@ test('signed permission cache fits browser limits and preserves independent role
     const payload = await verifyPermissionCookieValue(cookie, 'owner@example.test');
     assert.ok(payload.permissions.includes('page:/market-outlook'));
     assert.ok(payload.permissions.includes('admin'));
+    assert.ok(payload.permissions.includes('page:/help/billing-analytics'));
     assert.ok(!payload.permissions.includes('page:/analytics/monthly-hours'));
     assert.equal(await verifyPermissionCookieValue(cookie, 'someone-else@example.test'), null);
     assert.equal(await createPermissionCookieValue('owner@example.test', Array.from({ length: 500 }, (_, i) => `page:/long-page-name-${i}`)), null);

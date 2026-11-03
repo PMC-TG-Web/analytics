@@ -147,6 +147,23 @@ test('independent page choices protect both pages and data APIs, including an OW
   for (const path of ['/market-outlook', '/analytics', '/api/analytics/commitment-productivity', '/kpi']) assertPassed(await revoked.run(path), path);
 });
 
+test('main-page access includes Help and supporting page APIs without granting other main pages', async () => {
+  for (const identity of ['auth0', 'procore']) {
+    const app = harness({ identity, cachedPermissions: ['page:/pm-dashboard', '!page:/pm-dashboard/changes', '!page:/help/open-changes'] });
+    for (const path of ['/pm-dashboard', '/pm-dashboard/changes', '/help/my-work', '/help/open-changes', '/api/pm-dashboard/changes']) {
+      assertPassed(await app.run(path), `${identity} ${path}`);
+    }
+    assert.equal((await app.run('/api/analytics/monthly-hours')).status, 403);
+    const billing = harness({ identity, cachedPermissions: ['page:/accounting/billing-analytics'] });
+    assertPassed(await billing.run('/help/billing-analytics'));
+    const revoked = harness({ identity, cachedPermissions: ['!page:/pm-dashboard'] });
+    for (const path of ['/pm-dashboard/changes', '/help/my-work', '/help/open-changes']) {
+      assert.equal(new URL((await revoked.run(path)).headers.get('location')).pathname, '/forbidden', path);
+    }
+    assert.equal((await revoked.run('/api/pm-dashboard/changes')).status, 403);
+  }
+});
+
 test('unmapped APIs fail closed before identity, cached permissions, or local development bypasses', async () => {
   for (const options of [
     { identity: 'auth0' }, { identity: 'procore' }, { identity: 'anonymous' },

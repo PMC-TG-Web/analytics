@@ -12,6 +12,7 @@ import {
 } from "@/lib/procorePurchaseOrderLineItemDetails";
 import { refreshCommitmentsAggMaterializedView } from "@/lib/commitmentsAggMv";
 import { readProcoreSyncCookieValues } from "@/lib/procoreSyncRequestCookies";
+import { fetchCompletePurchaseOrderSnapshot, retireMissingPurchaseOrders } from "@/lib/procorePurchaseOrderSnapshot";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -183,36 +184,20 @@ async function fetchPurchaseOrderContractsForProject(
   projectId: string,
   perPage: number
 ): Promise<{ records: ProcorePurchaseOrderContract[]; notEnabled: boolean }> {
-  const records: ProcorePurchaseOrderContract[] = [];
-  let page = 1;
-  let previousSignature = "";
-
-  while (true) {
+  let notEnabled = false;
+  const records = await fetchCompletePurchaseOrderSnapshot(async (page) => {
     const endpoint = `/rest/v1.0/purchase_order_contracts?company_id=${encodeURIComponent(companyId)}&project_id=${encodeURIComponent(projectId)}&page=${page}&per_page=${perPage}`;
-    let response: unknown;
     try {
-      response = await makeRequestWithRateLimitRetry(endpoint, accessToken, companyId);
+      return await makeRequestWithRateLimitRetry(endpoint, accessToken, companyId);
     } catch (err) {
-      if (isNotFoundError(err)) return { records: [], notEnabled: true };
+      if (page === 1 && isNotFoundError(err)) {
+        notEnabled = true;
+        return [];
+      }
       throw err;
     }
-
-    const pageRecords = unwrapArray(response) as ProcorePurchaseOrderContract[];
-    const signature = pageSignature(pageRecords as Array<Record<string, unknown>>);
-    if (signature && signature === previousSignature) {
-      console.warn(`[PO Sync] Repeated contracts page detected for project ${projectId} at page ${page}; stopping pagination.`);
-      break;
-    }
-    previousSignature = signature;
-
-    if (!pageRecords.length) break;
-    records.push(...pageRecords);
-    if (pageRecords.length < perPage) break;
-    page += 1;
-    if (page > 100) break;
-  }
-
-  return { records, notEnabled: false };
+  }, perPage);
+  return { records, notEnabled };
 }
 
 async function fetchLineItemContractDetailsForContract(
@@ -395,6 +380,7 @@ async function runSync(request: Request) {
       projectsNotEnabled: 0,
       projectsWithoutPurchaseOrderContracts: 0,
       totalPurchaseOrderContractsFetched: 0,
+      retiredPurchaseOrderContracts: 0,
       totalLineItemContractDetailsFetched: 0,
       totalLineItemContractDetailsSaved: 0,
       totalProjectsCreated: 0,
@@ -419,6 +405,7 @@ async function runSync(request: Request) {
       const projectName = firstText(asObject(project).name, asObject(project).project_name, `Procore Project ${projectId}`);
 
       try {
+        const snapshotStartedAt = new Date();
         const { records: contracts, notEnabled } = await fetchPurchaseOrderContractsForProject(
           accessToken,
           companyId,
@@ -442,6 +429,9 @@ async function runSync(request: Request) {
         }
 
         if (!contracts.length) {
+          if (persist) summary.retiredPurchaseOrderContracts += await retireMissingPurchaseOrders(prisma, {
+            companyId, projectId, contracts, startedAt: snapshotStartedAt,
+          });
           summary.projectsWithoutPurchaseOrderContracts += 1;
           summary.activeProjects.push({
             projectId,
@@ -462,6 +452,7 @@ async function runSync(request: Request) {
         let detailCount = 0;
         let savedCount = 0;
         let detailsNotEnabled = false;
+        let persistenceComplete = true;
         let projectCreated = false;
 
         for (const contract of contracts) {
@@ -492,6 +483,7 @@ async function runSync(request: Request) {
               persistUnpackedFields,
             });
             savedCount += persisted.saved;
+            if (persisted.skipped > 0) persistenceComplete = false;
             summary.totalLineItemContractDetailsSaved += persisted.saved;
             if (persisted.projectCreated) {
               projectCreated = true;
@@ -502,6 +494,12 @@ async function runSync(request: Request) {
 
           detailCount += details.length;
           summary.totalLineItemContractDetailsFetched += details.length;
+        }
+
+        if (persist && !detailsNotEnabled && persistenceComplete) {
+          summary.retiredPurchaseOrderContracts += await retireMissingPurchaseOrders(prisma, {
+            companyId, projectId, contracts, startedAt: snapshotStartedAt,
+          });
         }
 
         if (projectCreated) {
@@ -523,7 +521,7 @@ async function runSync(request: Request) {
       }
     });
 
-    if (persist && summary.totalLineItemContractDetailsSaved > 0) {
+    if (persist && (summary.totalLineItemContractDetailsSaved > 0 || summary.retiredPurchaseOrderContracts > 0)) {
       await refreshCommitmentsAggMaterializedView();
     }
 

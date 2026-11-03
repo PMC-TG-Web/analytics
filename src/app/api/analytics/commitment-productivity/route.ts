@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { normalizeProductivityCompletionUom } from '@/lib/productivityWeightedCompletion';
+import { ACTIVE_PRODUCTIVITY_PO_SQL } from '@/lib/procorePurchaseOrderSnapshot';
 
 export const dynamic = 'force-dynamic';
 
@@ -91,6 +92,7 @@ export async function GET(request: NextRequest) {
            AND a.target_line_item_id = v.line_item_id
           WHERE v.company_id = $1
             AND ($2::text IS NULL OR v.project_id = $2)
+            AND ${ACTIVE_PRODUCTIVITY_PO_SQL}
             AND COALESCE(v.po_title, '') NOT ILIKE '%Billing File%'
           ORDER BY
             COALESCE(pp.project_name, v.project_id),

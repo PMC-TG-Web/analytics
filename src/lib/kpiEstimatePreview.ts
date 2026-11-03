@@ -26,6 +26,8 @@ export type EstimatePreviewProposal = {
   primary: boolean;
   order?: number | null;
   alternate?: boolean;
+  isBaselineCandidate?: boolean;
+  sourceCreatedAt?: string | null;
   updatedAt: string | null;
   hours: number | null;
   sales: number | null;

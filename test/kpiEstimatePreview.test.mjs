@@ -77,7 +77,7 @@ test('a later update without a unique newer primary does not invent a rebid', ()
 });
 
 test('newer primary contributes only the signed difference; prior-year projects can be rebid this year', () => {
-  const versions = [proposal('a', { primary: false, order: 1, updatedAt: '2025-12-05T12:00:00Z', hours: 1000, sales: 100000 }), proposal('a', { proposalId: 'new', name: 'Revised', order: 2, updatedAt: '2026-10-05T12:00:00Z', hours: 1300, sales: 125000 })];
+  const versions = [proposal('a', { primary: false, isBaselineCandidate: true, order: 1, updatedAt: '2025-12-05T12:00:00Z', hours: 1000, sales: 100000 }), proposal('a', { proposalId: 'new', name: 'Revised', order: 2, updatedAt: '2026-10-05T12:00:00Z', hours: 1300, sales: 125000 })];
   const result = run([bid('a', 'COMPLETE', { payload: { created_on: '2025-12-02' } })], [value('a')], versions);
   assert.equal(result.months['2025-12'], undefined);
   assert.deepEqual(result.months['2026-10'], { count: 1, hours: 300, sales: 25000, missingHours: 0, missingSales: 0, rebids: 1 });
@@ -95,9 +95,27 @@ test('October cutover excludes earlier initial bids even when a single estimate 
   assert.deepEqual(result.months['2026-10'], { count: 1, hours: 1100, sales: 100000, missingHours: 0, missingSales: 0, rebids: 0 });
 });
 
+test('cross-month revisions compare only with the original on the selected customer source', () => {
+  const bids = ['a', 'b'].map(id => bid(id, 'BID_SUBMITTED', { projectName: 'Shared project', payload: { created_on: '2026-07-28' } }));
+  const rules = { groups: [{ key: 'one', names: ['Shared project'], preferredSource: `${company}:a`, sourceIds: [`${company}:a`, `${company}:b`] }], excludedSources: [] };
+  const versions = [
+    proposal('a', { primary: false, isBaselineCandidate: true, order: 2, updatedAt: '2026-09-14T12:00:00Z', hours: 400, sales: 70000 }),
+    proposal('a', { proposalId: 'intermediate', name: 'Revision 1', primary: false, order: 1, updatedAt: '2026-09-15T12:00:00Z', hours: 500, sales: 75000 }),
+    proposal('a', { proposalId: 'latest', name: 'Revision 2', order: 3, hours: 1300, sales: 225000 }),
+    proposal('b', { isBaselineCandidate: true, updatedAt: '2026-07-29T12:00:00Z', hours: 900, sales: 155000 }),
+    proposal('a', { proposalId: 'co', type: 'CHANGE_ORDER', hours: 100, sales: 10000 }),
+    proposal('a', { proposalId: 'alternate', alternate: true, isBaselineCandidate: true, hours: 10, sales: 1000 }),
+  ];
+  const result = run(bids, [value('a'), value('b')], versions, rules);
+  assert.deepEqual(result.months, { '2026-10': { count: 1, hours: 900, sales: 155000, missingHours: 0, missingSales: 0, rebids: 1 } });
+  assert.equal(result.projects[0].events[1].previous.proposalId, 'pa');
+  assert.equal(result.projects[0].events[1].basis, 'original-estimate');
+  assert.deepEqual(result.projects[0].issues, []);
+});
+
 test('cutover uses the Eastern rebid date and keeps only the signed delta from a September bid', () => {
   const bids = [bid('a', 'COMPLETE', { payload: { created_on: '2026-09-01' } })];
-  const earlier = proposal('a', { primary: false, updatedAt: '2026-09-02T12:00:00Z', hours: 1000, sales: 100000 });
+  const earlier = proposal('a', { primary: false, isBaselineCandidate: true, updatedAt: '2026-09-02T12:00:00Z', hours: 1000, sales: 100000 });
   const revised = proposal('a', { proposalId: 'new', order: 2, updatedAt: '2026-10-01T03:59:59Z', hours: 900, sales: 95000 });
   assert.deepEqual(run(bids, [value('a')], [earlier, revised]).months, {});
   const result = run(bids, [value('a')], [earlier, { ...revised, updatedAt: '2026-10-01T04:00:00Z' }]);

@@ -26,10 +26,10 @@ test('local estimate preview shows full hours and dollars, flags gaps, inspects 
     await page.route('**/api/kpi/estimate-preview', route => {
       requests.push(route.request().method());
       const project = { key: 'one', name: 'Example completed job', createdDate: '2026-01-02', status: 'COMPLETE', bidBoardId: 'b1', customer: 'Builder', sourceCount: 2, hours, sales: 100000, issues: [], proposals: [
-        { bidBoardId: 'b1', proposalId: 'original', name: 'Original Estimate', type: 'ESTIMATE', primary: false, order: 1, updatedAt: '2026-01-05T12:00:00Z', hours: 1000, sales: 90000 },
+        { bidBoardId: 'b1', proposalId: 'original', name: 'Original Estimate', type: 'ESTIMATE', primary: false, isBaselineCandidate: true, sourceCreatedAt: '2026-01-02T12:00:00Z', order: 1, updatedAt: '2026-01-05T12:00:00Z', hours: 1000, sales: 90000 },
         { bidBoardId: 'b1', proposalId: 'copy', name: 'Revised Estimate', type: 'ESTIMATE', primary: true, order: 2, updatedAt: '2026-10-05T12:00:01Z', hours, sales: 100000 },
       ] };
-      project.events = [{ date: '2026-01-02', kind: 'initial', hours: 1000, sales: 90000, previous: null, revised: project.proposals[0] }, { date: '2026-10-05', kind: 'rebid', hours: hours - 1000, sales: 10000, previous: project.proposals[0], revised: project.proposals[1] }];
+      project.events = [{ date: '2026-01-02', kind: 'initial', hours: 1000, sales: 90000, previous: null, revised: project.proposals[0] }, { date: '2026-10-05', kind: 'rebid', basis: 'original-estimate', hours: hours - 1000, sales: 10000, previous: project.proposals[0], revised: project.proposals[1] }];
       if (sameMonth) {
         project.proposals[0].updatedAt = '2026-10-01T12:00:00Z';
         project.events = [{ date: '2026-10-05', kind: 'rebid', basis: 'same-month-primary', hours, sales: 100000, previous: null, revised: project.proposals[1] }];
@@ -71,6 +71,10 @@ test('local estimate preview shows full hours and dollars, flags gaps, inspects 
     await versions.getByRole('cell', { name: /Original Estimate/ }).waitFor();
     await versions.getByRole('cell', { name: /Revised Estimate/ }).waitFor();
     assert.ok(await versions.getByText(/Rebid change included/).count());
+    await versions.getByRole('columnheader', { name: 'Comparison baseline' }).waitFor();
+    await versions.getByRole('cell', { name: 'Original estimate', exact: true }).waitFor();
+    await versions.getByRole('cell', { name: '2026-01-02', exact: true }).waitFor();
+    await details.getByText(/Original baseline: Original Estimate/).waitFor();
     fs.mkdirSync('.tmp', { recursive: true });
     await page.screenshot({ path: '.tmp/kpi-estimate-preview-same-month-20261103.png', fullPage: true });
     await page.getByLabel('Year').selectOption('2025');

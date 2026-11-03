@@ -12,7 +12,7 @@ export async function loadKpiEstimatePreview({ includeLegacy = true } = {}) {
     prisma.pmcBidBoardProject.findMany({ where: { companyId: KPI_CURRENT_COMPANY }, select: { companyId: true, bidBoardId: true, procoreProjectId: true, projectName: true, status: true, payload: true } }),
     prisma.estimatingConstant.findUnique({ where: { name: KPI_WIN_RATE_POLICY_KEY }, select: { value: true } }),
     prisma.estimatingConstant.findUnique({ where: { name: KPI_WIN_RATE_BASELINE_KEY }, select: { value: true } }),
-    prisma.procoreEstimateProposal.findMany({ where: { companyId: KPI_CURRENT_COMPANY }, select: { bidBoardProjectId: true, proposalId: true, proposalName: true, sourceUpdatedAt: true, payload: true } }),
+    prisma.procoreEstimateProposal.findMany({ where: { companyId: KPI_CURRENT_COMPANY }, select: { bidBoardProjectId: true, proposalId: true, proposalName: true, isBaselineCandidate: true, sourceUpdatedAt: true, payload: true } }),
     prisma.procoreEstimateLineItem.groupBy({ by: ['bidBoardProjectId', 'proposalId'], where: { companyId: KPI_CURRENT_COMPANY }, _sum: { laborHours: true }, _count: { _all: true } }),
     prisma.pmcProject.findMany({ where: { companyId: KPI_CURRENT_COMPANY }, select: { procoreProjectId: true, bidBoardId: true } }),
     includeLegacy ? loadKpiLegacyEstimateLedger() : Promise.resolve(null),
@@ -31,6 +31,9 @@ export async function loadKpiEstimatePreview({ includeLegacy = true } = {}) {
         type: String(payload.type ?? ''), primary: payload.is_primary === true,
         order: payload.order != null && Number.isFinite(Number(payload.order)) ? Number(payload.order) : null,
         alternate: payload.is_procore_bid_form_alternate === true,
+        isBaselineCandidate: row.isBaselineCandidate,
+        // Local createdAt is ingestion time. Use only source creation evidence.
+        sourceCreatedAt: typeof payload.created_at === 'string' ? payload.created_at : null,
         updatedAt: row.sourceUpdatedAt?.toISOString() ?? null,
         hours: total?._count._all ? Number(total._sum.laborHours ?? 0) : null,
         sales: sales !== null && Number.isFinite(sales) ? sales : null };

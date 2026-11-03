@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { calculateEstimateRevisions, estimateRevisionDate } from '../src/lib/kpiEstimateRevisions.ts';
 
-const original = { proposalId: 'old', name: 'Original', primary: false, order: 1, updatedAt: '2026-01-03T12:00:00Z', hours: 1000, sales: 100000 };
+const original = { proposalId: 'old', name: 'Original', isBaselineCandidate: true, primary: false, order: 1, updatedAt: '2026-01-03T12:00:00Z', hours: 1000, sales: 100000 };
 const primary = { proposalId: 'new', name: 'New Primary', primary: true, order: 2, updatedAt: '2026-10-05T12:00:00Z', hours: 1300, sales: 125000 };
 const run = (versions, created = '2026-01-02') => calculateEstimateRevisions(created, versions);
 
@@ -27,21 +27,70 @@ test('reductions and no-change revisions retain signed values and explicit zero'
   assert.deepEqual(run([original, { ...primary, hours: 1000, sales: 100000 }]).events.map(e => [e.hours, e.sales]), [[1000, 100000], [0, 0]]);
 });
 
-test('version order and timestamp must both advance; editing an older primary is not a new version', () => {
-  for (const changed of [{ order: 1 }, { order: null }, { updatedAt: '2025-12-05T12:00:00Z' }, { updatedAt: null }]) {
+test('original remains the baseline with intermediate versions, reordered copies, and later original edits', () => {
+  const result = run([{ ...original, order: 3, updatedAt: '2026-11-01T12:00:00Z' },
+    { ...primary, proposalId: 'intermediate', primary: false, order: 2, hours: 1200, sales: 120000, updatedAt: '2026-09-01T12:00:00Z' },
+    { ...primary, order: 1 }]);
+  assert.equal(result.events[1].previous.proposalId, 'old');
+  assert.equal(result.events[1].basis, 'original-estimate');
+  assert.equal(result.events[1].hours, 300);
+  assert.equal(result.events[1].sales, 25000);
+  assert.deepEqual(result.issues, []);
+});
+
+test('a rebid still requires a usable primary update date on or after project creation', () => {
+  for (const changed of [{ updatedAt: '2025-12-05T12:00:00Z' }, { updatedAt: null }]) {
     const result = run([original, { ...primary, ...changed }]);
     assert.equal(result.events.length, 1);
     assert.equal(result.events[0].hours, null);
-    assert.match(result.issues.join(' '), /not clearly newer/);
+    assert.match(result.issues.join(' '), /valid source update date/);
   }
 });
 
-test('multiple prior versions or primary flags require review, not a guessed historical chain', () => {
+test('ambiguous originals or primary flags remain unavailable', () => {
   for (const versions of [[original, primary, { ...original, proposalId: 'option', order: 3 }], [original, { ...primary, primary: false }], [{ ...original, primary: true }, primary]]) {
     const result = run(versions);
     assert.equal(result.events.length, 1);
     assert.equal(result.events[0].sales, null);
     assert.ok(result.issues.length);
+  }
+});
+
+test('without an original, use the first source-created estimate regardless of list order or later edits', () => {
+  const first = { ...original, isBaselineCandidate: false, name: 'Takeoff A', sourceCreatedAt: '2026-01-02T12:00:00Z', updatedAt: '2026-11-02T12:00:00Z' };
+  const result = run([{ ...primary, sourceCreatedAt: '2026-10-04T12:00:00Z' },
+    { ...first, proposalId: 'middle', sourceCreatedAt: '2026-02-02T12:00:00Z', hours: 1200, sales: 120000 }, first]);
+  assert.equal(result.events[1].basis, 'first-created-estimate');
+  assert.equal(result.events[1].previous.proposalId, 'old');
+  assert.equal(result.events[1].hours, 300);
+  assert.equal(result.events[1].sales, 25000);
+  assert.deepEqual(result.issues, []);
+});
+
+test('an identified original takes precedence over earlier source creation dates', () => {
+  const result = run([{ ...original, sourceCreatedAt: '2026-02-01T12:00:00Z' },
+    { ...primary, sourceCreatedAt: '2026-01-02T12:00:00Z' }]);
+  assert.equal(result.events[1].basis, 'original-estimate');
+  assert.equal(result.events[1].hours, 300);
+});
+
+test('missing, invalid or tied source creation dates cannot be replaced with order, IDs or ingestion time', () => {
+  for (const sourceCreatedAt of [null, 'invalid', '2026-01-02T12:00:00Z']) {
+    const result = run([{ ...original, isBaselineCandidate: false, sourceCreatedAt, createdAt: '2026-01-01T12:00:00Z' },
+      { ...primary, sourceCreatedAt: '2026-01-02T12:00:00Z' }]);
+    assert.equal(result.events[0].hours, null);
+    assert.match(result.issues.join(' '), /unique first estimate/);
+  }
+});
+
+test('when the primary is the original or first-created estimate, other versions do not create a rebid', () => {
+  for (const isBaselineCandidate of [true, false]) {
+    const result = run([{ ...original, primary: true, isBaselineCandidate, sourceCreatedAt: '2026-01-02T12:00:00Z' },
+      { ...primary, primary: false, sourceCreatedAt: '2026-10-04T12:00:00Z' }]);
+    assert.equal(result.events.length, 1);
+    assert.equal(result.events[0].kind, 'initial');
+    assert.equal(result.events[0].hours, 1000);
+    assert.deepEqual(result.issues, []);
   }
 });
 
@@ -69,7 +118,7 @@ test('same-month rule needs a unique primary and valid months, not values or ord
   assert.equal(run([same, primary]).events[0].hours, 1300);
   assert.deepEqual(run([same, primary]).issues, []);
   assert.equal(run([{ ...same, primary: true }, primary]).events[0].hours, null);
-  assert.equal(run([{ ...same, updatedAt: null }, primary]).events[0].hours, null);
+  assert.equal(run([{ ...same, updatedAt: null }, primary]).events[1].hours, null);
   assert.equal(run([same, { ...primary, hours: null }]).events[0].hours, null);
 });
 
@@ -87,7 +136,7 @@ test('missing prior hours does not turn into zero while independently valid doll
   assert.equal(result.events[0].hours, null);
   assert.equal(result.events[1].hours, null);
   assert.equal(result.events[1].sales, 25000);
-  assert.ok(result.issues.some(issue => issue.includes('Previous estimate hours')));
+  assert.ok(result.issues.some(issue => issue.includes('Baseline estimate hours')));
 });
 
 test('rebid month follows Eastern calendar date at UTC month boundaries', () => {

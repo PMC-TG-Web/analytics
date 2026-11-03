@@ -4,10 +4,11 @@ import { calculateEstimatePreview } from '@/lib/kpiEstimatePreview';
 import { KPI_CURRENT_COMPANY, KPI_WIN_RATE_BASELINE_KEY, KPI_WIN_RATE_POLICY_KEY, parseWinRateBaseline, type WinRatePolicy } from '@/lib/kpiWinRate';
 import { loadKpiLegacyEstimateLedger } from '@/lib/loadKpiLegacyEstimateLedger';
 import { unmigratedLegacySnapshots } from '@/lib/kpiLegacyEstimateLedger';
+import { KPI_ESTIMATE_ORIGINALS_KEY, parseConfirmedEstimateOriginals } from '@/lib/kpiEstimateOriginals';
 
 export async function loadKpiEstimatePreview({ includeLegacy = true } = {}) {
   if (process.env.PROCORE_COMPANY_ID?.trim() !== KPI_CURRENT_COMPANY) throw new Error('Preview company mismatch.');
-  const [values, bids, settings, baseline, proposals, lines, canonical, savedLegacy] = await Promise.all([
+  const [values, bids, settings, baseline, proposals, lines, canonical, savedLegacy, confirmed] = await Promise.all([
     loadEstimatingDashboardProjects(),
     prisma.pmcBidBoardProject.findMany({ where: { companyId: KPI_CURRENT_COMPANY }, select: { companyId: true, bidBoardId: true, procoreProjectId: true, projectName: true, status: true, payload: true } }),
     prisma.estimatingConstant.findUnique({ where: { name: KPI_WIN_RATE_POLICY_KEY }, select: { value: true } }),
@@ -16,6 +17,7 @@ export async function loadKpiEstimatePreview({ includeLegacy = true } = {}) {
     prisma.procoreEstimateLineItem.groupBy({ by: ['bidBoardProjectId', 'proposalId'], where: { companyId: KPI_CURRENT_COMPANY }, _sum: { laborHours: true }, _count: { _all: true } }),
     prisma.pmcProject.findMany({ where: { companyId: KPI_CURRENT_COMPANY }, select: { procoreProjectId: true, bidBoardId: true } }),
     includeLegacy ? loadKpiLegacyEstimateLedger() : Promise.resolve(null),
+    prisma.estimatingConstant.findUnique({ where: { name: KPI_ESTIMATE_ORIGINALS_KEY }, select: { value: true } }),
   ]);
   if (!settings || !baseline) throw new Error('Approved grouping and original Created Dates are required.');
   const lineTotals = new Map(lines.map(row => [`${row.bidBoardProjectId}:${row.proposalId}`, row]));
@@ -37,7 +39,7 @@ export async function loadKpiEstimatePreview({ includeLegacy = true } = {}) {
         updatedAt: row.sourceUpdatedAt?.toISOString() ?? null,
         hours: total?._count._all ? Number(total._sum.laborHours ?? 0) : null,
         sales: sales !== null && Number.isFinite(sales) ? sales : null };
-    }), policy, canonical, new Date(), legacy,
+    }), policy, canonical, new Date(), legacy, parseConfirmedEstimateOriginals(confirmed?.value ?? null).originals,
   );
   if (savedLegacy) report.legacyLedger = { source: savedLegacy.source, records: legacy.length,
     contributingProjects: report.projects.filter(project => project.legacySource).length,

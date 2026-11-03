@@ -14,7 +14,7 @@ export type EstimateRevisionVersion = {
 export type EstimateRevisionEvent = {
   date: string;
   kind: 'initial' | 'rebid';
-  basis?: 'same-month-primary' | 'original-estimate' | 'first-created-estimate';
+  basis?: 'same-month-primary' | 'original-estimate' | 'first-created-estimate' | 'confirmed-original';
   hours: number | null;
   sales: number | null;
   previous: EstimateRevisionVersion | null;
@@ -33,13 +33,17 @@ export function estimateRevisionDate(timestamp: string | null): string | null {
  * always compare with the named original, or the first source-created estimate.
  * Display order, proposal IDs and local ingestion times cannot establish creation.
  */
-export function calculateEstimateRevisions(createdDate: string, versions: EstimateRevisionVersion[]) {
+export function calculateEstimateRevisions(createdDate: string, versions: EstimateRevisionVersion[], confirmedOriginalId: string | null = null) {
   const estimates = versions.filter(version => !version.alternate);
   const primaries = estimates.filter(version => version.primary);
   const primary = primaries.length === 1 ? primaries[0] : null;
   const issues: string[] = [];
   const unavailable = (): EstimateRevisionEvent[] => [{ date: createdDate, kind: 'initial', hours: null, sales: null, previous: null, revised: primary }];
   if (!primary) return { events: unavailable(), issues: ['A unique primary estimate is required.'], primary };
+  const confirmed = confirmedOriginalId ? estimates.filter(version => version.proposalId === confirmedOriginalId) : [];
+  if (confirmedOriginalId && confirmed.length !== 1) {
+    return { events: unavailable(), issues: ['The confirmed original estimate is missing or is not a unique non-alternate estimate; restore its saved source data.'], primary };
+  }
   const snapshot = (version: EstimateRevisionVersion) => ({ hours: valid(version.hours) ? round(version.hours!, 4) : null, sales: valid(version.sales) ? round(version.sales!, 2) : null });
   const current = snapshot(primary);
   if (current.hours === null) issues.push('Primary estimate hours are unavailable.');
@@ -60,8 +64,11 @@ export function calculateEstimateRevisions(createdDate: string, versions: Estima
   }
   const originals = estimates.filter(version => version.isBaselineCandidate);
   let previous: EstimateRevisionVersion;
-  let basis: 'original-estimate' | 'first-created-estimate';
-  if (originals.length === 1) {
+  let basis: 'original-estimate' | 'first-created-estimate' | 'confirmed-original';
+  if (confirmed.length === 1) {
+    previous = confirmed[0];
+    basis = 'confirmed-original';
+  } else if (originals.length === 1) {
     previous = originals[0];
     basis = 'original-estimate';
   } else if (originals.length > 1) {

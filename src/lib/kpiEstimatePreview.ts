@@ -4,6 +4,7 @@ import {
 } from './kpiWinRate.ts';
 import { calculateEstimateRevisions, estimateRevisionDate, type EstimateRevisionEvent } from './kpiEstimateRevisions.ts';
 import type { LegacyEstimateSnapshot } from './kpiLegacyEstimateLedger.ts';
+import { confirmedEstimateOriginalId, type ConfirmedEstimateOriginal } from './kpiEstimateOriginals.ts';
 
 // Earlier KPI actuals remain saved history. Older versions are still needed to
 // measure rebids after this cutover without recounting the original estimate.
@@ -82,6 +83,7 @@ export function calculateEstimatePreview(
   canonical: { procoreProjectId: string; bidBoardId: string | null }[] = [],
   asOf = new Date(),
   legacy: LegacyEstimateSnapshot[] = [],
+  confirmedOriginals: ConfirmedEstimateOriginal[] = [],
 ): EstimatePreviewReport {
   const canonicalBoards = new Set(canonical.map(row => row.bidBoardId).filter(Boolean));
   const currentBids = bids.filter(row => row.companyId === KPI_CURRENT_COMPANY && !row.bidBoardId.includes(':'));
@@ -156,7 +158,8 @@ export function calculateEstimatePreview(
     const sourceBoards = new Set(current.map(source => source.bidBoardId));
     const versions = proposals.filter(proposal => sourceBoards.has(proposal.bidBoardId) && proposal.type === 'ESTIMATE')
       .sort((a, b) => a.bidBoardId.localeCompare(b.bidBoardId) || a.name.localeCompare(b.name) || a.proposalId.localeCompare(b.proposalId));
-    const revision = selected ? calculateEstimateRevisions(group.createdDate.slice(0, 10), versions.filter(version => version.bidBoardId === selected.bidBoardId)) : null;
+    const revision = selected ? calculateEstimateRevisions(group.createdDate.slice(0, 10), versions.filter(version => version.bidBoardId === selected.bidBoardId),
+      confirmedEstimateOriginalId(confirmedOriginals, KPI_CURRENT_COMPANY, selected.bidBoardId)) : null;
     const events = revision?.events ?? [{ date: group.createdDate.slice(0, 10), kind: 'initial' as const, hours: null, sales: null, previous: null, revised: null }];
     const postCutoverEvidence = versions.some(version => version.primary && (estimateRevisionDate(version.updatedAt) ?? '') >= KPI_ESTIMATE_PROCESS_START);
     if (group.createdDate < KPI_ESTIMATE_PROCESS_START && !events.some(event => event.date >= KPI_ESTIMATE_PROCESS_START) && !(versions.length > 1 && postCutoverEvidence)) continue;

@@ -186,6 +186,23 @@ test('November edits never move a May or October original bid into November', ()
   }
 });
 
+test('owner-confirmed originals flow through the report only for the selected company and customer bid', () => {
+  const bids = [bid('100', 'IN_PROGRESS', { payload: { created_on: '2026-05-22' } })];
+  const values = [value('100')];
+  const versions = [proposal('100', { proposalId: '200', name: 'Cloned Estimate', primary: false, hours: 300, sales: 20000 }),
+    proposal('100', { proposalId: '201', name: 'Revision', hours: 250, sales: 80000 })];
+  const confirmation = { companyId: company, bidBoardId: '100', proposalId: '200', confirmedAt: '2026-11-03T12:00:00Z', confirmedBy: 'owner@example.test' };
+  const calculate = originals => calculateEstimatePreview(bids, values, versions, policy, [], new Date('2026-11-03'), [], originals);
+  const result = calculate([confirmation]);
+  assert.deepEqual(result.projects[0].issues, []);
+  assert.equal(result.projects[0].events[0].date, '2026-05-22');
+  assert.equal(result.projects[0].events[1].basis, 'confirmed-original');
+  assert.deepEqual(result.months['2026-10'], { count: 1, hours: -50, sales: 60000, missingHours: 0, missingSales: 0, rebids: 1 });
+  for (const changed of [{ companyId: old }, { bidBoardId: '999' }]) {
+    assert.match(calculate([{ ...confirmation, ...changed }]).projects[0].issues.join(' '), /No original estimate/);
+  }
+});
+
 test('archived, excluded, template, missing-source and prefixed copies do not enter totals', () => {
   const bids = ['archived', 'deleted', 'is_template', 'sync_missing_from_procore'].map(flag => bid(flag, 'COMPLETE', { payload: { created_on: '2026-10-02', [flag]: true } }));
   bids.push(bid('excluded'), bid(`${company}:copy`), bid('valid'));

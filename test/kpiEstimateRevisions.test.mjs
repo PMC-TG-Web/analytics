@@ -94,6 +94,27 @@ test('when the primary is the original or first-created estimate, other versions
   }
 });
 
+test('a confirmed original overrides names and missing creation dates while preserving its initial month', () => {
+  const confirmed = { ...original, isBaselineCandidate: false, name: 'Renamed takeoff', sourceCreatedAt: null };
+  const result = calculateEstimateRevisions('2026-01-02', [confirmed, primary,
+    { ...original, proposalId: 'misnamed', hours: 1200, sales: 120000 }], confirmed.proposalId);
+  assert.equal(result.events[0].date, '2026-01-02');
+  assert.equal(result.events[1].basis, 'confirmed-original');
+  assert.equal(result.events[1].previous.proposalId, 'old');
+  assert.equal(result.events[1].hours, 300);
+  assert.equal(result.events[1].sales, 25000);
+  assert.deepEqual(result.issues, []);
+});
+
+test('missing or alternate confirmed originals cannot silently fall back to another baseline', () => {
+  for (const versions of [[original, primary], [{ ...original, alternate: true }, primary], [primary]]) {
+    const confirmedId = versions.length === 2 && !versions[0].alternate ? 'missing' : original.proposalId;
+    const result = calculateEstimateRevisions('2026-01-02', versions, confirmedId);
+    assert.equal(result.events[0].hours, null);
+    assert.match(result.issues.join(' '), /confirmed original estimate is missing/);
+  }
+});
+
 test('explicit alternates do not supply the previous estimate', () => {
   const result = run([primary, { ...original, alternate: true }]);
   assert.equal(result.events.length, 1);

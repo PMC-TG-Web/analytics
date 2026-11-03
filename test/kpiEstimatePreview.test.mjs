@@ -14,10 +14,36 @@ const run = (bids, values, proposals = null, rules = policy, canonical = []) => 
 test('current qualifying statuses share Created Date months for dollars and full hours, including completed short jobs', () => {
   const statuses = ['ESTIMATING', 'ESTIMATED', 'BID_SUBMITTED', 'ACCEPTED', 'IN_PROGRESS', 'COMPLETE', 'LOST', 'DELAYED', 'TO_DO', 'INVITATION'];
   const result = run(statuses.map((status, i) => bid(String(i), status)), statuses.map((_, i) => value(String(i))));
-  assert.equal(result.projects.length, 6);
-  assert.deepEqual(result.months['2026-10'], { count: 6, hours: 6600, sales: 600000, missingHours: 0, missingSales: 0, rebids: 0 });
+  assert.equal(result.projects.length, 5);
+  assert.deepEqual(result.months['2026-10'], { count: 5, hours: 5500, sales: 500000, missingHours: 0, missingSales: 0, rebids: 0 });
+  assert.equal(result.projects.some(p => p.status === 'ESTIMATING'), false);
   // PM is part of the full 1,100 estimate hours; it is never deducted here.
   assert.equal(result.projects.find(p => p.status === 'COMPLETE').hours, 1100);
+});
+
+test('an unfinished Estimating project is excluded without missing-estimate warnings, then counts when submitted', () => {
+  const draft = bid('draft', 'ESTIMATING');
+  const unfinished = run([draft], [value('draft', { hours: 0, sales: 0, customFields: { estimateLineCount: 0 } })]);
+  assert.deepEqual(unfinished.projects, []);
+  assert.deepEqual(unfinished.months, {});
+  const submitted = run([{ ...draft, status: 'BID_SUBMITTED', payload: { ...draft.payload, updated_at: '2026-11-03' } }], [value('draft')]);
+  assert.deepEqual(submitted.months['2026-10'], { count: 1, hours: 1100, sales: 100000, missingHours: 0, missingSales: 0, rebids: 0 });
+  assert.equal(submitted.months['2026-11'], undefined, 'status change does not replace original Created Date');
+});
+
+test('current Estimating status supersedes a migrated old submitted bid', () => {
+  const result = run([bid('old', 'BID_SUBMITTED', { companyId: old, projectName: 'Same' }), bid('new', 'ESTIMATING', { projectName: 'Same' })], [value('new')]);
+  assert.deepEqual(result.projects, []);
+  assert.deepEqual(result.months, {});
+});
+
+test('an Estimating customer copy cannot override or conflict with the submitted source', () => {
+  const bids = [bid('draft', 'ESTIMATING', { projectName: 'Same' }), bid('submitted', 'BID_SUBMITTED', { projectName: 'Same' })];
+  const rules = { groups: [{ key: 'one', names: ['Same'], preferredSource: `${company}:draft`, sourceIds: [`${company}:draft`, `${company}:submitted`], createdDate: '2026-10-02' }], excludedSources: [] };
+  const result = run(bids, [value('draft', { hours: 0, sales: 0, customFields: { estimateLineCount: 0 } }), value('submitted')], null, rules);
+  assert.equal(result.projects[0].bidBoardId, 'submitted');
+  assert.deepEqual(result.projects[0].issues, []);
+  assert.deepEqual(result.months['2026-10'], { count: 1, hours: 1100, sales: 100000, missingHours: 0, missingSales: 0, rebids: 0 });
 });
 
 test('approved reporting source and original dates survive migration and contractor duplicates', () => {

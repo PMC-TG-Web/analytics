@@ -65,7 +65,8 @@ export type EstimatePreviewReport = {
   legacyLedger?: { source: 'local-preview' | 'database'; records: number; contributingProjects: number; missingHours: number };
 };
 
-const eligible = new Set(['ESTIMATING', 'ESTIMATED', 'BID_SUBMITTED', 'ACCEPTED', 'IN_PROGRESS', 'COMPLETE']);
+// Estimating is unfinished work, not an estimated/submitted bid or a data gap.
+const eligible = new Set(['ESTIMATED', 'BID_SUBMITTED', 'ACCEPTED', 'IN_PROGRESS', 'COMPLETE']);
 const round = (value: number, digits: number) => Number(value.toFixed(digits));
 const nonnegative = (value: number) => Number.isFinite(value) && value >= 0 ? value : null;
 const sourceId = (row: WinRateBid) => `${row.companyId}:${row.bidBoardId}`;

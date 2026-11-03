@@ -29,6 +29,7 @@ import {
   isApprovedChangeOrderStatus,
 } from '@/lib/procoreCommitmentMakerTasks';
 import { enqueueCommitmentMakerApprovalTasks } from '@/lib/procoreCommitmentMakerTaskQueue';
+import { fetchCompleteChangeOrderSnapshot, retireMissingChangeOrderPackages } from '@/lib/procoreChangeOrderSnapshot';
 
 export const dynamic = 'force-dynamic';
 
@@ -154,7 +155,7 @@ async function fetchChangeOrderPackagesPage(
   contractId: string,
   page: number,
   perPage: number
-): Promise<JsonObject[]> {
+): Promise<unknown> {
   const qs = new URLSearchParams({
     project_id: projectId,
     contract_id: contractId,
@@ -168,7 +169,7 @@ async function fetchChangeOrderPackagesPage(
     companyId,
     [404]
   );
-  return unwrapArray(data);
+  return data;
 }
 
 async function fetchChangeOrderPackage(
@@ -322,6 +323,7 @@ async function runSync(request: Request) {
     let projectsWithPackages = 0;
     let totalPackagesFetched = 0;
     let totalPackagesUpserted = 0;
+    let totalPackagesRetired = 0;
     let totalPackageLinesFetched = 0;
     let totalPackageLinesUpserted = 0;
     let projectsWithPotentialChangeOrders = 0;
@@ -502,25 +504,20 @@ async function runSync(request: Request) {
       if (projectPotentialFetched > 0) projectsWithPotentialChangeOrders += 1;
       if (syncScope === 'potential') continue;
 
-      // Fetch change order packages (all pages)
-      let page = 1;
+      // Validate the entire unfiltered roster before changing source membership.
+      const snapshotStartedAt = new Date();
       let projectFetched = 0;
       let projectUpserted = 0;
       let projectLineItemsFetched = 0;
       let projectLineItemsUpserted = 0;
       let hadError = false;
 
-      while (true) {
+      {
         let items: JsonObject[];
         try {
-          items = await fetchChangeOrderPackagesPage(
-            accessToken,
-            companyId,
-            projectId,
-            contractId,
-            page,
-            perPage
-          );
+          items = await fetchCompleteChangeOrderSnapshot(page => fetchChangeOrderPackagesPage(
+            accessToken, companyId, projectId, contractId, page, perPage,
+          ), perPage);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           if (isAccessSkippedError(message)) {
@@ -532,11 +529,10 @@ async function runSync(request: Request) {
             errors.push(`project:${projectId} change_order_packages => ${message}`);
           }
           hadError = true;
-          break;
+          continue;
         }
 
-        if (items.length === 0) break;
-        projectFetched += items.length;
+        projectFetched = items.length;
 
         for (const item of items) {
           try {
@@ -602,6 +598,7 @@ async function runSync(request: Request) {
                 projectLineItemsUpserted += 1;
               } catch (err) {
                 linePersistenceFailed = true;
+                hadError = true;
                 const message = err instanceof Error ? err.message : String(err);
                 errors.push(`project:${projectId} package:${packageId} line:${index + 1} => ${message}`);
               }
@@ -616,15 +613,19 @@ async function runSync(request: Request) {
             }
             projectUpserted += 1;
           } catch (err) {
+            hadError = true;
             const message = err instanceof Error ? err.message : String(err);
             const id = readText(item.id) || 'unknown';
             errors.push(`project:${projectId} package:${id} => ${message}`);
           }
         }
 
-        if (items.length < perPage) break;
-        page += 1;
-        if (page > 50) break; // safety cap
+        if (!hadError && projectUpserted === items.length) {
+          totalPackagesRetired += await retireMissingChangeOrderPackages(prisma, {
+            companyId, projectId, contractId, packageIds: items.map(item => readText(item.id)),
+            startedAt: snapshotStartedAt,
+          });
+        }
       }
 
       if (!hadError || projectFetched > 0) {
@@ -656,6 +657,7 @@ async function runSync(request: Request) {
       projectsSkippedAccess,
       totalPackagesFetched,
       totalPackagesUpserted,
+      totalPackagesRetired,
       totalPackageLinesFetched,
       totalPackageLinesUpserted,
       projectsWithPotentialChangeOrders,

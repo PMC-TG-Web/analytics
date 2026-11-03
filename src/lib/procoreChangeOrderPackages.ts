@@ -61,6 +61,7 @@ export async function ensureChangeOrderPackagesTable(): Promise<void> {
           source_updated_at     TIMESTAMPTZ,
           payload               JSONB NOT NULL,
           synced_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          missing_from_source_at TIMESTAMPTZ,
           PRIMARY KEY (company_id, project_id, package_id)
         )
       `);
@@ -177,6 +178,7 @@ export async function upsertChangeOrderPackage(params: {
         source_created_at = EXCLUDED.source_created_at,
         source_updated_at = EXCLUDED.source_updated_at,
         payload           = EXCLUDED.payload,
+        missing_from_source_at = NULL,
         synced_at         = NOW()
     `,
     companyId,

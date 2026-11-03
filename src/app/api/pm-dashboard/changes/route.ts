@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
         where: { companyId, projectId: { in: projectIds } },
       }),
       prisma.procoreChangeOrderPackage.findMany({
-        where: { companyId, projectId: { in: projectIds } },
+        where: { companyId, projectId: { in: projectIds }, missingFromSourceAt: null },
       }),
     ]);
 

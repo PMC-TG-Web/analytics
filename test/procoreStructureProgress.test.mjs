@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import ts from 'typescript';
 import * as progressModule from '../src/lib/procoreStructureProgress.ts';
 import * as responseModule from '../src/lib/procoreSyncResponse.ts';
+import * as changeOrderSnapshots from '../src/lib/procoreChangeOrderSnapshot.ts';
 const { STRUCTURE_STAGES, structureProgress, nextStructureRunMinutes } = progressModule;
 
 test('daily structure requeues into the next Eastern nightly window after daytime recovery', () => {
@@ -264,8 +265,9 @@ test('change-order worker scopes preserve full-list reconciliation and interacti
       },
       '@/lib/prisma': { prisma: {
         procorePotentialChangeOrder: { findUnique: async () => null },
-        procoreChangeOrderPackage: { findUnique: async () => null },
+        procoreChangeOrderPackage: { findUnique: async () => null, updateMany: async () => ({ count: 0 }) },
       } },
+      '@/lib/procoreChangeOrderSnapshot': changeOrderSnapshots,
       '@/lib/procoreChangeOrderPackages': {
         ensureChangeOrderPackagesTable: async () => {},
         upsertChangeOrderPackage: async () => {},

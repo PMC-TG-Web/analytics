@@ -1952,6 +1952,7 @@ model ProcoreChangeOrderPackage {
   sourceUpdatedAt DateTime? @map("source_updated_at") @db.Timestamptz(6)
   payload         Json
   syncedAt        DateTime  @default(now()) @map("synced_at") @db.Timestamptz(6)
+  missingFromSourceAt DateTime? @map("missing_from_source_at") @db.Timestamptz(6)
 
   @@id([companyId, projectId, packageId])
   @@index([companyId, projectId])

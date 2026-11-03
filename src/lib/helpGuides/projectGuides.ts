@@ -26,12 +26,13 @@ export const projectGuides = [
     checks: ['For missing detail, verify that the job has the expected linked records and that they have synchronized.', 'A missing value is not necessarily zero. Report the project identifiers and the specific missing section when requesting a correction.'],
   }),
   defineGuide('open-changes', {
+    updated: '2026-11-03',
     purpose: 'Track open change-management records for your projects and follow them back to Procore for action.',
     steps: [{ title: 'Select the project', body: 'Use All my projects for a broad review or choose the job you are working on.' }, { title: 'Choose a change type', body: 'Review Change Events, PCOs, and PCCOs separately; they describe different stages of the change process.' }, { title: 'Open the source', body: 'Read the number, title, and status, then follow the available link to review the source record.' }],
-    data: ['Synchronized Procore change events and change-order records supply the list.', 'The project population follows your My Work context. This is an open-work list, not a complete financial history of every approved change.'],
+    data: ['Synchronized Procore change events and change-order records supply the list. A completed prime-contract change-order sync hides records that are no longer present in Procore. Their saved status, amounts, and history are retained. Failed or incomplete syncs keep the existing cards. Reload checks saved data; it does not start a Procore sync.', 'The project population follows your My Work context. This is an open-work list, not a complete financial history of every approved change. Separate records can have the same title or number. A draft or pending copy stays visible while it remains open in Procore, even when another copy has been approved.'],
     terms: [['Change Event', 'A record of potential changed scope or cost needing evaluation.'], ['PCO', 'Potential change order in the contract change workflow.'], ['PCCO', 'Prime contract change order; inspect its status before treating its amount as approved.']],
     example: 'A change event and a related PCO can describe the same underlying work at different stages. Counting both as separate approved revenue would overstate the change.',
-    checks: ['Check project access, source status, and synchronization if a record is missing.', 'Do not treat an open or potential change as approved contract value. Confirm approval in the source record.'],
+    checks: ['Check project access, source status, and synchronization if a record is missing.', 'For apparent duplicates, compare the type and linked Procore record. PCOs and PCCOs can describe related work at different stages. Resolve obsolete drafts or pending copies in Procore; matching titles alone do not prove that records are interchangeable.', 'Do not treat an open or potential change as approved contract value. Confirm approval in the source record.'],
   }),
   defineGuide('estimating', {
     purpose: 'Calculate and save project estimating breakdowns for concrete and reinforcing work, including piers and footer configurations.',

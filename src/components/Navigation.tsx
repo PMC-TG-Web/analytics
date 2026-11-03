@@ -1,7 +1,6 @@
 "use client";
 import Link from "next/link";
 import { canAccessSubcontractAllocation, isSubcontractAllocationPath } from "@/lib/subcontractAllocationAccess";
-import { canAccessBillingAnalytics, isBillingAnalyticsPath } from "@/lib/billingAnalyticsAccess";
 import { createContext, useContext, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
@@ -49,7 +48,7 @@ const navLinks: NavLink[] = [
   { href: "/analytics/monthly-hours", label: "Financial WIP", page: "analytics-monthly-hours", fallbackPage: "analytics" },
   { href: "/analytics/cost-code-sales", label: "Cost Code P&L", page: "analytics-cost-code-sales", fallbackPage: "analytics" },
   { href: "/accounting/project-profitability", label: "QBO P&L", page: "accounting-project-profitability", fallbackPage: "admin" },
-  { href: "/accounting/billing-analytics", label: "Billing analytics", page: "billing-analytics", fallbackPage: "analytics" },
+  { href: "/accounting/billing-analytics", label: "Billing analytics", page: "billing-analytics" },
   { href: "/accounting/direct-cost-bills", label: "QBO Direct Costs", page: "accounting-direct-cost-bills", fallbackPage: "admin" },
   { href: "/reporting", label: "Reporting", page: "reporting" },
   { href: "/onboarding/submissions", label: "Onboarding", page: "onboarding" },
@@ -176,7 +175,7 @@ export default function Navigation({
     ? permissionSnapshot?.permissions
     : null;
 
-  const canAccessLink = (link: NavLink) => (!isSubcontractAllocationPath(link.href) || canAccessSubcontractAllocation(user?.email)) && (!isBillingAnalyticsPath(link.href) || canAccessBillingAnalytics(user?.email)) && canAccessNavigationLink(link, {
+  const canAccessLink = (link: NavLink) => (!isSubcontractAllocationPath(link.href) || canAccessSubcontractAllocation(user?.email)) && canAccessNavigationLink(link, {
     email: user?.email,
     permissions: currentPermissions,
     loaded: permissionsLoaded,

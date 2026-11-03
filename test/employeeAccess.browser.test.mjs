@@ -145,6 +145,31 @@ for (const role of ['ADMIN', 'OWNER']) {
   });
 }
 
+test('administrator can grant and revoke Billing Analytics separately from Analytics', { skip: !enabled, timeout: 120_000 }, async () => {
+  const { browser, page, writes, unexpectedWrites } = await openFixture({ permissions: ['OWNER'], employeePermissions: ['analytics'] });
+  try {
+    const row = page.getByRole('row').filter({ hasText: 'Linked Person' });
+    await row.getByRole('button', { name: 'Edit', exact: true }).click();
+    const billing = page.getByRole('checkbox', { name: 'Billing Analytics', exact: true });
+    const analytics = page.getByRole('checkbox', { name: 'Analytics', exact: true });
+    assert.equal(await billing.isChecked(), false);
+    assert.equal(await analytics.isChecked(), true);
+    await billing.check();
+    await page.getByRole('button', { name: 'Update Employee', exact: true }).click();
+    await page.getByRole('heading', { name: 'Edit Employee', exact: true }).waitFor({ state: 'hidden' });
+    assert.deepEqual(writes.at(-1).body.navigationPermissions, ['analytics', 'billing-analytics']);
+    await row.getByRole('button', { name: 'Edit', exact: true }).click();
+    assert.equal(await billing.isChecked(), true);
+    await billing.uncheck();
+    await page.getByRole('button', { name: 'Update Employee', exact: true }).click();
+    await page.getByRole('heading', { name: 'Edit Employee', exact: true }).waitFor({ state: 'hidden' });
+    assert.deepEqual(writes.at(-1).body.navigationPermissions, ['analytics']);
+    assert.deepEqual(unexpectedWrites, []);
+  } finally {
+    await browser.close();
+  }
+});
+
 test('failed permission lookup hides access controls and rejected saves remain visibly unsaved', { skip: !enabled, timeout: 120_000 }, async () => {
   const fixture = await openFixture({ permissionFailure: true });
   const { browser, page } = fixture;

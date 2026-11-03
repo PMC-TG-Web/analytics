@@ -67,6 +67,7 @@ const NAV_PERMISSION_LABELS: Record<string, string> = {
   'equipment': 'Equipment',
   'holidays': 'Holidays',
   'analytics': 'Analytics',
+  'billing-analytics': 'Billing Analytics',
   'analytics-cost-code-sales': 'Analytics: Cost Code P&L page',
   'accounting-project-profitability': 'QBO P&L',
   'accounting-direct-cost-bills': 'QBO Direct Costs',
@@ -86,7 +87,7 @@ const NAV_PERMISSION_LABELS: Record<string, string> = {
   'procore-scope-map': 'Procore: Scope Map page',
 };
 
-const EMPLOYEES_CACHE_KEY = 'employees:access-controls-v1';
+const EMPLOYEES_CACHE_KEY = 'employees:access-controls-v2';
 const SIGN_IN_ACCESS_MESSAGE = 'An administrator manages this employee’s sign-in email and access status.';
 
 function formatPermissionOption(permission: string) {

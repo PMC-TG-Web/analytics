@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { aggregateBillingHours, billingHoursCsv, billingMonthRange, isSubcontractorHours, isSubcontractorParty } from '../src/lib/billingAnalytics.ts';
-import { canAccessBillingAnalytics, isBillingAnalyticsPath } from '../src/lib/billingAnalyticsAccess.ts';
+import { isBillingAnalyticsPath } from '../src/lib/billingAnalyticsAccess.ts';
 import { resolvePermissionForPath } from '../src/lib/permissionRoutes.js';
 
 const entry = (overrides = {}) => ({ id: 'local-1', procoreId: '1', companyId: 'co', projectId: 'p1',
@@ -9,14 +9,13 @@ const entry = (overrides = {}) => ({ id: 'local-1', procoreId: '1', companyId: '
   deletedAt: null, hours: 8, costCode: '03-300-20-10', costCodeName: 'SOG labor', description: null, partyName: 'Sub Contractor',
   status: null, notes: null, uom: 'hr', ...overrides });
 
-test('only the three pilot accounts pass, including when other users have admin roles', () => {
-  for (const email of ['todd@pmcdecor.com', 'shelly@pmcdecor.com', ' DAVID@pmcdecor.com ']) assert.equal(canAccessBillingAnalytics(email), true);
-  for (const email of [null, undefined, '', 'admin@pmcdecor.com', 'todd@pmcdecor.com.example']) assert.equal(canAccessBillingAnalytics(email), false);
+test('billing report routes use their dedicated permission', () => {
   for (const path of ['/accounting/billing-analytics', '/api/accounting/billing-analytics', '/api/accounting/billing-analytics/details']) {
     assert.equal(isBillingAnalyticsPath(path), true);
-    assert.equal(resolvePermissionForPath(path), 'analytics');
+    assert.equal(resolvePermissionForPath(path), 'billing-analytics');
   }
   assert.equal(isBillingAnalyticsPath('/accounting/billing-analytics-other'), false);
+  assert.equal(resolvePermissionForPath('/help/billing-analytics'), 'billing-analytics');
 });
 
 test('worker identity selects timesheets; subcontractor codes and equipment do not imply hours', () => {

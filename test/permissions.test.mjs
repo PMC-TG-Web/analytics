@@ -84,6 +84,7 @@ test('employee templates include every page-specific navigation permission', () 
     'procore-commitments',
     'procore-scope-map',
     'analytics-cost-code-sales',
+    'billing-analytics',
     'accounting-project-profitability',
     'accounting-direct-cost-bills',
     'pm-dashboard',

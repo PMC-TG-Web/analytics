@@ -2,7 +2,8 @@ import { defineGuide } from './defineGuide.ts';
 
 export const reportGuides = [
   defineGuide('billing-analytics', {
-    purpose: 'Prepare subcontractor hour totals for billing review. Access to the report is currently limited to Todd, Shelly, and Dave. Viewing or exporting this report does not create an invoice or change source records.',
+    updated: '2026-11-03',
+    purpose: 'Prepare subcontractor hour totals for billing review. An administrator can grant any active employee access using the separate Billing Analytics checkbox in Employees → Navigation Permissions. The general Analytics checkbox does not grant this report. Viewing or exporting this report does not create an invoice or change source records.',
     steps: [
       { title: 'Choose the period', body: 'Select the year, then open a month. Each month contains projects followed by their cost codes.' },
       { title: 'Select the invoice projects', body: 'Select one or more projects covered by the vendor invoice using their checkboxes. Clear selection first for an invoice covering a single project. Review the source entries by expanding each cost code.' },

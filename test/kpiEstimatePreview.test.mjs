@@ -112,10 +112,20 @@ test('a migration copy created in October does not recount a pre-cutover project
   assert.equal(result.projects.length, 0);
 });
 
-test('new project and newer primary in the same month net to the primary, counting the project once', () => {
+test('new project and versions in the same month count only the full primary once', () => {
   const versions = [proposal('a', { primary: false, order: 1, updatedAt: '2026-10-03T12:00:00Z', hours: 1000, sales: 100000 }), proposal('a', { proposalId: 'new', name: 'Revised', order: 2, updatedAt: '2026-10-05T12:00:00Z', hours: 900, sales: 95000 })];
   const result = run([bid('a', 'COMPLETE')], [value('a')], versions);
-  assert.deepEqual(result.months['2026-10'], { count: 1, hours: 900, sales: 95000, missingHours: 0, missingSales: 0, rebids: 1 });
+  assert.deepEqual(result.months['2026-10'], { count: 1, hours: 900, sales: 95000, missingHours: 0, missingSales: 0, rebids: 0 });
+});
+
+test('multiple October revisions of an older project contribute only the current primary in October', () => {
+  const versions = [proposal('a', { primary: false, order: 2, hours: 780, sales: 88056.71 }),
+    proposal('a', { proposalId: 'revision-1', primary: false, order: 1, hours: 399.5, sales: 57489.63 }),
+    proposal('a', { proposalId: 'revision-2', order: 3, hours: 391.5, sales: 63822.39 })];
+  const result = run([bid('a', 'BID_SUBMITTED', { payload: { created_on: '2025-08-12' } })], [value('a')], versions);
+  assert.deepEqual(result.months, { '2026-10': { count: 1, hours: 391.5, sales: 63822.39, missingHours: 0, missingSales: 0, rebids: 1 } });
+  assert.deepEqual(result.projects[0].issues, []);
+  assert.equal(result.projects[0].events.length, 1);
 });
 
 test('archived, excluded, template, missing-source and prefixed copies do not enter totals', () => {

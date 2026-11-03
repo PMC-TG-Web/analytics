@@ -21,7 +21,7 @@ test('local estimate preview shows full hours and dollars, flags gaps, inspects 
     browser = await chromium.launch({ channel: 'msedge', headless: true });
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
     const errors = [], requests = [];
-    let failed = false, hours = 1100;
+    let failed = false, hours = 1100, sameMonth = false;
     page.on('pageerror', error => errors.push(error.message));
     await page.route('**/api/kpi/estimate-preview', route => {
       requests.push(route.request().method());
@@ -30,10 +30,14 @@ test('local estimate preview shows full hours and dollars, flags gaps, inspects 
         { bidBoardId: 'b1', proposalId: 'copy', name: 'Revised Estimate', type: 'ESTIMATE', primary: true, order: 2, updatedAt: '2026-10-05T12:00:01Z', hours, sales: 100000 },
       ] };
       project.events = [{ date: '2026-01-02', kind: 'initial', hours: 1000, sales: 90000, previous: null, revised: project.proposals[0] }, { date: '2026-10-05', kind: 'rebid', hours: hours - 1000, sales: 10000, previous: project.proposals[0], revised: project.proposals[1] }];
+      if (sameMonth) {
+        project.proposals[0].updatedAt = '2026-10-01T12:00:00Z';
+        project.events = [{ date: '2026-10-05', kind: 'rebid', basis: 'same-month-primary', hours, sales: 100000, previous: null, revised: project.proposals[1] }];
+      }
       return route.fulfill(failed ? { status: 503, json: { error: 'The estimate preview is unavailable. Please retry.' } } : { json: { data: {
         startDate: '2026-10-01',
         legacyLedger: { source: 'local-preview', records: 132, contributingProjects: 57, missingHours: 57 },
-        months: { '2026-01': { count: 2, hours: 1000, sales: 90000, missingHours: 1, missingSales: 1, rebids: 0 }, '2026-10': { count: 1, hours: hours - 1000, sales: 10000, missingHours: 0, missingSales: 0, rebids: 1 }, '2026-11': { count: 1, hours: 0, sales: 0, missingHours: 1, missingSales: 1, rebids: 0 }, '2027-02': { count: 1, hours: 500, sales: 60000, missingHours: 0, missingSales: 0, rebids: 0 } },
+        months: { '2026-01': { count: 2, hours: 1000, sales: 90000, missingHours: 1, missingSales: 1, rebids: 0 }, '2026-10': { count: 1, hours: sameMonth ? hours : hours - 1000, sales: sameMonth ? 100000 : 10000, missingHours: 0, missingSales: 0, rebids: 1 }, '2026-11': { count: 1, hours: 0, sales: 0, missingHours: 1, missingSales: 1, rebids: 0 }, '2027-02': { count: 1, hours: 500, sales: 60000, missingHours: 0, missingSales: 0, rebids: 0 } },
         years: ['2026', '2027'], projects: [project, { ...project, key: 'missing', name: 'Missing estimate', hours: null, sales: null, proposals: [], events: [{ date: '2026-11-02', kind: 'initial', hours: null, sales: null, previous: null, revised: null }], issues: ['No current synchronized estimate is available for this project.'] }, { ...project, key: 'future', name: 'Next year', createdDate: '2027-02-01', hours: 500, sales: 60000, proposals: [], events: [{ date: '2027-02-01', kind: 'initial', hours: 500, sales: 60000, previous: null, revised: null }] }], missingCreatedDates: 0, asOf: '2026-11-02T12:00:00Z',
       } } });
     });
@@ -61,14 +65,14 @@ test('local estimate preview shows full hours and dollars, flags gaps, inspects 
     await hoursRow.locator('td').last().getByRole('button').click();
     assert.equal(await details.getByText('Initial estimate · 2026-01-02', { exact: true }).count(), 0);
     assert.equal(await details.getByRole('cell', { name: '100', exact: true }).count(), 1);
-    await page.getByRole('button', { name: '1 projects with multiple estimate versions to inspect' }).click();
+    await page.getByRole('button', { name: 'Estimate version details (1 project)' }).click();
     const versions = page.getByRole('region', { name: 'Possible rebids' });
     await versions.locator('summary').click();
     await versions.getByRole('cell', { name: /Original Estimate/ }).waitFor();
     await versions.getByRole('cell', { name: /Revised Estimate/ }).waitFor();
     assert.ok(await versions.getByText(/Rebid change included/).count());
     fs.mkdirSync('.tmp', { recursive: true });
-    await page.screenshot({ path: '.tmp/kpi-estimate-preview-20261103.png', fullPage: true });
+    await page.screenshot({ path: '.tmp/kpi-estimate-preview-same-month-20261103.png', fullPage: true });
     await page.getByLabel('Year').selectOption('2025');
     const prior = table.getByRole('row', { name: /^2025 Hours incl. PM/ });
     assert.equal(await prior.getByRole('button').count(), 0);
@@ -82,6 +86,14 @@ test('local estimate preview shows full hours and dollars, flags gaps, inspects 
     hours = 1200;
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await page.waitForFunction(() => document.querySelector('tbody tr:nth-child(2) td:last-child')?.textContent === 'Known 200*');
+    sameMonth = true;
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await page.waitForFunction(() => document.querySelector('tbody tr:nth-child(2) td:last-child')?.textContent === 'Known 1,200*');
+    await hoursRow.locator('td').nth(9).getByRole('button').click();
+    await details.getByText(/Primary estimate, counted once/).waitFor();
+    await details.getByText(/full primary counted once for October 2026/).waitFor();
+    await versions.getByText(/Calculated automatically: the full primary is counted once/).waitFor();
+    assert.equal(await page.getByRole('region', { name: 'Unresolved estimate data' }).getByText('Example completed job:', { exact: true }).count(), 0);
     failed = true;
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await page.getByRole('status').waitFor();

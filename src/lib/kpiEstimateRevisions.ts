@@ -11,6 +11,7 @@ export type EstimateRevisionVersion = {
 export type EstimateRevisionEvent = {
   date: string;
   kind: 'initial' | 'rebid';
+  basis?: 'same-month-primary';
   hours: number | null;
   sales: number | null;
   previous: EstimateRevisionVersion | null;
@@ -24,10 +25,9 @@ export function estimateRevisionDate(timestamp: string | null): string | null {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(timestamp));
 }
 
-/** Local review rule: a newer, uniquely primary version can supply a rebid.
- * Version order AND source time must advance; order alone can be rearranged,
- * while source time alone changes when an older version is edited. Neither
- * identifies the former primary among several earlier proposals.
+/** Same-month versions count the unique primary once. Across different months,
+ * version order AND source time must advance for the previous-version delta;
+ * neither identifies the former primary among several earlier proposals.
  */
 export function calculateEstimateRevisions(createdDate: string, versions: EstimateRevisionVersion[]) {
   const estimates = versions.filter(version => !version.alternate);
@@ -43,9 +43,21 @@ export function calculateEstimateRevisions(createdDate: string, versions: Estima
   if (estimates.length === 1) {
     return { events: [{ date: createdDate, kind: 'initial' as const, ...current, previous: null, revised: primary }], issues, primary };
   }
+  const revisionDate = estimateRevisionDate(primary.updatedAt);
+  const revisionMonth = revisionDate?.slice(0, 7);
+  // Owner's rule: changes in one Eastern calendar month use the full primary,
+  // regardless of intermediate copies, amounts, or ordering within that month.
+  // An older Created Date must not move this month's activity back into history.
+  if (revisionDate && revisionMonth && revisionMonth >= createdDate.slice(0, 7)
+    && estimates.every(version => estimateRevisionDate(version.updatedAt)?.slice(0, 7) === revisionMonth)) {
+    const initialMonth = createdDate.slice(0, 7) === revisionMonth;
+    const event: EstimateRevisionEvent = { date: initialMonth ? createdDate : revisionDate,
+      kind: initialMonth ? 'initial' : 'rebid', basis: 'same-month-primary',
+      ...current, previous: null, revised: primary };
+    return { events: [event], issues, primary };
+  }
   if (estimates.length !== 2) return { events: unavailable(), issues: [...issues, 'More than one previous estimate exists; the previous primary and intermediate rebids need review.'], primary };
   const previous = estimates.find(version => !version.primary)!;
-  const revisionDate = estimateRevisionDate(primary.updatedAt);
   const previousDate = estimateRevisionDate(previous.updatedAt);
   const timeAdvanced = revisionDate && previousDate && Date.parse(primary.updatedAt!) > Date.parse(previous.updatedAt!);
   const orderAdvanced = primary.order != null && previous.order != null && primary.order > previous.order;

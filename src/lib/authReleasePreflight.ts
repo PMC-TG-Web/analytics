@@ -26,10 +26,10 @@ export function validateAuthReleaseAccounts(accounts: AccessAccount[], expected:
     if (matches.length !== 1 || !matches[0].isActive) throw new Error(`Release access check failed: ${role} must have one active account.`);
     const assigned = matches[0].permissions;
     const pages = expandAssignedPermissions(assigned);
-    if (role === 'administrator' && (!hasAccessAdministratorRole(assigned) || !pages.includes('employees'))) {
+    if (role === 'administrator' && (!hasAccessAdministratorRole(assigned) || !pages.includes('page:/employees'))) {
       throw new Error('Release access check failed: administrator cannot manage employee access.');
     }
-    if (role === 'analyticsEmployee' && (!pages.includes('analytics') || hasAccessAdministratorRole(assigned))) {
+    if (role === 'analyticsEmployee' && (!pages.includes('page:/analytics') || hasAccessAdministratorRole(assigned))) {
       throw new Error('Release access check failed: analytics employee must retain ordinary analytics access.');
     }
   }

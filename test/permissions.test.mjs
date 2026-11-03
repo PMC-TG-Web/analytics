@@ -115,7 +115,7 @@ test('direct cost bills can be granted independently of QBO profitability', () =
     assert.equal(hasPageAccess('bill-operator@example.test', 'accounting-direct-cost-bills'), true);
     assert.equal(hasPageAccess('bill-operator@example.test', 'accounting-project-profitability'), false);
     assert.equal(hasPageAccess('profitability-reader@example.test', 'accounting-direct-cost-bills'), false);
-    const employeeSource = readFileSync(new URL('../src/app/employees/page.tsx', import.meta.url), 'utf8');
+    const employeeSource = readFileSync(new URL('../src/lib/pageAccessCatalog.ts', import.meta.url), 'utf8');
     assert.match(employeeSource, /'accounting-direct-cost-bills': 'QBO Direct Costs'/);
   } finally {
     delete USER_PERMISSIONS['bill-operator@example.test'];

@@ -82,7 +82,8 @@ test('middleware requires the separate grant for any account and blocks Analytic
     }, { fetch: async (url, options) => {
       if (url.pathname === '/api/auth/session') return NextResponse.json(email ? { user: { email } } : { error: 'Unauthenticated' }, { status: email ? 200 : 401 });
       const required = JSON.parse(options.body).permissions;
-      assert.deepEqual(required, ['billing-analytics']);
+      assert.equal(required.length, 1);
+      assert.ok(['page:/accounting/billing-analytics', 'page:/help/billing-analytics'].includes(required[0]));
       return NextResponse.json({ allowed: required.some(permission => permissions.expandAssignedPermissions(assigned).includes(permission)) });
     } });
     for (const [path, status] of [['/api/accounting/billing-analytics', apiStatus], ['/accounting/billing-analytics', pageStatus], ['/help/billing-analytics', pageStatus]]) {
@@ -113,7 +114,7 @@ test('navigation, help and employee access choices use Billing Analytics without
   assert.doesNotMatch(entry, /fallbackPage/);
   assert.match(entry, /page: "billing-analytics"/);
   assert.ok(permissions.NAVIGATION_PERMISSION_OPTIONS.includes('billing-analytics'));
-  assert.match(fs.readFileSync('src/app/employees/page.tsx', 'utf8'), /'billing-analytics': 'Billing Analytics'/);
+  assert.match(fs.readFileSync('src/lib/pageAccessCatalog.ts', 'utf8'), /'billing-analytics': 'Billing Analytics'/);
   const guide = getHelpGuideSummaryForPath('/accounting/billing-analytics');
   for (const [email, assigned, allowed] of cases.filter(([email]) => email)) {
     const expanded = permissions.expandAssignedPermissions(assigned);

@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
 
     if (cookieValue) {
       response.cookies.set(PERMISSION_COOKIE_NAME, cookieValue, getPermissionCookieOptions());
-    }
+    } else response.cookies.set(PERMISSION_COOKIE_NAME, '', { ...getPermissionCookieOptions(), maxAge: 0 });
 
     return response;
   } catch (error) {

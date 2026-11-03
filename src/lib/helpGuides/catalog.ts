@@ -50,6 +50,7 @@ export function helpGuidePath(guide: Pick<HelpGuideSummary, 'slug'>): string {
 export function canAccessHelpGuide(permissions: readonly string[], guide: HelpGuideSummary): boolean {
   if (guide.pagePath === '/') return true; // Home is available to every signed-in user.
   const has = (permission: string) => permissions.some((assigned) => assigned.toLowerCase() === permission.toLowerCase());
+  if (permissions.some(permission => /^!?page:/.test(permission))) return has(`page:/help/${guide.slug}`);
   return has(guide.pagePermission) || Boolean(guide.fallbackPermission && has(guide.fallbackPermission));
 }
 

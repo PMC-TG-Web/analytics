@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { RETIRED_SCHEDULE_PATHS } from '../src/lib/appPagePolicy.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
@@ -120,7 +121,8 @@ test('legacy page URLs retire into WIP without removing shared scheduling data',
   const config = readFileSync('next.config.ts', 'utf8');
   const nav = readFileSync('src/components/Navigation.tsx', 'utf8');
   for (const path of ['/scheduling', '/project-schedule', '/long-term-schedule', '/short-term-schedule', '/concrete-orders-schedule', '/daily-crew-dispatch-board']) {
-    assert.ok(config.includes(`'${path}'`));
+    assert.ok(RETIRED_SCHEDULE_PATHS.includes(path));
+    assert.ok(config.includes('RETIRED_SCHEDULE_PATHS.map'));
     assert.ok(!nav.includes(`href: "${path}"`));
   }
   const migration = readFileSync('prisma/migrations/20261012190000_wip_estimate_plans/migration.sql', 'utf8');

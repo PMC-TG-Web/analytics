@@ -157,17 +157,54 @@ test('administrator can grant and revoke Billing Analytics separately from Analy
     await billing.check();
     await page.getByRole('button', { name: 'Update Employee', exact: true }).click();
     await page.getByRole('heading', { name: 'Edit Employee', exact: true }).waitFor({ state: 'hidden' });
-    assert.deepEqual(writes.at(-1).body.navigationPermissions, ['analytics', 'billing-analytics']);
+    assert.deepEqual(writes.at(-1).body.navigationPermissions, ['analytics', 'page:/accounting/billing-analytics']);
     await row.getByRole('button', { name: 'Edit', exact: true }).click();
     assert.equal(await billing.isChecked(), true);
     await billing.uncheck();
     await page.getByRole('button', { name: 'Update Employee', exact: true }).click();
     await page.getByRole('heading', { name: 'Edit Employee', exact: true }).waitFor({ state: 'hidden' });
-    assert.deepEqual(writes.at(-1).body.navigationPermissions, ['analytics']);
+    assert.ok(writes.at(-1).body.navigationPermissions.includes('!page:/accounting/billing-analytics'));
+    assert.ok(writes.at(-1).body.navigationPermissions.includes('analytics'));
     assert.deepEqual(unexpectedWrites, []);
   } finally {
     await browser.close();
   }
+});
+
+test('every page is independently selectable in employee and template pickers with search', { skip: !enabled, timeout: 120_000 }, async () => {
+  const { browser, page, writes, unexpectedWrites } = await openFixture({ permissions: ['OWNER'], employeePermissions: ['analytics'] });
+  try {
+    await page.getByRole('row').filter({ hasText: 'Linked Person' }).getByRole('button', { name: 'Edit', exact: true }).click();
+    for (const name of ['Financial WIP', 'Market Outlook', 'Commitment Maker', 'Open Changes', 'Billing Analytics']) {
+      assert.equal(await page.getByRole('checkbox', { name, exact: true }).count(), 1, name);
+    }
+    assert.equal(await page.getByRole('checkbox', { name: 'Login', exact: true }).isDisabled(), true);
+    assert.equal(await page.getByRole('checkbox', { name: 'Home', exact: true }).isDisabled(), true);
+    const search = page.getByRole('searchbox', { name: 'Search navigation permissions' });
+    await search.fill('Financial WIP');
+    await page.getByRole('checkbox', { name: 'Financial WIP', exact: true }).uncheck();
+    await search.fill('');
+    assert.equal(await page.getByRole('checkbox', { name: 'Analytics', exact: true }).isChecked(), true);
+    assert.equal(await page.getByRole('checkbox', { name: 'Market Outlook', exact: true }).isChecked(), true);
+    assert.equal(await page.getByRole('checkbox', { name: 'Financial WIP', exact: true }).isChecked(), false);
+    await page.getByRole('checkbox', { name: 'Commitment Maker', exact: true }).check();
+    await search.fill('billing');
+    if (process.env.PAGE_CATALOG_SCREENSHOT) await search.locator('..').screenshot({ path: process.env.PAGE_CATALOG_SCREENSHOT });
+    await page.getByRole('button', { name: 'Update Employee', exact: true }).click();
+    await page.getByRole('heading', { name: 'Edit Employee', exact: true }).waitFor({ state: 'hidden' });
+    assert.ok(writes.at(-1).body.navigationPermissions.includes('analytics'));
+    assert.ok(writes.at(-1).body.navigationPermissions.includes('!page:/analytics/monthly-hours'));
+    assert.ok(writes.at(-1).body.navigationPermissions.includes('page:/procore/commitments-live/maker'));
+    await page.getByRole('row').filter({ hasText: 'Linked Person' }).getByRole('button', { name: 'Edit', exact: true }).click();
+    assert.equal(await page.getByRole('checkbox', { name: 'Financial WIP', exact: true }).isChecked(), false);
+    assert.equal(await page.getByRole('checkbox', { name: 'Market Outlook', exact: true }).isChecked(), true);
+    assert.equal(await page.getByRole('checkbox', { name: 'Commitments', exact: true }).isChecked(), false);
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await page.getByRole('button', { name: 'Manage Access Templates', exact: true }).click();
+    await page.getByRole('searchbox', { name: 'Search navigation permissions' }).fill('/procore/commitments-live/maker');
+    assert.equal(await page.getByRole('checkbox', { name: 'Commitment Maker', exact: true }).count(), 1);
+    assert.deepEqual(unexpectedWrites, []);
+  } finally { await browser.close(); }
 });
 
 test('failed permission lookup hides access controls and rejected saves remain visibly unsaved', { skip: !enabled, timeout: 120_000 }, async () => {

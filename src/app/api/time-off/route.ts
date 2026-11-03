@@ -43,9 +43,9 @@ async function authorizeTimeOff(request: NextRequest, method: 'GET' | 'POST' | '
     }
 
     const permissions = expandAssignedPermissions(users[0].permissions).map(permission => permission.toLowerCase());
-    const canManage = permissions.includes('employees');
-    const canDispatch = permissions.includes('crew-dispatch');
-    const canReadAll = canManage || canDispatch || permissions.includes('long-term-schedule');
+    const canManage = permissions.includes('page:/employees');
+    const canDispatch = permissions.includes('page:/daily-crew-dispatch-board');
+    const canReadAll = canManage || canDispatch || permissions.includes('page:/long-term-schedule');
     if (method === 'DELETE') {
       return canManage
         ? { authorized: true as const, employee: null }

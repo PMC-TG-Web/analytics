@@ -1,3 +1,7 @@
+import { resolveDiscoveredPagePermission } from './appPagePolicy.js';
+import { HELP_GUIDE_SUMMARIES } from './helpGuides/catalog.ts';
+export { apiPagePermissions, independentPermissionForPath, permissionForFeature } from './independentPagePermissions.js';
+
 export const PATH_PERMISSION_RULES = [
   { prefix: '/help/subcontract-allocation', permission: 'procore-commitments' },
   { prefix: '/procore/commitments-live/allocation', permission: 'procore-commitments' },
@@ -296,5 +300,6 @@ export function resolvePermissionForPath(pathname) {
     }
   }
 
-  return null;
+  const guide = HELP_GUIDE_SUMMARIES.find(guide => normalizedPath === `/help/${guide.slug}`);
+  return guide?.pagePermission || resolveDiscoveredPagePermission(normalizedPath);
 }

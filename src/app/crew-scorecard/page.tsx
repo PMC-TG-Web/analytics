@@ -15,6 +15,6 @@ export default async function CrewScorecardPage() {
   const localRequest = { nextUrl: { hostname }, cookies: await cookies() };
   if (!isLocalDeveloperRequest(localRequest)) notFound();
   const email = getDeveloperEmail(localRequest) || await getCurrentUserEmail();
-  if (!email || !await hasDatabasePageAccess(prisma, email, 'analytics')) notFound();
+  if (!email || !await hasDatabasePageAccess(prisma, email, 'page:/crew-scorecard')) notFound();
   return <CrewScorecardView initialWeek={crewWeekStart(crewToday())} />;
 }

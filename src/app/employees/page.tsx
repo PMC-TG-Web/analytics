@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { Certification } from "@/types/certifications";
+import NavigationPermissionPicker from "@/components/NavigationPermissionPicker";
 import {
   getTemplatePermissionsForJobTitle,
-  NAVIGATION_PERMISSION_OPTIONS,
   normalizeJobTitleTemplateKey,
 } from "@/lib/permissions";
 
@@ -50,49 +50,8 @@ interface TimeOffRequest {
   hours?: number;     // Hours off per day
 }
 
-const NAV_PERMISSION_LABELS: Record<string, string> = {
-  'home': 'Home',
-  'pm-dashboard': 'My Work: PM five-day dashboard',
-  'dashboard': 'Dashboard',
-  'projects': 'Projects',
-  'project': 'Project details',
-  'procore': 'Procore',
-  'kpi': 'KPI',
-  'wip': 'WIP',
-  'crew-management': 'Crew Management',
-  'estimating-tools': 'Estimating',
-  'constants': 'Constants',
-  'employees': 'Employees',
-  'certifications': 'Certifications',
-  'equipment': 'Equipment',
-  'holidays': 'Holidays',
-  'analytics': 'Analytics',
-  'billing-analytics': 'Billing Analytics',
-  'analytics-cost-code-sales': 'Analytics: Cost Code P&L page',
-  'accounting-project-profitability': 'QBO P&L',
-  'accounting-direct-cost-bills': 'QBO Direct Costs',
-  'reporting': 'Reporting',
-  'onboarding': 'Onboarding',
-  'handbook': 'Handbook',
-  'kpi-cards-management': 'Manage KPI Cards',
-  'scheduling': 'Schedules: WIP Schedule',
-  'project-schedule': 'Schedules: Project Gantt',
-  'long-term-schedule': 'Schedules: Long-Term',
-  'concrete-orders-schedule': 'Schedules: Concrete Orders',
-  'short-term-schedule': 'Schedules: Short-Term',
-  'crew-dispatch': 'Schedules: Crew Dispatch',
-  'procore-timecards': 'Procore: Timecards page',
-  'procore-line-items': 'Procore: Line Items page',
-  'procore-commitments': 'Procore: Commitments page',
-  'procore-scope-map': 'Procore: Scope Map page',
-};
-
 const EMPLOYEES_CACHE_KEY = 'employees:access-controls-v2';
 const SIGN_IN_ACCESS_MESSAGE = 'An administrator manages this employee’s sign-in email and access status.';
-
-function formatPermissionOption(permission: string) {
-  return NAV_PERMISSION_LABELS[permission] || permission;
-}
 
 export default function EmployeesPage() {
   return <EmployeesContent />;
@@ -1342,30 +1301,7 @@ function EmployeesContent() {
                 </button>
               </div>
 
-              <div className="max-h-96 overflow-y-auto border border-gray-300 rounded-lg p-3 bg-gray-50 grid grid-cols-1 md:grid-cols-2 gap-2">
-                {NAVIGATION_PERMISSION_OPTIONS.map((permission) => {
-                  const selected = templatePermissionsDraft.includes(permission);
-                  return (
-                    <label key={permission} className="flex items-center gap-2 text-sm text-gray-700">
-                      <input
-                        type="checkbox"
-                        checked={selected}
-                        onChange={(e) => {
-                          const next = new Set(templatePermissionsDraft);
-                          if (e.target.checked) {
-                            next.add(permission);
-                          } else {
-                            next.delete(permission);
-                          }
-                          setTemplatePermissionsDraft(Array.from(next).sort((a, b) => a.localeCompare(b)));
-                        }}
-                        className="h-4 w-4 text-indigo-600 border-gray-300 rounded"
-                      />
-                      <span className="text-xs">{formatPermissionOption(permission)}</span>
-                    </label>
-                  );
-                })}
-              </div>
+              <NavigationPermissionPicker value={templatePermissionsDraft} onChange={setTemplatePermissionsDraft} />
 
               <div className="flex justify-end mt-6 pt-6 border-t">
                 <button
@@ -1721,30 +1657,8 @@ function EmployeesContent() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Navigation Permissions
                   </label>
-                  <div className="max-h-48 overflow-y-auto border border-gray-300 rounded-lg p-3 bg-gray-50 grid grid-cols-1 md:grid-cols-2 gap-2">
-                    {NAVIGATION_PERMISSION_OPTIONS.map((permission) => {
-                      const selected = (formData.navigationPermissions || []).includes(permission);
-                      return (
-                        <label key={permission} className="flex items-center gap-2 text-sm text-gray-700">
-                          <input
-                            type="checkbox"
-                            checked={selected}
-                            onChange={(e) => {
-                              const next = new Set(formData.navigationPermissions || []);
-                              if (e.target.checked) {
-                                next.add(permission);
-                              } else {
-                                next.delete(permission);
-                              }
-                              setFormData({ ...formData, navigationPermissions: Array.from(next).sort((a, b) => a.localeCompare(b)) });
-                            }}
-                            className="h-4 w-4 text-teal-600 border-gray-300 rounded"
-                          />
-                          <span className="text-xs">{formatPermissionOption(permission)}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
+                  <NavigationPermissionPicker value={formData.navigationPermissions || []}
+                    onChange={navigationPermissions => setFormData({ ...formData, navigationPermissions })} />
                 </div>}
 
                 {/* Notes */}

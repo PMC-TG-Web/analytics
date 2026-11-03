@@ -5,6 +5,9 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import { NextRequest, NextResponse } from 'next/server.js';
 import * as permissionRoutes from '../src/lib/permissionRoutes.js';
+import * as independent from '../src/lib/independentPagePermissions.js';
+import * as pagePolicy from '../src/lib/appPagePolicy.js';
+import { expandAssignedPermissions } from '../src/lib/permissions.ts';
 import * as csrf from '../src/lib/csrfProtection.ts';
 import * as cooldown from '../src/lib/productivityReviewCooldown.ts';
 
@@ -28,7 +31,7 @@ function load(path, imports = {}, globals = {}) {
 }
 
 const sessions = load('src/lib/procoreUserSession.ts');
-const permissions = load('src/lib/permissionCookie.ts');
+const permissions = load('src/lib/permissionCookie.ts', { './independentPagePermissions.js': independent, './appPagePolicy.js': pagePolicy });
 
 function harness({ auth0Email = null, databaseAllowed = true } = {}) {
   const permissionChecks = [];
@@ -88,7 +91,7 @@ test('Procore-only reviewers can complete and undo reviews with analytics permis
     const response = await app.middleware(req);
     assert.equal(response.headers.get('x-middleware-next'), '1');
     assert.equal(response.headers.get('X-RateLimit-Limit'), '300');
-    assert.deepEqual(app.permissionChecks, [['analytics']]);
+    assert.deepEqual(app.permissionChecks, [['page:/analytics', 'page:/analytics/productivity']]);
     assert.equal(await app.requestUser.getRequestUserEmail(req), 'abner@example.com');
   }
 });
@@ -115,7 +118,7 @@ test('review writes still enforce permissions and reject cross-origin requests',
   const cookie = await userCookie();
   const denied = harness({ databaseAllowed: false });
   assert.equal((await denied.middleware(request({ cookie }))).status, 403);
-  assert.deepEqual(denied.permissionChecks, [['analytics']]);
+  assert.deepEqual(denied.permissionChecks, [['page:/analytics', 'page:/analytics/productivity']]);
   const app = harness();
   const response = await app.middleware(request({ cookie, origin: 'https://other.example' }));
   assert.equal(response.status, 403);
@@ -125,8 +128,8 @@ test('review writes still enforce permissions and reject cross-origin requests',
 
 test('permission cache is bound to the verified reviewer and Auth0 retains precedence', async () => {
   const signedUser = await userCookie();
-  const cached = await permissions.createPermissionCookieValue('abner@example.com', ['analytics']);
-  const otherUser = await permissions.createPermissionCookieValue('other@example.com', ['analytics']);
+  const cached = await permissions.createPermissionCookieValue('abner@example.com', expandAssignedPermissions(['analytics']));
+  const otherUser = await permissions.createPermissionCookieValue('other@example.com', expandAssignedPermissions(['analytics']));
   const app = harness({ databaseAllowed: false });
   assert.equal((await app.middleware(request({
     cookie: `${signedUser}; ${permissions.PERMISSION_COOKIE_NAME}=${cached}`,
@@ -150,7 +153,7 @@ test('Procore identity exception does not grant unrelated writes; PM dashboard G
   assert.equal((await app.middleware(request({ method: 'PATCH', cookie }))).status, 401);
   assert.equal((await app.middleware(request({ path: '/api/pm-dashboard', method: 'GET', cookie })))
     .headers.get('x-middleware-next'), '1');
-  assert.deepEqual(app.permissionChecks, [['pm-dashboard']]);
+  assert.deepEqual(app.permissionChecks, [['page:/pm-dashboard']]);
 });
 
 test('completed review stores the verified reviewer instead of a client-supplied email', async () => {

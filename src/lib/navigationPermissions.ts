@@ -1,3 +1,6 @@
+import { expandAssignedPermissions } from './permissions.ts';
+import { independentPermissionForPath } from './independentPagePermissions.js';
+
 type PermissionRefreshOptions = {
   email: string;
   fetchPermissions: (signal: AbortSignal) => Promise<Response>;
@@ -14,6 +17,8 @@ export function canAccessNavigationLink(
   if (link.href === '/help') return true;
   // Backend guards enforce access while the initial permissions read is pending.
   if ((!state.loaded || state.failed) && !state.permissions) return true;
+  const pagePermission = independentPermissionForPath(link.href);
+  if (pagePermission) return expandAssignedPermissions([...(state.permissions || [])]).includes(pagePermission);
   const hasPermission = (permission: string) => state.permissions?.some(
     (assigned) => assigned.toLowerCase() === permission.toLowerCase(),
   );

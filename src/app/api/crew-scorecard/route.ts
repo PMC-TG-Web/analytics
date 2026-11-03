@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
   try {
     const email = await getRequestUserEmail(request);
     if (!email) return json({ error: 'Sign in to view the Crew Scorecard.' }, 401);
-    if (!await hasDatabasePageAccess(prisma, email, 'analytics')) return json({ error: 'Analytics permission is required.' }, 403);
+    if (!await hasDatabasePageAccess(prisma, email, 'page:/crew-scorecard')) return json({ error: 'Crew Scorecard permission is required.' }, 403);
     const week = request.nextUrl.searchParams.get('week') || '';
     try { crewWeekRange(week); } catch (error) {
       return json({ error: error instanceof Error ? error.message : 'Choose a valid reporting week.' }, 400);

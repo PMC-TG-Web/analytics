@@ -85,7 +85,7 @@ test('local developer picker works without Auth0 but selected users still need p
   const headers = { cookie: 'dev_user_email=limited@example.test' };
   assert.equal((await app.run('/api/weather', { headers })).headers.get('x-middleware-next'), '1');
   assert.equal((await app.run('/api/kpi', { headers })).status, 403);
-  assert.deepEqual(app.checks, [['kpi']]);
+  assert.deepEqual(app.checks, [['page:/kpi']]);
   assert.equal((await app.run('/dev-login/admin', { headers })).status, 307);
 });
 

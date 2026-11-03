@@ -17,7 +17,7 @@ function setup({ environment = 'development', actor = 'operator@example.test', p
     'next/server': { NextResponse: { json: (body, init) => Response.json(body, init) } },
     '@/lib/developerIdentity': { isLocalDeveloperRequest: request => isLocalDeveloperRequest(request, environment) },
     '@/lib/requestUser': { getRequestUserEmail: async () => { calls.push('identity'); if (authFail) throw new Error('private connection details'); return actor; } },
-    '@/lib/permissions': { hasDatabasePageAccess: async (_prisma, email, page) => { assert.equal(email, actor); assert.equal(page, 'analytics'); return permission; } },
+    '@/lib/permissions': { hasDatabasePageAccess: async (_prisma, email, page) => { assert.equal(email, actor); assert.equal(page, 'page:/crew-scorecard'); return permission; } },
     '@/lib/prisma': { prisma: {} },
     '@/lib/crewScorecard': { crewWeekRange },
     '@/lib/loadCrewScorecard': { loadCrewScorecard: async (companyId, week) => {
@@ -104,7 +104,7 @@ test('server page enforces the same local and permission gates and navigation is
   const page = readFileSync(new URL('../src/app/crew-scorecard/page.tsx', import.meta.url), 'utf8');
   const nav = readFileSync(new URL('../src/components/Navigation.tsx', import.meta.url), 'utf8');
   assert.match(page, /isLocalDeveloperRequest\(localRequest\)\) notFound/);
-  assert.match(page, /hasDatabasePageAccess\(prisma, email, 'analytics'\)/);
+  assert.match(page, /hasDatabasePageAccess\(prisma, email, 'page:\/crew-scorecard'\)/);
   assert.match(nav, /href: "\/crew-scorecard".*localOnly: true/);
   assert.match(nav, /!link\.localOnly \|\| localPreview/);
 });

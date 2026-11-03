@@ -2,6 +2,7 @@ import { canAccessSubcontractAllocation, isSubcontractAllocationPath } from '@/l
 import { getDeveloperEmail, isLocalDeveloperRequest } from '@/lib/developerIdentity';
 import { NextRequest, NextResponse } from 'next/server';
 import { isBillingAnalyticsPath } from '@/lib/billingAnalyticsAccess';
+import { apiPagePermissions, independentPermissionForPath, permissionForFeature } from '@/lib/permissionRoutes';
 import { auth0 } from '@/lib/auth0';
 import { APP_SESSION_COOKIE, emailSignInEnabled, procoreSignInEnabled, safeAppReturnTo } from '@/lib/appSignInPolicy';
 import {
@@ -80,8 +81,13 @@ function resolvePermissionsForRequest(request: NextRequest): string[] {
   }
 
   const defaultPermission = resolvePermissionForPath(pathname);
+  const independent = pathname.startsWith('/api/')
+    ? apiPagePermissions(pathname, method)
+    : independentPermissionForPath(pathname);
 
-  if (defaultPermission) {
+  if (independent) {
+    for (const permission of Array.isArray(independent) ? independent : [independent]) permissions.add(permission);
+  } else if (defaultPermission) {
     permissions.add(defaultPermission);
     const fallbackPermission = PERMISSION_FALLBACKS[defaultPermission];
     if (fallbackPermission) permissions.add(fallbackPermission);
@@ -89,24 +95,24 @@ function resolvePermissionsForRequest(request: NextRequest): string[] {
 
   if (method === 'GET') {
     if (pathname === '/api/projects' && searchParams.get('mode') === 'dashboard') {
-      permissions.add('kpi');
+      permissions.add(permissionForFeature('kpi'));
     }
 
     if (pathname === '/api/scheduling' || pathname === '/api/scheduling/projects-with-budget') {
-      permissions.add('kpi');
+      permissions.add(permissionForFeature('kpi'));
     }
 
     if (pathname === '/api/short-term-schedule' && searchParams.get('action') === 'active-schedule') {
-      permissions.add('kpi');
+      permissions.add(permissionForFeature('kpi'));
     }
 
     if (pathname === '/api/schedule-allocations') {
-      permissions.add('long-term-schedule');
+      permissions.add(permissionForFeature('long-term-schedule'));
     }
   }
 
   if (pathname === '/api/concrete-orders' || pathname.startsWith('/api/concrete-orders/')) {
-    permissions.add('concrete-orders-schedule');
+    permissions.add(permissionForFeature('concrete-orders-schedule'));
   }
 
   return Array.from(permissions);

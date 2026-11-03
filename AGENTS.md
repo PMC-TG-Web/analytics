@@ -25,6 +25,7 @@
 - Centralize Procore HTTP behavior in `src/lib/procore.ts` and the focused `src/lib/procore*.ts` modules. Respect the live-API gate, company header, retry/rate-limit handling, and secret-authenticated worker bypasses.
 - QuickBooks profitability data is imported as read-only, immutable snapshots. Do not add QuickBooks write operations or expose QuickBooks/Procore credentials to the browser.
 - Authentication and authorization are separate: Auth0 establishes the session; `middleware.ts`, `src/lib/permissionRoutes.js`, and `src/lib/permissions.ts` enforce route permissions. Update the page/API rule and its tests together when adding a protected surface.
+- Every application page must appear automatically in employee Navigation Permissions and access templates. Use the generated App Router inventory and shared `NavigationPermissionPicker`; do not create another hand-maintained picker list. Dev/build hooks refresh the inventory, and `test/pageAccessCatalog.test.mjs` checks coverage. Every active page has an independent checkbox. Keep API consumer policies explicit and preserve private rollout restrictions; saved page overrides must not remove administrative roles.
 
 ## Safety and data changes
 

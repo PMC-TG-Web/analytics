@@ -1,8 +1,15 @@
 import type { NextConfig } from "next";
 import path from "path";
 import { fileURLToPath } from "url";
+import { generateAppPageInventory, watchAppPageInventory } from './scripts/lib/appPageInventory.mjs';
+import { RETIRED_SCHEDULE_PATHS } from './src/lib/appPagePolicy.js';
 
 const configDir = path.dirname(fileURLToPath(import.meta.url));
+generateAppPageInventory(configDir);
+if (process.env.NODE_ENV === 'development') {
+  const registry = globalThis as typeof globalThis & { appPageInventoryWatcher?: ReturnType<typeof watchAppPageInventory> };
+  registry.appPageInventoryWatcher ??= watchAppPageInventory(configDir);
+}
 
 const frameAncestors = [
   "'self'",
@@ -33,12 +40,7 @@ const nextConfig: NextConfig = {
   async redirects() {
     // Retire the old scheduling surfaces; shared APIs and historical data remain
     // available to existing non-scheduling consumers until separately migrated.
-    return [
-      '/scheduling', '/project-schedule', '/long-term-schedule',
-      '/short-term-schedule', '/concrete-orders-schedule', '/daily-crew-dispatch-board',
-      '/help/wip-schedule', '/help/project-gantt', '/help/long-term',
-      '/help/short-term', '/help/crew-dispatch', '/help/concrete-orders',
-    ].map(source => ({ source, destination: source.startsWith('/help/') ? '/help/wip' : '/wip', permanent: false }));
+    return RETIRED_SCHEDULE_PATHS.map(source => ({ source, destination: source.startsWith('/help/') ? '/help/wip' : '/wip', permanent: false }));
   },
   async headers() {
     return [

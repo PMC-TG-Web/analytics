@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import { NextRequest, NextResponse } from 'next/server.js';
 import * as permissionRoutes from '../src/lib/permissionRoutes.js';
+import { expandAssignedPermissions } from '../src/lib/permissions.ts';
 import * as csrf from '../src/lib/csrfProtection.ts';
 import * as billingAccess from '../src/lib/billingAnalyticsAccess.ts';
 import * as subcontractAccess from '../src/lib/subcontractAllocationAccess.ts';
@@ -46,7 +47,7 @@ function harness({
     '@/lib/permissionRoutes': permissionRoutes,
     '@/lib/permissionCookie': {
       PERMISSION_COOKIE_NAME: 'analytics_permissions',
-      verifyPermissionCookieValue: async () => ({ permissions: cachedPermissions }),
+      verifyPermissionCookieValue: async () => ({ permissions: expandAssignedPermissions(cachedPermissions) }),
       getPermissionCookieOptions: () => ({ httpOnly: true, path: '/' }),
     },
     '@/lib/procoreUserSession': { verifyProcoreUserSessionCookieValue: async () => null },
@@ -129,6 +130,23 @@ test('page-specific lookups work without granting full employee or project acces
   }
 });
 
+test('independent page choices protect both pages and data APIs, including an OWNER page revocation', async () => {
+  const selected = harness({ cachedPermissions: ['page:/analytics/monthly-hours'] });
+  assertPassed(await selected.run('/analytics/monthly-hours'));
+  assertPassed(await selected.run('/api/analytics/monthly-hours'));
+  for (const path of ['/analytics', '/market-outlook', '/accounting/billing-analytics']) {
+    const response = await selected.run(path);
+    assert.equal(new URL(response.headers.get('location')).pathname, '/forbidden', path);
+  }
+  for (const path of ['/api/analytics/commitment-productivity', '/api/analytics/cost-code-sales', '/api/accounting/billing-analytics']) {
+    assert.equal((await selected.run(path)).status, 403, path);
+  }
+  const revoked = harness({ cachedPermissions: ['OWNER', '!page:/analytics/monthly-hours'] });
+  assert.equal((await revoked.run('/api/analytics/monthly-hours')).status, 403);
+  assert.equal(new URL((await revoked.run('/analytics/monthly-hours')).headers.get('location')).pathname, '/forbidden');
+  for (const path of ['/market-outlook', '/analytics', '/api/analytics/commitment-productivity', '/kpi']) assertPassed(await revoked.run(path), path);
+});
+
 test('unmapped APIs fail closed before identity, cached permissions, or local development bypasses', async () => {
   for (const options of [
     { identity: 'auth0' }, { identity: 'procore' }, { identity: 'anonymous' },
@@ -160,7 +178,8 @@ test('newly mapped data APIs require their feature permission for either applica
     for (const [path, permission] of routes) {
       const denied = harness({ identity });
       assert.equal((await denied.run(path)).status, 403, `${identity} ${path}`);
-      assert.ok(denied.calls.permissionChecks.some(grants => grants.includes(permission)), path);
+      const expected = permissionRoutes.apiPagePermissions(path) || [permission];
+      assert.ok(denied.calls.permissionChecks.some(grants => expected.every(key => grants.includes(key))), path);
       const allowed = harness({ identity, cachedPermissions: [permission] });
       assertPassed(await allowed.run(path), `${identity} ${path}`);
       assert.deepEqual(allowed.calls.permissionChecks, []);

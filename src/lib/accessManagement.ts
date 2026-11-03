@@ -12,7 +12,7 @@ export async function getAccessManagementActor(request: NextRequest) {
     email,
     permissions,
     canManageAccess: hasAccessAdministratorRole(permissions),
-    canEditEmployees: expandAssignedPermissions(permissions).includes('employees'),
+    canEditEmployees: expandAssignedPermissions(permissions).includes('page:/employees'),
   };
 }
 

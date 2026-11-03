@@ -1,4 +1,6 @@
-import { PATH_PERMISSION_RULES } from './permissionRoutes.js';
+import { PATH_PERMISSION_RULES, resolvePermissionForPath } from './permissionRoutes.js';
+import { APP_PAGES } from './generated/appPages.js';
+import { expandIndependentPagePermissions, PAGE_PATHS, pagePermission, denyPagePermission, permissionForFeature } from './independentPagePermissions.js';
 
 export { resolvePermissionForPath } from './permissionRoutes.js';
 
@@ -138,7 +140,7 @@ export function expandAssignedPermissions(permissions: string[]): string[] {
     }
   });
 
-  return Array.from(allPages);
+  return expandIndependentPagePermissions(Array.from(allPages));
 }
 
 function parseUserPermissionsFromEnv(): Record<string, string[]> {
@@ -201,7 +203,7 @@ export async function hasDatabasePageAccess(
 ): Promise<boolean> {
   if (!userEmail) return false;
   const permissions = await loadUserAssignedPermissionsFromDatabase(prisma, userEmail);
-  return expandAssignedPermissions(permissions).some(p => p.toLowerCase() === page.toLowerCase());
+  return expandAssignedPermissions(permissions).some(p => p.toLowerCase() === permissionForFeature(page).toLowerCase());
 }
 
 // Map user emails to permission groups/pages from database or environment variables.
@@ -252,7 +254,7 @@ export async function initializePermissions(): Promise<void> {
 export function hasPageAccess(userEmail: string | null, page: string): boolean {
   if (!userEmail) return false;
   const permissions = getUserPermissions(userEmail);
-  return permissions.some(p => p.toLowerCase() === page.toLowerCase());
+  return permissions.some(p => p.toLowerCase() === permissionForFeature(page.toLowerCase()).toLowerCase());
 }
 
 export function getUserPermissions(userEmail: string | null): string[] {
@@ -272,6 +274,8 @@ export const NAVIGATION_PERMISSION_OPTIONS: string[] = Array.from(
   new Set([
     ...Object.values(PERMISSION_GROUPS).flat(),
     ...PATH_PERMISSION_RULES.map((rule) => rule.permission),
+    ...APP_PAGES.map((page) => resolvePermissionForPath(page.pathname)).filter((permission): permission is string => !!permission),
+    ...PAGE_PATHS.flatMap(path => [pagePermission(path), denyPagePermission(path)]),
     'analytics-cost-code-sales',
     'accounting-project-profitability',
     'accounting-direct-cost-bills',

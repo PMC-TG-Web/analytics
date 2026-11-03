@@ -1,3 +1,6 @@
+import { FEATURE_PAGES } from './independentPagePermissions.js';
+import { SYSTEM_PAGE_NOTES } from './appPagePolicy.js';
+
 export const PERMISSION_COOKIE_NAME = 'analytics_permissions';
 const DEFAULT_PERMISSION_COOKIE_MAX_AGE_SECONDS = 60 * 60;
 
@@ -62,13 +65,18 @@ async function importSigningKey(secret: string) {
 }
 
 function normalizePermissions(permissions: string[]) {
-  return Array.from(
+  const normalized = Array.from(
     new Set(
       permissions
         .filter((permission) => typeof permission === 'string' && permission.trim().length > 0)
         .map((permission) => permission.trim())
     )
   );
+  const hasPages = normalized.some(permission => permission.startsWith('page:'));
+  // Cookies cache effective grants only. Feature aliases and explicit denials
+  // are unnecessary once page grants are present, and can exceed browser limits.
+  return normalized.filter(permission => !permission.startsWith('!page:') && (!hasPages
+    || !FEATURE_PAGES[permission] || Object.hasOwn(SYSTEM_PAGE_NOTES, FEATURE_PAGES[permission])));
 }
 
 function isPermissionCookiePayload(value: unknown): value is PermissionCookiePayload {
@@ -112,7 +120,8 @@ export async function createPermissionCookieValue(
   const key = await importSigningKey(secret);
   const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payloadPart));
 
-  return `${payloadPart}.${bytesToBase64Url(new Uint8Array(signature))}`;
+  const value = `${payloadPart}.${bytesToBase64Url(new Uint8Array(signature))}`;
+  return value.length <= 3800 ? value : null;
 }
 
 export async function verifyPermissionCookieValue(

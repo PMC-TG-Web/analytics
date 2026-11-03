@@ -28,7 +28,8 @@ export function estimateRevisionDate(timestamp: string | null): string | null {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(timestamp));
 }
 
-/** Same-month versions count the unique primary once. Across different months,
+/** The original stays in the project's Created Date month. Versions updated
+ * within that initial month count the unique primary once. Later revisions
  * always compare with the named original, or the first source-created estimate.
  * Display order, proposal IDs and local ingestion times cannot establish creation.
  */
@@ -48,14 +49,12 @@ export function calculateEstimateRevisions(createdDate: string, versions: Estima
   }
   const revisionDate = estimateRevisionDate(primary.updatedAt);
   const revisionMonth = revisionDate?.slice(0, 7);
-  // Owner's rule: changes in one Eastern calendar month use the full primary,
-  // regardless of intermediate copies, amounts, or ordering within that month.
-  // An older Created Date must not move this month's activity back into history.
-  if (revisionDate && revisionMonth && revisionMonth >= createdDate.slice(0, 7)
+  // Count the full primary once only in the project's initial month. Editing
+  // every version in a later month must never move the original amount there.
+  if (revisionDate && revisionMonth && revisionMonth === createdDate.slice(0, 7)
     && estimates.every(version => estimateRevisionDate(version.updatedAt)?.slice(0, 7) === revisionMonth)) {
-    const initialMonth = createdDate.slice(0, 7) === revisionMonth;
-    const event: EstimateRevisionEvent = { date: initialMonth ? createdDate : revisionDate,
-      kind: initialMonth ? 'initial' : 'rebid', basis: 'same-month-primary',
+    const event: EstimateRevisionEvent = { date: createdDate,
+      kind: 'initial', basis: 'same-month-primary',
       ...current, previous: null, revised: primary };
     return { events: [event], issues, primary };
   }

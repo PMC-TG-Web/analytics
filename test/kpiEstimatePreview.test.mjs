@@ -162,14 +162,28 @@ test('new project and versions in the same month count only the full primary onc
   assert.deepEqual(result.months['2026-10'], { count: 1, hours: 900, sales: 95000, missingHours: 0, missingSales: 0, rebids: 0 });
 });
 
-test('multiple October revisions of an older project contribute only the current primary in October', () => {
-  const versions = [proposal('a', { primary: false, order: 2, hours: 780, sales: 88056.71 }),
+test('multiple October revisions of an older project contribute only the change from its original', () => {
+  const versions = [proposal('a', { primary: false, isBaselineCandidate: true, order: 2, hours: 780, sales: 88056.71 }),
     proposal('a', { proposalId: 'revision-1', primary: false, order: 1, hours: 399.5, sales: 57489.63 }),
     proposal('a', { proposalId: 'revision-2', order: 3, hours: 391.5, sales: 63822.39 })];
   const result = run([bid('a', 'BID_SUBMITTED', { payload: { created_on: '2025-08-12' } })], [value('a')], versions);
-  assert.deepEqual(result.months, { '2026-10': { count: 1, hours: 391.5, sales: 63822.39, missingHours: 0, missingSales: 0, rebids: 1 } });
+  assert.deepEqual(result.months, { '2026-10': { count: 1, hours: -388.5, sales: -24234.32, missingHours: 0, missingSales: 0, rebids: 1 } });
   assert.deepEqual(result.projects[0].issues, []);
-  assert.equal(result.projects[0].events.length, 1);
+  assert.equal(result.projects[0].events.length, 2);
+  assert.equal(result.projects[0].events[0].date, '2025-08-12');
+});
+
+test('November edits never move a May or October original bid into November', () => {
+  const versions = [proposal('a', { primary: false, isBaselineCandidate: true, updatedAt: '2026-11-02T16:55:17Z', hours: 300, sales: 20000 }),
+    proposal('a', { proposalId: 'new', name: 'Revision 2', updatedAt: '2026-11-02T17:49:12Z', hours: 250, sales: 80000 })];
+  const expectedRevision = { count: 1, hours: -50, sales: 60000, missingHours: 0, missingSales: 0, rebids: 1 };
+  for (const created_on of ['2026-05-22', '2026-10-22']) {
+    const result = run([bid('a', 'IN_PROGRESS', { payload: { created_on } })], [value('a')], versions);
+    assert.deepEqual(result.months['2026-11'], expectedRevision);
+    assert.equal(result.projects[0].events[0].date, created_on);
+    assert.equal(result.months['2026-05'], undefined, 'saved pre-cutover months are not recalculated');
+    if (created_on.startsWith('2026-10')) assert.deepEqual(result.months['2026-10'], { count: 1, hours: 300, sales: 20000, missingHours: 0, missingSales: 0, rebids: 0 });
+  }
 });
 
 test('archived, excluded, template, missing-source and prefixed copies do not enter totals', () => {

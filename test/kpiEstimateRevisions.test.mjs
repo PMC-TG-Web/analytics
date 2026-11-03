@@ -100,35 +100,57 @@ test('explicit alternates do not supply the previous estimate', () => {
   assert.equal(result.events[0].sales, 125000);
 });
 
-test('same-month versions use the full primary once even for an older project and reordered copies', () => {
+test('later same-month edits keep the original in its Created Date month and contribute only the delta', () => {
   const versions = [
     { ...original, order: 2, updatedAt: '2026-10-15T15:51:26Z', hours: 780, sales: 88056.71 },
-    { ...original, proposalId: 'revision-1', order: 1, updatedAt: '2026-10-15T16:06:31Z', hours: 399.5, sales: 57489.63 },
+    { ...original, proposalId: 'revision-1', isBaselineCandidate: false, order: 1, updatedAt: '2026-10-15T16:06:31Z', hours: 399.5, sales: 57489.63 },
     { ...primary, order: 3, updatedAt: '2026-10-15T19:02:37Z', hours: 391.5, sales: 63822.39 },
   ];
   const result = run(versions, '2025-08-12');
-  assert.equal(result.events.length, 1);
-  assert.deepEqual(result.events.map(e => [e.date, e.hours, e.sales, e.basis]), [['2026-10-15', 391.5, 63822.39, 'same-month-primary']]);
+  assert.equal(result.events.length, 2);
+  assert.deepEqual(result.events.map(e => [e.date, e.hours, e.sales, e.basis]), [['2025-08-12', 780, 88056.71, 'original-estimate'], ['2026-10-15', -388.5, -24234.32, 'original-estimate']]);
   assert.equal(result.events[0].previous, null);
+  assert.equal(result.events[1].previous.proposalId, original.proposalId);
   assert.deepEqual(result.issues, []);
 });
 
-test('same-month rule needs a unique primary and valid months, not values or ordering of unused copies', () => {
+test('initial-month rule needs a unique primary and valid months, not values or ordering of unused copies', () => {
   const same = { ...original, order: 99, hours: null, sales: null, updatedAt: primary.updatedAt };
-  assert.equal(run([same, primary]).events[0].hours, 1300);
-  assert.deepEqual(run([same, primary]).issues, []);
-  assert.equal(run([{ ...same, primary: true }, primary]).events[0].hours, null);
-  assert.equal(run([{ ...same, updatedAt: null }, primary]).events[1].hours, null);
-  assert.equal(run([same, { ...primary, hours: null }]).events[0].hours, null);
+  assert.equal(run([same, primary], '2026-10-02').events[0].hours, 1300);
+  assert.deepEqual(run([same, primary], '2026-10-02').issues, []);
+  assert.equal(run([{ ...same, primary: true }, primary], '2026-10-02').events[0].hours, null);
+  assert.equal(run([{ ...same, updatedAt: null }, primary], '2026-10-02').events[1].hours, null);
+  assert.equal(run([same, { ...primary, hours: null }], '2026-10-02').events[0].hours, null);
 });
 
 test('same-month membership uses Eastern dates and never places activity before project creation', () => {
   const same = { ...original, updatedAt: '2026-10-01T04:00:00Z' };
-  const result = run([same, { ...primary, updatedAt: '2026-11-01T03:59:59Z' }]);
+  const result = run([same, { ...primary, updatedAt: '2026-11-01T03:59:59Z' }], '2026-10-01');
   assert.equal(result.events[0].basis, 'same-month-primary');
-  assert.equal(result.events[0].date, '2026-10-31');
+  assert.equal(result.events[0].date, '2026-10-01');
   assert.equal(run([same, { ...primary, updatedAt: '2026-11-01T04:00:00Z' }]).events[1].hours, 300);
   assert.equal(run([same, primary], '2026-11-01').events[0].hours, null);
+});
+
+test('original remains in May even when all three versions were updated in November', () => {
+  const versions = [
+    { ...original, order: 2, updatedAt: '2026-11-02T16:55:17Z', hours: 300, sales: 20000 },
+    { ...primary, proposalId: 'intermediate', primary: false, order: 1, updatedAt: '2026-11-02T17:21:20Z', hours: 550, sales: 75000 },
+    { ...primary, order: 3, updatedAt: '2026-11-02T17:49:12Z', hours: 250, sales: 80000 },
+  ];
+  const result = run(versions, '2026-05-22');
+  assert.deepEqual(result.events.map(e => [e.date, e.kind, e.hours, e.sales]), [
+    ['2026-05-22', 'initial', 300, 20000], ['2026-11-02', 'rebid', -50, 60000],
+  ]);
+  assert.deepEqual(result.issues, []);
+});
+
+test('later same-month edits without an identifiable original cannot count the full primary as a new bid', () => {
+  const result = run([{ ...original, isBaselineCandidate: false, updatedAt: primary.updatedAt }, primary], '2026-05-22');
+  assert.equal(result.events[0].date, '2026-05-22');
+  assert.equal(result.events[0].hours, null);
+  assert.equal(result.events.some(event => event.basis === 'same-month-primary'), false);
+  assert.match(result.issues.join(' '), /unique first estimate/);
 });
 
 test('missing prior hours does not turn into zero while independently valid dollars can calculate', () => {

@@ -2,11 +2,13 @@
 
 import React, { useState } from "react";
 import { Project } from "@/types";
+import { dashboardProjectDateKey } from "@/lib/estimatingDashboardDates";
 
 interface JobsListModalProps {
   isOpen: boolean;
   projects: Project[];
   title: string;
+  dateField?: 'dateCreated' | 'contractDate';
   onClose: () => void;
   onSelectProject: (project: Project) => void;
 }
@@ -15,6 +17,7 @@ export function JobsListModal({
   isOpen,
   projects,
   title,
+  dateField,
   onClose,
   onSelectProject,
 }: JobsListModalProps) {
@@ -112,6 +115,9 @@ export function JobsListModal({
                       {project.projectName || "N/A"}
                     </div>
                   </div>
+                  {dateField && <div className="mb-2 text-xs text-gray-600">
+                    {dateField === 'contractDate' ? 'Contract Date' : 'Bid Board Created Date'}: {dashboardProjectDateKey({ dateCreated: project[dateField] }) || 'Missing date'}
+                  </div>}
                   <div className="grid grid-cols-6 gap-4 mb-2">
                     <div>
                       <div className="text-xs text-gray-500 mb-1">Status</div>

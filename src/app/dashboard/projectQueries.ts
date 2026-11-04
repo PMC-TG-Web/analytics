@@ -5,6 +5,7 @@
  * Each function has a specific purpose and should not be modified without
  * considering its impact on all pages that use it.
  */
+import type { DashboardWinRate } from '@/lib/dashboardWinRate';
 
 const DEFAULT_PAGE_SIZE = 500;
 
@@ -77,6 +78,7 @@ export type Project = {
   salesByGroup?: Record<string, number>;
   dateUpdated?: any;
   dateCreated?: any;
+  contractDate?: string | null;
   projectArchived?: boolean;
   estimator?: string;
   projectManager?: string;
@@ -84,6 +86,7 @@ export type Project = {
 };
 
 export type DashboardSummary = {
+  winRate?: DashboardWinRate;
   totalSales: number;
   totalApprovedChangeOrders: number;
   totalApprovedChangeOrderHours: number;

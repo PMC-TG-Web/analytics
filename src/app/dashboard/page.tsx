@@ -5,6 +5,7 @@ import { JobsListModal } from "./components/JobsListModal";
 import { JobDetailsModal } from "./components/JobDetailsModal";
 import { getAllProjectsForDashboard, getDashboardSummary, type Project, type DashboardSummary } from "./projectQueries";
 import { dashboardDateRangeError, dashboardProjectDateKey, filterDashboardProjectDates } from "@/lib/estimatingDashboardDates";
+import { calculateDashboardWinRate } from "@/lib/dashboardWinRate";
 import { 
   getProjectKey,
   isExcludedFromDashboard
@@ -33,6 +34,7 @@ function DashboardContent() {
   const [selectedJob, setSelectedJob] = useState<Project | null>(null);
   const [jobsListData, setJobsListData] = useState<Project[]>([]);
   const [jobsListTitle, setJobsListTitle] = useState("");
+  const [jobsListDateField, setJobsListDateField] = useState<'dateCreated' | 'contractDate'>();
   const [topContractorLimit, setTopContractorLimit] = useState<string>("10");
   const hasDateRange = Boolean(startDate || endDate);
   const dateRangeError = dashboardDateRangeError(startDate, endDate);
@@ -105,6 +107,39 @@ function DashboardContent() {
 
   // Calculate summary metrics
   const useSummary = !!summary && !startDate && !endDate && !isFullScan;
+  const periodWinRate = useMemo(() => {
+    if (useSummary) return summary?.winRate ?? null;
+    if (!isFullScan || dateRangeError) return null;
+    return calculateDashboardWinRate(projects.filter(project => !isExcludedFromDashboard(project)), startDate, endDate);
+  }, [useSummary, summary, isFullScan, dateRangeError, projects, startDate, endDate]);
+  const winRateNeedsDates = Boolean(periodWinRate?.missingWonDateIds.length || periodWinRate?.missingBidDateIds.length);
+
+  const openWinRateJobs = async (kind: 'won' | 'bid' | 'missing') => {
+    let rows = projects;
+    if (!isFullScan) {
+      setLoading(true);
+      setLoadError("");
+      try {
+        rows = await getAllProjectsForDashboard();
+        setProjects(rows);
+        setIsFullScan(true);
+      } catch (error) {
+        console.error("[Dashboard] Win-rate details failed", error);
+        setLoadError("Could not load win-rate projects. Please retry.");
+        return;
+      } finally {
+        setLoading(false);
+      }
+    }
+    const report = calculateDashboardWinRate(rows.filter(project => !isExcludedFromDashboard(project)), startDate, endDate);
+    const ids = new Set(kind === 'won' ? report.wonIds : kind === 'bid' ? report.bidIds
+      : [...report.missingWonDateIds, ...report.missingBidDateIds]);
+    setJobsListData(rows.filter(project => ids.has(project.id)));
+    setJobsListDateField(kind === 'won' ? 'contractDate' : kind === 'bid' ? 'dateCreated' : undefined);
+    const label = kind === 'won' ? 'Won' : kind === 'bid' ? 'Bid' : 'Missing dates';
+    setJobsListTitle(`Win Rate - ${label}${hasDateRange ? ` (${startDate || 'start'} through ${endDate || 'today and later'})` : ' (All dates)'}`);
+    setJobsListOpen(true);
+  };
 
   const totalSales = useSummary ? summary.totalSales : aggregatedProjects.reduce((sum, p) => sum + (p.sales ?? 0), 0);
   const totalApprovedChangeOrders = useSummary
@@ -153,6 +188,7 @@ function DashboardContent() {
       : `${customerName} - All Jobs`;
 
     setJobsListData(filtered);
+    setJobsListDateField(undefined);
     setJobsListTitle(title);
     setJobsListOpen(true);
   };
@@ -384,10 +420,6 @@ function DashboardContent() {
     return displayStatusGroups[statusKey]?.count || 0;
   };
   
-  const wonProjects = getUniqueProjectCount('In Progress') + getUniqueProjectCount('Accepted');
-  const totalBids = getUniqueProjectCount('Bid Submitted') + getUniqueProjectCount('Lost');
-  const winRate = totalBids > 0 ? (wonProjects / totalBids) * 100 : 0;
-
   const handleExportCSV = async () => {
     let dataToExport = aggregatedProjects;
     if (useSummary) {
@@ -511,6 +543,7 @@ function DashboardContent() {
         )}
         <p id="dashboard-date-help" className="w-full text-xs text-gray-500">
           Latest Procore project or estimate update, falling back to creation. Both dates are inclusive in Eastern time; sync times are not project dates.
+          {' '}Win Rate separately filters wins by Contract Date and bids by Bid Board Created Date.
         </p>
         {hasDateRange && !dateRangeError && !loading && !loadError && missingSourceDates > 0 && (
           <p role="status" className="w-full text-xs text-orange-700">
@@ -557,7 +590,22 @@ function DashboardContent() {
           large
         />
         <SummaryCard label="Markup %" value={markup} suffix="%" decimals={1} large />
-        <SummaryCard label="Win Rate" value={winRate} suffix="%" decimals={1} large />
+        <section aria-label="Period win rate" className="flex w-full flex-col items-center justify-center rounded-3xl border border-gray-100 bg-white p-4 text-center shadow-md">
+          <h2 className="mb-2 text-[10px] font-black uppercase tracking-widest text-gray-400">Win Rate</h2>
+          <div className="text-2xl font-black tracking-tight text-teal-800 md:text-3xl">
+            {periodWinRate?.rate != null ? `${(periodWinRate.rate * 100).toFixed(1)}%`
+              : winRateNeedsDates ? 'Needs dates' : periodWinRate ? 'No bids in period' : 'Unavailable'}
+          </div>
+          {periodWinRate && <div className="mt-2 text-xs font-bold text-teal-800">
+            <button type="button" className="underline" onClick={() => void openWinRateJobs('won')}>{periodWinRate.won} won</button>
+            {' / '}
+            <button type="button" className="underline" onClick={() => void openWinRateJobs('bid')}>{periodWinRate.bid} bid</button>
+          </div>}
+          <p className="mt-2 text-[10px] text-gray-500">Won: Contract Date. Bid: Created Date, not a recorded submission timestamp. Includes later-won bids.</p>
+          {winRateNeedsDates && periodWinRate && <button type="button" className="mt-2 text-[10px] font-semibold text-orange-700 underline" onClick={() => void openWinRateJobs('missing')}>
+            Review {periodWinRate.missingWonDateIds.length} missing Contract Dates / {periodWinRate.missingBidDateIds.length} missing Created Dates
+          </button>}
+        </section>
       </div>
 
       <div className="space-y-12">
@@ -655,6 +703,7 @@ function DashboardContent() {
                             setJobsListData(group);
                           }
                           setJobsListTitle(`${status} Projects`);
+                          setJobsListDateField(undefined);
                           setJobsListOpen(true);
                         }}
                         className="text-lg font-black text-orange-600 hover:text-orange-700 hover:scale-105 transition-all outline-none"
@@ -872,6 +921,7 @@ function DashboardContent() {
         onClose={() => setJobsListOpen(false)}
         projects={jobsListData}
         title={jobsListTitle}
+        dateField={jobsListDateField}
         onSelectProject={(project) => {
           setSelectedJob(project);
           setJobsListOpen(false);

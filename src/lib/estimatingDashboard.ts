@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { getCachedValue, setCachedValue } from "@/lib/serverReadCache";
 import { estimateSalesByGroup, reconcileEstimateGroupSales } from "@/lib/estimatingGroupSales";
 import { estimatingDashboardSourceDates } from "@/lib/estimatingDashboardDates";
+import { calculateDashboardWinRate, type DashboardWinRate } from "@/lib/dashboardWinRate";
+import { loadFinancialWipSoldDates } from "@/lib/loadFinancialSoldDates";
 import {
   addEstimateLineAmounts,
   aggregateApprovedChangeOrders,
@@ -149,6 +151,7 @@ export type EstimatingDashboardProject = {
   concreteGroup: Record<string, number>;
   dateCreated?: string | null;
   dateUpdated?: string | null;
+  contractDate: string | null;
   estimator?: string | null;
   projectManager?: string | null;
   projectStage?: string | null;
@@ -158,6 +161,7 @@ export type EstimatingDashboardProject = {
 };
 
 type DashboardSummary = {
+  winRate: DashboardWinRate;
   totalSales: number;
   totalApprovedChangeOrders: number;
   totalApprovedChangeOrderHours: number;
@@ -237,6 +241,7 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
     pmcProjects,
     companyUsers,
     onboardingStates,
+    soldDates,
   ] = await Promise.all([
     prisma.pmcBidBoardProject.findMany({ where: { companyId: COMPANY_ID } }),
     prisma.procoreEstimateProposal.findMany({ where: { companyId: COMPANY_ID } }),
@@ -283,6 +288,7 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
         lastError: true,
       },
     }),
+    loadFinancialWipSoldDates(COMPANY_ID),
   ]);
   const approvedPotentialChangeOrders = approvedPotentialChangeOrderData.changeOrders;
   const approvedPotentialChangeOrderLines = approvedPotentialChangeOrderData.lines;
@@ -517,6 +523,7 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
       pmcBreakdown: totals.laborByGroup,
       concreteGroup: totals.concreteByGroup,
       ...estimatingDashboardSourceDates(payload, selected?.sourceUpdatedAt),
+      contractDate: procoreProjectId ? soldDates.get(procoreProjectId)?.contractDate ?? null : null,
       estimator: estimatorByUserId.get(clean(payload.estimator_user_id)) || linked?.estimator || null,
       projectManager: linked?.projectManager ?? null,
       projectStage: clean(board.status || linked?.bidBoardStatus || linked?.status) || null,
@@ -569,6 +576,7 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
 
 export function buildEstimatingDashboardSummary(projects: EstimatingDashboardProject[]): DashboardSummary {
   const summary: DashboardSummary = {
+    winRate: calculateDashboardWinRate(projects),
     totalSales: 0,
     totalApprovedChangeOrders: 0,
     totalApprovedChangeOrderHours: 0,

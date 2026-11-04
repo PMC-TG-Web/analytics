@@ -32,12 +32,12 @@ test('dashboard ranges keep controls, reconcile cards, drill-throughs and export
       cogsByGroup: { 'Slab On Grade Labor': sales / 4 },
     });
     const projects = [
-      project('before', 'Outside September', 10, '2026-10-01T03:59:59.999Z'),
-      project('start', 'Twin project', 100, '2026-10-01T04:00:00Z'),
-      project('end', 'Twin project', 200, '2026-11-01T03:59:59.999Z'),
-      project('date-only', 'October calendar', 50, '2026-10-31'),
-      project('after', 'Outside November', 400, '2026-11-01T04:00:00Z', 'Bid Submitted'),
-      project('missing', 'Missing date', 500, null),
+      { ...project('before', 'Outside September', 10, '2026-10-01T03:59:59.999Z'), dateCreated: '2026-09-01', contractDate: '2026-10-15' },
+      { ...project('start', 'Twin project', 100, '2026-10-01T04:00:00Z'), dateCreated: '2026-10-01', contractDate: '2026-11-01' },
+      { ...project('end', 'Twin project', 200, '2026-11-01T03:59:59.999Z'), dateCreated: '2026-09-01', contractDate: '2026-09-15' },
+      { ...project('date-only', 'October calendar', 50, '2026-10-31'), dateCreated: '2026-10-31', contractDate: '2026-10-31' },
+      { ...project('after', 'Outside November', 400, '2026-11-01T04:00:00Z', 'Bid Submitted'), dateCreated: '2026-10-10' },
+      project('missing', 'Missing date', 500, null, 'Estimating'),
       project('excluded', 'Invitation', 999, '2026-10-15', 'Invitations'),
     ];
     const metrics = (sales, count) => ({ sales, cost: sales / 2, cogsCost: sales / 4, hours: sales / 10, count,
@@ -45,15 +45,17 @@ test('dashboard ranges keep controls, reconcile cards, drill-throughs and export
       cogsByGroup: { 'Slab On Grade Labor': sales / 4 }, concreteByGroup: {} });
     const summary = {
       totalSales: 1260, totalCost: 630, totalCogsCost: 315, totalHours: 126,
-      statusGroups: { Accepted: metrics(860, 5), 'Bid Submitted': metrics(400, 1) },
-      contractors: { 'Example GC': { ...metrics(1260, 6), byStatus: { Accepted: metrics(860, 5), 'Bid Submitted': metrics(400, 1) } } },
+      statusGroups: { Accepted: metrics(360, 4), 'Bid Submitted': metrics(400, 1), Estimating: metrics(500, 1) },
+      contractors: { 'Example GC': { ...metrics(1260, 6), byStatus: { Accepted: metrics(360, 4), 'Bid Submitted': metrics(400, 1), Estimating: metrics(500, 1) } } },
       pmcGroupHours: {}, laborBreakdown: {}, lastUpdated: null,
+      winRate: { won: 4, bid: 5, rate: 0.8, wonIds: ['before', 'start', 'end', 'date-only'],
+        bidIds: ['before', 'start', 'end', 'date-only', 'after'], missingWonDateIds: [], missingBidDateIds: [] },
     };
     browser = await chromium.launch({ channel: 'msedge', headless: true });
     const page = await browser.newPage({ timezoneId: 'America/New_York', acceptDownloads: true });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    let failed = false, requests = 0;
+    let failed = false, requests = 0, missingContract = false;
     let readStarted;
     const started = new Promise(resolve => { readStarted = resolve; });
     const readGate = new Promise(resolve => { releaseRead = resolve; });
@@ -63,13 +65,16 @@ test('dashboard ranges keep controls, reconcile cards, drill-throughs and export
       if (requests === 1) { readStarted(); await readGate; }
       if (failed) return route.fulfill({ status: 503, json: { success: false, error: 'Fixture unavailable' } });
       const pageNumber = Number(new URL(route.request().url()).searchParams.get('page'));
-      return route.fulfill({ json: { success: true, data: projects.slice((pageNumber - 1) * 4, pageNumber * 4),
+      const rows = projects.map(row => missingContract && row.id === 'before' ? { ...row, contractDate: null } : row);
+      return route.fulfill({ json: { success: true, data: rows.slice((pageNumber - 1) * 4, pageNumber * 4),
         page: pageNumber, total: projects.length, hasNextPage: pageNumber === 1 } });
     });
     const url = `http://127.0.0.1:${server.address().port}`;
     await page.goto(url);
     const salesCard = page.getByText('Sales', { exact: true }).first().locator('..');
     await salesCard.getByText('$1,260', { exact: true }).waitFor();
+    const winRateCard = page.getByRole('region', { name: 'Period win rate' });
+    assert.ok((await winRateCard.innerText()).includes('80.0%'));
     const from = page.getByLabel('From', { exact: true });
     const to = page.getByLabel('To', { exact: true });
     const originalInput = await from.elementHandle();
@@ -84,6 +89,20 @@ test('dashboard ranges keep controls, reconcile cards, drill-throughs and export
     assert.ok((await salesCard.innerText()).includes('$350'));
     await page.getByText('1 projects have no valid Procore dates and are excluded from this range.', { exact: true }).waitFor();
     assert.ok((await page.locator('main').innerText()).includes('Total Project Count: 3'), 'distinct Bid Board IDs must not collapse by name');
+    assert.ok((await winRateCard.innerText()).includes('66.7%'));
+    await winRateCard.getByRole('button', { name: '2 won', exact: true }).click();
+    await page.getByRole('heading', { name: 'Win Rate - Won (2026-10-01 through 2026-10-31)', exact: true }).waitFor();
+    assert.equal(await page.getByRole('button').filter({ hasText: 'Outside September' }).count(), 1, 'an older bid won in October counts despite its activity date');
+    assert.equal(await page.getByRole('button').filter({ hasText: 'October calendar' }).count(), 1);
+    assert.equal(await page.getByRole('button').filter({ hasText: 'Twin project' }).count(), 0);
+    await page.getByText('Contract Date: 2026-10-15', { exact: true }).waitFor();
+    await page.getByRole('button', { name: 'x', exact: true }).click();
+    await winRateCard.getByRole('button', { name: '3 bid', exact: true }).click();
+    await page.getByRole('heading', { name: 'Win Rate - Bid (2026-10-01 through 2026-10-31)', exact: true }).waitFor();
+    assert.equal(await page.getByRole('button').filter({ hasText: 'Outside November' }).count(), 1);
+    assert.equal(await page.getByRole('button').filter({ hasText: 'Twin project' }).count(), 1, 'a bid won later remains in its original bid period');
+    await page.getByText('Bid Board Created Date: 2026-10-10', { exact: true }).waitFor();
+    await page.getByRole('button', { name: 'x', exact: true }).click();
 
     const accepted = page.getByRole('heading', { name: 'Accepted', exact: true }).locator('../..');
     await accepted.getByRole('button', { name: '$350', exact: true }).click();
@@ -115,10 +134,12 @@ test('dashboard ranges keep controls, reconcile cards, drill-throughs and export
     assert.ok((await salesCard.innerText()).includes('$400'));
     await page.getByRole('button', { name: 'Clear', exact: true }).click();
     assert.ok((await salesCard.innerText()).includes('$1,260'));
+    assert.ok((await winRateCard.innerText()).includes('80.0%'));
     assert.equal(requests, 2);
     await from.fill('2027-01-01');
     await page.getByText('0 active projects in range', { exact: true }).waitFor();
     assert.ok((await salesCard.innerText()).includes('$0'));
+    assert.ok((await winRateCard.innerText()).includes('No bids in period'));
 
     failed = true;
     await page.goto(url);
@@ -132,6 +153,24 @@ test('dashboard ranges keep controls, reconcile cards, drill-throughs and export
     await page.getByRole('button', { name: 'Retry', exact: true }).click();
     await page.getByText('3 active projects in range', { exact: true }).waitFor();
     assert.ok((await salesCard.innerText()).includes('$350'));
+    assert.ok((await winRateCard.innerText()).includes('66.7%'));
+
+    await page.goto(url);
+    await winRateCard.getByRole('button', { name: '4 won', exact: true }).waitFor();
+    await winRateCard.getByRole('button', { name: '4 won', exact: true }).click();
+    await page.getByRole('heading', { name: 'Win Rate - Won (All dates)', exact: true }).waitFor();
+    assert.equal(await page.getByRole('button').filter({ hasText: 'Twin project' }).count(), 2);
+    await page.getByRole('button', { name: 'x', exact: true }).click();
+
+    missingContract = true;
+    await page.goto(url);
+    await salesCard.getByText('$1,260', { exact: true }).waitFor();
+    await from.fill('2026-10-01');
+    await to.fill('2026-10-31');
+    await winRateCard.getByText('Needs dates', { exact: true }).waitFor();
+    await winRateCard.getByRole('button', { name: 'Review 1 missing Contract Dates / 0 missing Created Dates', exact: true }).click();
+    await page.getByRole('heading', { name: 'Win Rate - Missing dates (2026-10-01 through 2026-10-31)', exact: true }).waitFor();
+    assert.equal(await page.getByRole('button').filter({ hasText: 'Outside September' }).count(), 1);
     assert.deepEqual(errors, []);
   } finally {
     releaseRead?.();

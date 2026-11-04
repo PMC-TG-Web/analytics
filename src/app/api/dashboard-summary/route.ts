@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
+import { loadDashboardWinRateHistory } from "@/lib/loadDashboardWinRateHistory";
 import {
   buildEstimatingDashboardSummary,
   loadEstimatingDashboardProjects,
@@ -21,9 +22,10 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const projects = await loadEstimatingDashboardProjects({ force: searchParams.get("force") === "true" });
+    const history = await loadDashboardWinRateHistory(projects);
     const payload = {
       success: true,
-      data: buildEstimatingDashboardSummary(projects),
+      data: buildEstimatingDashboardSummary(projects, history),
     };
     const etag = buildETag(payload);
 

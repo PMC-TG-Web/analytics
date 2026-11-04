@@ -13,6 +13,7 @@ import {
 import { SummaryCard } from "./components/SummaryCard";
 import { FunnelChart } from "./components/FunnelChart";
 import { TopContractorsCard } from "./components/TopContractorsCard";
+import { WinRateBreakdown } from "./components/WinRateBreakdown";
 
 
 export default function Dashboard() {
@@ -34,7 +35,7 @@ function DashboardContent() {
   const [selectedJob, setSelectedJob] = useState<Project | null>(null);
   const [jobsListData, setJobsListData] = useState<Project[]>([]);
   const [jobsListTitle, setJobsListTitle] = useState("");
-  const [jobsListDateField, setJobsListDateField] = useState<'dateCreated' | 'contractDate'>();
+  const [winRateBreakdown, setWinRateBreakdown] = useState<'won' | 'bid' | 'missing' | null>(null);
   const [topContractorLimit, setTopContractorLimit] = useState<string>("10");
   const hasDateRange = Boolean(startDate || endDate);
   const dateRangeError = dashboardDateRangeError(startDate, endDate);
@@ -67,17 +68,16 @@ function DashboardContent() {
       setLoading(true);
       setLoadError("");
       try {
-        if (!summary && !hasDateRange) {
-          const summaryData = await getDashboardSummary();
-          if (cancelled) return;
-          if (summaryData) {
-            setSummary(summaryData);
-            return;
-          }
+        const summaryData = summary ?? await getDashboardSummary();
+        if (cancelled) return;
+        if (summaryData && !hasDateRange) {
+          setSummary(summaryData);
+          return;
         }
         const data = await getAllProjectsForDashboard();
         if (cancelled) return;
         setProjects(data);
+        setSummary(summaryData);
         setIsFullScan(true);
       } catch (error) {
         if (!cancelled) {
@@ -108,38 +108,10 @@ function DashboardContent() {
   // Calculate summary metrics
   const useSummary = !!summary && !startDate && !endDate && !isFullScan;
   const periodWinRate = useMemo(() => {
-    if (useSummary) return summary?.winRate ?? null;
-    if (!isFullScan || dateRangeError) return null;
-    return calculateDashboardWinRate(projects.filter(project => !isExcludedFromDashboard(project)), startDate, endDate);
-  }, [useSummary, summary, isFullScan, dateRangeError, projects, startDate, endDate]);
+    if (!summary?.winRateHistory || dateRangeError) return null;
+    return calculateDashboardWinRate(summary.winRateHistory.projects, startDate, endDate);
+  }, [summary, dateRangeError, startDate, endDate]);
   const winRateNeedsDates = Boolean(periodWinRate?.missingWonDateIds.length || periodWinRate?.missingBidDateIds.length);
-
-  const openWinRateJobs = async (kind: 'won' | 'bid' | 'missing') => {
-    let rows = projects;
-    if (!isFullScan) {
-      setLoading(true);
-      setLoadError("");
-      try {
-        rows = await getAllProjectsForDashboard();
-        setProjects(rows);
-        setIsFullScan(true);
-      } catch (error) {
-        console.error("[Dashboard] Win-rate details failed", error);
-        setLoadError("Could not load win-rate projects. Please retry.");
-        return;
-      } finally {
-        setLoading(false);
-      }
-    }
-    const report = calculateDashboardWinRate(rows.filter(project => !isExcludedFromDashboard(project)), startDate, endDate);
-    const ids = new Set(kind === 'won' ? report.wonIds : kind === 'bid' ? report.bidIds
-      : [...report.missingWonDateIds, ...report.missingBidDateIds]);
-    setJobsListData(rows.filter(project => ids.has(project.id)));
-    setJobsListDateField(kind === 'won' ? 'contractDate' : kind === 'bid' ? 'dateCreated' : undefined);
-    const label = kind === 'won' ? 'Won' : kind === 'bid' ? 'Bid' : 'Missing dates';
-    setJobsListTitle(`Win Rate - ${label}${hasDateRange ? ` (${startDate || 'start'} through ${endDate || 'today and later'})` : ' (All dates)'}`);
-    setJobsListOpen(true);
-  };
 
   const totalSales = useSummary ? summary.totalSales : aggregatedProjects.reduce((sum, p) => sum + (p.sales ?? 0), 0);
   const totalApprovedChangeOrders = useSummary
@@ -188,7 +160,6 @@ function DashboardContent() {
       : `${customerName} - All Jobs`;
 
     setJobsListData(filtered);
-    setJobsListDateField(undefined);
     setJobsListTitle(title);
     setJobsListOpen(true);
   };
@@ -508,7 +479,7 @@ function DashboardContent() {
               max={endDate || undefined}
               aria-invalid={Boolean(dateRangeError)}
               aria-describedby="dashboard-date-help"
-              onChange={(e) => setStartDate(e.target.value)}
+              onChange={(e) => { setStartDate(e.target.value); setWinRateBreakdown(null); }}
               className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-teal-500/20 transition-all"
             />
           </label>
@@ -520,7 +491,7 @@ function DashboardContent() {
               min={startDate || undefined}
               aria-invalid={Boolean(dateRangeError)}
               aria-describedby="dashboard-date-help"
-              onChange={(e) => setEndDate(e.target.value)}
+              onChange={(e) => { setEndDate(e.target.value); setWinRateBreakdown(null); }}
               className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-teal-500/20 transition-all"
             />
           </label>
@@ -529,6 +500,7 @@ function DashboardContent() {
               onClick={() => {
                 setStartDate("");
                 setEndDate("");
+                setWinRateBreakdown(null);
               }}
               className="bg-orange-600 hover:bg-orange-700 text-white text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-lg shadow-sm transition-all"
             >
@@ -543,7 +515,7 @@ function DashboardContent() {
         )}
         <p id="dashboard-date-help" className="w-full text-xs text-gray-500">
           Latest Procore project or estimate update, falling back to creation. Both dates are inclusive in Eastern time; sync times are not project dates.
-          {' '}Win Rate separately filters wins by Contract Date and bids by Bid Board Created Date.
+          {' '}Win Rate separately filters wins by Contract Date and bids by their retained original Created Date, including saved old-instance history.
         </p>
         {hasDateRange && !dateRangeError && !loading && !loadError && missingSourceDates > 0 && (
           <p role="status" className="w-full text-xs text-orange-700">
@@ -597,13 +569,16 @@ function DashboardContent() {
               : winRateNeedsDates ? 'Needs dates' : periodWinRate ? 'No bids in period' : 'Unavailable'}
           </div>
           {periodWinRate && <div className="mt-2 text-xs font-bold text-teal-800">
-            <button type="button" className="underline" onClick={() => void openWinRateJobs('won')}>{periodWinRate.won} won</button>
+            <button type="button" className="underline" onClick={() => setWinRateBreakdown('won')}>{periodWinRate.won} won</button>
             {' / '}
-            <button type="button" className="underline" onClick={() => void openWinRateJobs('bid')}>{periodWinRate.bid} bid</button>
+            <button type="button" className="underline" onClick={() => setWinRateBreakdown('bid')}>{periodWinRate.bid} bid</button>
           </div>}
-          <p className="mt-2 text-[10px] text-gray-500">Won: Contract Date. Bid: Created Date, not a recorded submission timestamp. Includes later-won bids.</p>
-          {winRateNeedsDates && periodWinRate && <button type="button" className="mt-2 text-[10px] font-semibold text-orange-700 underline" onClick={() => void openWinRateJobs('missing')}>
-            Review {periodWinRate.missingWonDateIds.length} missing Contract Dates / {periodWinRate.missingBidDateIds.length} missing Created Dates
+          <p className="mt-2 text-[10px] text-gray-500">Won: Contract Date. Bid: original Created Date, not a submission timestamp. Saved history and migration copies count once per reporting project.</p>
+          {!periodWinRate && <p role="status" className="mt-2 text-[10px] text-orange-700">
+            Saved bid history is unavailable. <button type="button" className="underline" onClick={() => void refreshData()}>Retry win rate</button>
+          </p>}
+          {winRateNeedsDates && periodWinRate && <button type="button" className="mt-2 text-[10px] font-semibold text-orange-700 underline" onClick={() => setWinRateBreakdown('missing')}>
+            Review {periodWinRate.missingWonDateIds.length} Contract Dates / {periodWinRate.missingBidDateIds.length} Created Dates
           </button>}
         </section>
       </div>
@@ -703,7 +678,6 @@ function DashboardContent() {
                             setJobsListData(group);
                           }
                           setJobsListTitle(`${status} Projects`);
-                          setJobsListDateField(undefined);
                           setJobsListOpen(true);
                         }}
                         className="text-lg font-black text-orange-600 hover:text-orange-700 hover:scale-105 transition-all outline-none"
@@ -916,12 +890,19 @@ function DashboardContent() {
       </>}
 
       {/* Drill-through Modals */}
+      {winRateBreakdown && periodWinRate && summary?.winRateHistory && <WinRateBreakdown
+        kind={winRateBreakdown}
+        report={periodWinRate}
+        history={summary.winRateHistory}
+        startDate={startDate}
+        endDate={endDate}
+        onClose={() => setWinRateBreakdown(null)}
+      />}
       <JobsListModal
         isOpen={jobsListOpen}
         onClose={() => setJobsListOpen(false)}
         projects={jobsListData}
         title={jobsListTitle}
-        dateField={jobsListDateField}
         onSelectProject={(project) => {
           setSelectedJob(project);
           setJobsListOpen(false);

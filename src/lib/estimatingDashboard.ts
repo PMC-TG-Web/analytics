@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getCachedValue, setCachedValue } from "@/lib/serverReadCache";
 import { estimateSalesByGroup, reconcileEstimateGroupSales } from "@/lib/estimatingGroupSales";
 import { estimatingDashboardSourceDates } from "@/lib/estimatingDashboardDates";
-import { calculateDashboardWinRate, type DashboardWinRate } from "@/lib/dashboardWinRate";
+import { calculateDashboardWinRate, type DashboardWinRate, type DashboardWinRateHistory } from "@/lib/dashboardWinRate";
 import { loadFinancialWipSoldDates } from "@/lib/loadFinancialSoldDates";
 import {
   addEstimateLineAmounts,
@@ -161,7 +161,8 @@ export type EstimatingDashboardProject = {
 };
 
 type DashboardSummary = {
-  winRate: DashboardWinRate;
+  winRate: DashboardWinRate | null;
+  winRateHistory: DashboardWinRateHistory | null;
   totalSales: number;
   totalApprovedChangeOrders: number;
   totalApprovedChangeOrderHours: number;
@@ -574,9 +575,13 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
   return projects;
 }
 
-export function buildEstimatingDashboardSummary(projects: EstimatingDashboardProject[]): DashboardSummary {
+export function buildEstimatingDashboardSummary(
+  projects: EstimatingDashboardProject[],
+  winRateHistory: DashboardWinRateHistory | null = null,
+): DashboardSummary {
   const summary: DashboardSummary = {
-    winRate: calculateDashboardWinRate(projects),
+    winRate: winRateHistory ? calculateDashboardWinRate(winRateHistory.projects) : null,
+    winRateHistory,
     totalSales: 0,
     totalApprovedChangeOrders: 0,
     totalApprovedChangeOrderHours: 0,

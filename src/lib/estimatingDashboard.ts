@@ -2,6 +2,7 @@ import { PrismaClient, type Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getCachedValue, setCachedValue } from "@/lib/serverReadCache";
 import { estimateSalesByGroup, reconcileEstimateGroupSales } from "@/lib/estimatingGroupSales";
+import { estimatingDashboardSourceDates } from "@/lib/estimatingDashboardDates";
 import {
   addEstimateLineAmounts,
   aggregateApprovedChangeOrders,
@@ -205,17 +206,6 @@ function recordValue(value: unknown): Record<string, unknown> {
 
 function clean(value: unknown): string {
   return String(value ?? "").trim();
-}
-
-function newestDate(...values: unknown[]): string | null {
-  let newest: Date | null = null;
-  for (const value of values) {
-    if (!value) continue;
-    const parsed = new Date(value as string | number | Date);
-    if (Number.isNaN(parsed.getTime())) continue;
-    if (!newest || parsed > newest) newest = parsed;
-  }
-  return newest?.toISOString() ?? null;
 }
 
 function isExcludedProject(project: EstimatingDashboardProject): boolean {
@@ -526,8 +516,7 @@ export async function loadEstimatingDashboardProjects(options: { force?: boolean
       cogsByGroup: totals.cogsByGroup,
       pmcBreakdown: totals.laborByGroup,
       concreteGroup: totals.concreteByGroup,
-      dateCreated: newestDate(payload.created_on, board.createdAt),
-      dateUpdated: newestDate(payload.updated_at, selected?.sourceUpdatedAt, board.syncedAt, board.updatedAt),
+      ...estimatingDashboardSourceDates(payload, selected?.sourceUpdatedAt),
       estimator: estimatorByUserId.get(clean(payload.estimator_user_id)) || linked?.estimator || null,
       projectManager: linked?.projectManager ?? null,
       projectStage: clean(board.status || linked?.bidBoardStatus || linked?.status) || null,

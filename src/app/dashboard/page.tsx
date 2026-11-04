@@ -4,8 +4,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { JobsListModal } from "./components/JobsListModal";
 import { JobDetailsModal } from "./components/JobDetailsModal";
 import { getAllProjectsForDashboard, getDashboardSummary, type Project, type DashboardSummary } from "./projectQueries";
+import { dashboardDateRangeError, dashboardProjectDateKey, filterDashboardProjectDates } from "@/lib/estimatingDashboardDates";
 import { 
-  getProjectDate, 
   getProjectKey,
   isExcludedFromDashboard
 } from "@/utils/projectUtils";
@@ -23,6 +23,8 @@ function DashboardContent() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [loadRetry, setLoadRetry] = useState(0);
   const [isFullScan, setIsFullScan] = useState(false);
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
@@ -32,82 +34,69 @@ function DashboardContent() {
   const [jobsListData, setJobsListData] = useState<Project[]>([]);
   const [jobsListTitle, setJobsListTitle] = useState("");
   const [topContractorLimit, setTopContractorLimit] = useState<string>("10");
+  const hasDateRange = Boolean(startDate || endDate);
+  const dateRangeError = dashboardDateRangeError(startDate, endDate);
 
   const refreshData = async () => {
     setLoading(true);
-    
-    // Force a full scan to get fresh data from database
-    const data = await getAllProjectsForDashboard();
-    setProjects(data);
-    setIsFullScan(true);
-    
-    // Also reload the summary in the background (for when we go back to no filters)
-    const summaryData = await getDashboardSummary();
-    if (summaryData) {
-      setSummary(summaryData);
+    setLoadError("");
+    try {
+      const data = await getAllProjectsForDashboard();
+      setProjects(data);
+      setIsFullScan(true);
+      const summaryData = await getDashboardSummary();
+      if (summaryData) setSummary(summaryData);
+    } catch (error) {
+      console.error("[Dashboard] Refresh failed", error);
+      setLoadError("Could not load dashboard projects. Please retry.");
+    } finally {
+      setLoading(false);
     }
-    
-    setLoading(false);
   };
 
   useEffect(() => {
+    let cancelled = false;
+    if (isFullScan || (summary && !hasDateRange)) {
+      setLoading(false);
+      setLoadError("");
+      return;
+    }
     async function fetchData() {
-      // First try to get the summary (extremely fast)
-      const summaryData = await getDashboardSummary();
-      if (summaryData) {
-        setSummary(summaryData);
-        setLoading(false);
-      }
-      
-      // We only perform the full scan if summary doesn't exist or if needed later
-      if (!summaryData) {
-        const data = await getAllProjectsForDashboard();
-        setProjects(data);
-        setIsFullScan(true);
-        setLoading(false);
-      }
-    }
-    fetchData();
-  }, []);
-
-  // Effect to handle full scan when date range is applied
-  useEffect(() => {
-    if ((startDate || endDate) && !isFullScan) {
       setLoading(true);
-      getAllProjectsForDashboard().then(data => {
+      setLoadError("");
+      try {
+        if (!summary && !hasDateRange) {
+          const summaryData = await getDashboardSummary();
+          if (cancelled) return;
+          if (summaryData) {
+            setSummary(summaryData);
+            return;
+          }
+        }
+        const data = await getAllProjectsForDashboard();
+        if (cancelled) return;
         setProjects(data);
         setIsFullScan(true);
-        setLoading(false);
-      });
+      } catch (error) {
+        if (!cancelled) {
+          console.error("[Dashboard] Project load failed", error);
+          setLoadError("Could not load dashboard projects. Please retry.");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }
-  }, [startDate, endDate, isFullScan]);
+    void fetchData();
+    return () => { cancelled = true; };
+  }, [hasDateRange, isFullScan, summary, loadRetry]);
 
   const filteredProjects = useMemo(() => {
-    if (!isFullScan && !startDate && !endDate) return [];
-    return projects.filter(p => {
-      // Apply centralized dashboard exclusions
-      if (isExcludedFromDashboard(p)) return false;
-
-      // Apply date range filter
-      if (startDate || endDate) {
-        const projectDate = getProjectDate(p);
-        if (!projectDate) return false;
-        
-        if (startDate) {
-          const start = new Date(startDate);
-          start.setHours(0, 0, 0, 0);
-          if (projectDate < start) return false;
-        }
-        
-        if (endDate) {
-          const end = new Date(endDate);
-          end.setHours(23, 59, 59, 999);
-          if (projectDate > end) return false;
-        }
-      }
-      return true;
-    });
-  }, [projects, isFullScan, startDate, endDate]);
+    if (!isFullScan || dateRangeError) return [];
+    return filterDashboardProjectDates(projects.filter(p => !isExcludedFromDashboard(p)), startDate, endDate);
+  }, [projects, isFullScan, startDate, endDate, dateRangeError]);
+  const missingSourceDates = useMemo(() => projects.filter(
+    project => !isExcludedFromDashboard(project) && !dashboardProjectDateKey(project),
+  ).length, [projects]);
 
   // Each row is one current Procore Bid Board project. Do not collapse rows by
   // project name: Procore counts every Bid Board record in its status totals.
@@ -388,18 +377,6 @@ function DashboardContent() {
     return { totalHours, breakdown };
   }, [displayStatusGroups]);
 
-  // Calculate ALL PMC Group hours (from projects with pmcBreakdown)
-  if (loading) {
-    return (
-      <main className="p-8 bg-gray-900 min-h-screen text-gray-200">
-        <div className="flex items-center gap-3">
-          <div className="w-5 h-5 border-2 border-teal-500 border-t-transparent rounded-full animate-spin"></div>
-          <span className="font-medium italic">Loading dashboard data...</span>
-        </div>
-      </main>
-    );
-  }
-
   const getUniqueProjectCount = (statusKey: string) => {
     if (useSummary && summary) {
       return summary.statusGroups[statusKey]?.count || 0;
@@ -411,11 +388,26 @@ function DashboardContent() {
   const totalBids = getUniqueProjectCount('Bid Submitted') + getUniqueProjectCount('Lost');
   const winRate = totalBids > 0 ? (wonProjects / totalBids) * 100 : 0;
 
-  const handleExportCSV = () => {
-    // Collect projects to export - prefer the full list if available
-    const dataToExport = projects.length > 0 ? projects : (dedupedByCustomer || []);
+  const handleExportCSV = async () => {
+    let dataToExport = aggregatedProjects;
+    if (useSummary) {
+      setLoading(true);
+      setLoadError("");
+      try {
+        const data = await getAllProjectsForDashboard();
+        setProjects(data);
+        setIsFullScan(true);
+        dataToExport = data.filter(project => !isExcludedFromDashboard(project));
+      } catch (error) {
+        console.error("[Dashboard] Export load failed", error);
+        setLoadError("Could not load dashboard projects for export. Please retry.");
+        return;
+      } finally {
+        setLoading(false);
+      }
+    }
     if (dataToExport.length === 0) {
-      alert("No data available to export. Try applying a date range to trigger a full scan.");
+      alert("No projects match the current date range.");
       return;
     }
 
@@ -451,6 +443,7 @@ function DashboardContent() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -463,6 +456,7 @@ function DashboardContent() {
           </p>
           <button 
             onClick={handleExportCSV}
+            disabled={loading || Boolean(loadError) || Boolean(dateRangeError)}
             className="mt-2 text-xs bg-teal-600 hover:bg-teal-700 text-white font-bold py-1 px-3 rounded shadow transition-colors flex items-center gap-1"
           >
             <span>v</span> Export Projects to CSV
@@ -479,6 +473,9 @@ function DashboardContent() {
             <input
               type="date"
               value={startDate}
+              max={endDate || undefined}
+              aria-invalid={Boolean(dateRangeError)}
+              aria-describedby="dashboard-date-help"
               onChange={(e) => setStartDate(e.target.value)}
               className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-teal-500/20 transition-all"
             />
@@ -488,6 +485,9 @@ function DashboardContent() {
             <input
               type="date"
               value={endDate}
+              min={startDate || undefined}
+              aria-invalid={Boolean(dateRangeError)}
+              aria-describedby="dashboard-date-help"
               onChange={(e) => setEndDate(e.target.value)}
               className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-teal-500/20 transition-all"
             />
@@ -504,13 +504,31 @@ function DashboardContent() {
             </button>
           )}
         </div>
-        {(startDate || endDate) && (
+        {hasDateRange && !dateRangeError && !loading && !loadError && (
           <div className="ml-auto bg-orange-50 text-orange-700 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border border-orange-100 italic">
-            {Array.from(new Set(aggregatedProjects.map(p => getProjectKey(p)))).length} active projects in range
+            {aggregatedProjects.length} active projects in range
           </div>
         )}
+        <p id="dashboard-date-help" className="w-full text-xs text-gray-500">
+          Latest Procore project or estimate update, falling back to creation. Both dates are inclusive in Eastern time; sync times are not project dates.
+        </p>
+        {hasDateRange && !dateRangeError && !loading && !loadError && missingSourceDates > 0 && (
+          <p role="status" className="w-full text-xs text-orange-700">
+            {missingSourceDates} projects have no valid Procore dates and are excluded from this range.
+          </p>
+        )}
       </div>
-      
+
+      {dateRangeError ? <p role="alert" className="mb-8 text-sm font-semibold text-red-700">{dateRangeError}</p>
+        : loadError ? <div role="alert" className="mb-8 text-sm text-red-700">
+          {loadError} <button type="button" className="font-bold underline" onClick={() => {
+            setIsFullScan(false);
+            setSummary(null);
+            setLoadRetry(value => value + 1);
+          }}>Retry</button>
+        </div>
+        : loading ? <p role="status" className="mb-8 text-sm text-teal-800">Loading dashboard data...</p>
+        : <>
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-4 mb-12">
         <SummaryCard label="Sales" value={totalSales} prefix="$" large />
         <div className="flex w-full flex-col items-center justify-center rounded-3xl border border-gray-100 bg-white p-4 text-center shadow-md transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
@@ -833,13 +851,7 @@ function DashboardContent() {
           Total Project Count: {
             useSummary ? 
             (getUniqueProjectCount('Bid Submitted') + getUniqueProjectCount('In Progress') + getUniqueProjectCount('Accepted')) : 
-            Array.from(
-              new Set(
-                aggregatedProjects
-                  .filter(p => ['Bid Submitted', 'In Progress', 'Accepted'].includes(p.status || ''))
-                  .map(p => getProjectKey(p))
-              )
-            ).length
+            aggregatedProjects.filter(p => ['Bid Submitted', 'In Progress', 'Accepted'].includes(p.status || '')).length
           }
         </div>
       </div>
@@ -852,6 +864,7 @@ function DashboardContent() {
         topContractorLimit={topContractorLimit}
         setTopContractorLimit={setTopContractorLimit}
       />
+      </>}
 
       {/* Drill-through Modals */}
       <JobsListModal
@@ -878,4 +891,3 @@ function DashboardContent() {
     </main>
   );
 }
-

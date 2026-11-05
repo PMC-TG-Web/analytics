@@ -51,6 +51,7 @@ export const PATH_PERMISSION_RULES = [
   { prefix: '/analytics', permission: 'analytics' },
   { prefix: '/accounting/direct-cost-bills', permission: 'accounting-direct-cost-bills' },
   { prefix: '/accounting/project-profitability', permission: 'accounting-project-profitability' },
+  { prefix: '/accounting/open-ar', permission: 'accounting-open-ar' },
   // Help guides use the permission of the page they describe; /help itself is open to any signed-in user.
   { prefix: '/help/home', permission: 'home' },
   { prefix: '/help/my-work', permission: 'pm-dashboard' },
@@ -63,6 +64,7 @@ export const PATH_PERMISSION_RULES = [
   { prefix: '/help/financial-wip', permission: 'analytics' },
   { prefix: '/help/cost-code-profitability', permission: 'analytics-cost-code-sales' },
   { prefix: '/help/qbo-project-profitability', permission: 'accounting-project-profitability' },
+  { prefix: '/help/qbo-open-ar', permission: 'accounting-open-ar' },
   { prefix: '/help/qbo-direct-costs', permission: 'accounting-direct-cost-bills' },
   { prefix: '/help/analytics', permission: 'analytics' },
   { prefix: '/help/field-productivity', permission: 'analytics' },
@@ -98,6 +100,7 @@ const API_PERMISSION_RULES = [
   { prefix: '/api/admin', permission: 'admin' },
   { prefix: '/api/accounting/direct-cost-bills', permission: 'accounting-direct-cost-bills' },
   { prefix: '/api/accounting/project-profitability', permission: 'accounting-project-profitability' },
+  { prefix: '/api/accounting/open-ar', permission: 'accounting-open-ar' },
   { prefix: '/api/analytics/cost-code-sales', permission: 'analytics-cost-code-sales' },
   { prefix: '/api/analytics', permission: 'analytics' },
   { prefix: '/api/cron/sync/logs', permission: 'admin' },

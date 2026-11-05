@@ -15,7 +15,7 @@ registerHooks({ resolve(specifier, context, next) {
   if (specifier === './prisma' && context.parentURL?.endsWith('/qboBillRelay.ts')) return next('data:text/javascript,export const prisma=globalThis.__qboRelayTestDb;', context);
   return next(specifier, context);
 } });
-const { requestQboBillRelay } = await import('../src/lib/qboBillRelay.ts');
+const { requestQboBillRelay, enqueueQboBillRelay } = await import('../src/lib/qboBillRelay.ts');
 
 test('relay requires a live host for the exact company and never queues an offline write', async () => {
   const request = { operation: 'post', companyId: '2' };
@@ -35,7 +35,7 @@ test('relay returns the worker result or explicit failure and records expiry', a
   await assert.rejects(requestQboBillRelay({ operation: 'post', companyId: '2' }), /Reopen/);
   state.error = null;
   state.result = { complete: false, remaining: 2 };
-  for (const operation of ['setup-options', 'setup', 'reconcile-preview', 'reconcile-confirm']) {
+  for (const operation of ['open-ar', 'setup-options', 'setup', 'reconcile-preview', 'reconcile-confirm']) {
     assert.equal((await requestQboBillRelay({ operation, companyId: '2' })).remaining, 2);
     assert.equal(state.created.at(-1).operation, operation);
   }
@@ -50,5 +50,14 @@ test('short worklist deadlines apply only to status/catalog reads, never financi
     const ttl = state.created.at(-1).expiresAt.getTime() - before;
     const expected = ['status', 'catalog'].includes(operation) ? 8000 : 50000;
     assert.ok(ttl >= expected && ttl < expected + 500, `${operation} TTL ${ttl}`);
+  }
+});
+test('durable A/R reads allow five minutes while financial jobs keep their existing deadline', async () => {
+  state.host = { companyId: '2', updatedAt: new Date() };
+  for (const [operation, maximum] of [['open-ar', 300000], ['post', 50000]]) {
+    const before = Date.now();
+    const job = await enqueueQboBillRelay({ operation, companyId: '2' }, 300000);
+    assert.ok(job.expiresAt.getTime() >= before + maximum);
+    assert.ok(job.expiresAt.getTime() < before + maximum + 1000);
   }
 });

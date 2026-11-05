@@ -12,6 +12,7 @@ export const PERMISSION_LABELS: Record<string, string> = {
   analytics: 'Analytics', 'billing-analytics': 'Billing Analytics',
   'analytics-cost-code-sales': 'Cost Code P&L', 'accounting-project-profitability': 'QBO P&L',
   'accounting-direct-cost-bills': 'QBO Direct Costs', reporting: 'Reporting', onboarding: 'Onboarding',
+  'accounting-open-ar': 'Open A/R',
   handbook: 'Handbook', 'kpi-cards-management': 'Manage KPI Cards',
   scheduling: 'Schedules: WIP Schedule', 'project-schedule': 'Schedules: Project Gantt',
   'long-term-schedule': 'Schedules: Long-Term', 'concrete-orders-schedule': 'Schedules: Concrete Orders',

@@ -5,6 +5,7 @@ import { resolvePermissionForPath } from './permissionRoutes.js';
 
 export const LEGACY_PERMISSION_FALLBACKS = {
   'accounting-project-profitability': 'admin', 'accounting-direct-cost-bills': 'admin',
+  'accounting-open-ar': 'admin',
   'analytics-cost-code-sales': 'analytics', 'procore-timecards': 'procore',
   'procore-line-items': 'procore', 'procore-commitments': 'procore', 'procore-scope-map': 'procore',
 };
@@ -18,6 +19,7 @@ export const FEATURE_PAGES = {
   'analytics-cost-code-sales': '/analytics/cost-code-sales',
   'accounting-project-profitability': '/accounting/project-profitability',
   'accounting-direct-cost-bills': '/accounting/direct-cost-bills',
+  'accounting-open-ar': '/accounting/open-ar',
   reporting: '/reporting', onboarding: '/onboarding/submissions', handbook: '/employees/handbook',
   'kpi-cards-management': '/kpi-cards-management', 'procore-timecards': '/procore/timecard-entries',
   'procore-line-items': '/procore/proposal-line-items-live', 'procore-commitments': '/procore/commitments-live',
@@ -107,6 +109,7 @@ export function updateIndependentPagePermission(assigned, path, enabled) {
 // API consumers are reviewed explicitly; discovery never infers or grants API access.
 // Shared endpoints accept any authorized consuming page, without unlocking sibling pages.
 const API_PAGE_RULES = [
+  ['/api/accounting/open-ar', ['/accounting/open-ar']],
   ['/api/reporting/hours', ['/reporting/hours']],
   ['/api/health', ['/diagnostics']],
   ['/api/debug/cookies', ['/debug-cookies']],

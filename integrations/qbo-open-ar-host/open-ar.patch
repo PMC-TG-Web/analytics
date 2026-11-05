@@ -1,0 +1,124 @@
+diff --git a/src/direct-cost-bill-service.js b/src/direct-cost-bill-service.js
+index e106f2e61..ff3ee1d52 100644
+--- a/src/direct-cost-bill-service.js
++++ b/src/direct-cost-bill-service.js
+@@ -4,6 +4,7 @@ import { mergeQboBill, applyQboPrices, applySavedQboDescriptions, billContentFin
+ import { applyScreedingClasses } from './screeding-classes.js';
+ import { readdir, readFile } from 'node:fs/promises';
+ import path from 'node:path';
++import { pathToFileURL } from 'node:url';
+ import { createHash } from 'node:crypto';
+ import { buildDirectCostBill, validateBillReferences } from './direct-cost-bill.js';
+ import { reserveProjectBillNumber, readProjectBillNumber, formatProjectBillNumber } from './bill-number-sequence.js';
+@@ -24,6 +25,12 @@ export function createDirectCostBillService({ directory, environment, realmId, c
+   };
+   async function handle({ operation, companyId: requestedCompany, projectId, month, draft, fingerprint, actor, customerId, otherCostsConfirmed, preserveAdditions }) {
+     if (requestedCompany !== companyId) throw new Error('Requested Procore company is not configured on this service.');
++    if (operation === 'open-ar') {
++      const source = path.resolve(process.env.ANALYTICS_ROOT || '../analytics', 'src', 'lib', 'loadQboOpenArSource.ts');
++      const { loadQboOpenArSource } = await import(pathToFileURL(source).href);
++      const { reader } = await connect();
++      return loadQboOpenArSource(reader, { companyId, environment, realmId }, now());
++    }
+     if (!['catalog', 'status', 'prepare', 'post', 'budget-plan', 'setup-options', 'setup', 'reconcile-preview', 'reconcile-confirm'].includes(operation) || !/^\d+$/.test(projectId || '') || !/^20\d{2}-(0[1-9]|1[0-2])$/.test(month || '')) throw new Error('Invalid monthly bill request.');
+     const base = { connected: false, customer: null, billNumber: null, billId: null, lastPosted: null, action: 'unavailable', issues: [], previousGross: null, products: {}, offsets: null, canPost: false, fingerprint: null };
+     const names = (await readdir(directory)).filter(n => n.endsWith('-mapping.json'));
+diff --git a/src/intuit-client.js b/src/intuit-client.js
+index 4fcd58419..97f7c3c2c 100644
+--- a/src/intuit-client.js
++++ b/src/intuit-client.js
+@@ -101,7 +101,7 @@ export class IntuitClient {
+     this.accessToken = accessToken;
+   }
+ 
+-  async request(path, { method = 'GET', body, headers = {} } = {}) {
++  async request(path, { method = 'GET', body, headers = {}, signal } = {}) {
+     const approvedMethod = assertReadOnlyMethod(method, 'QuickBooks');
+     const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
+       method: approvedMethod,
+@@ -112,6 +112,7 @@ export class IntuitClient {
+         ...headers,
+       },
+       body: serializeBody(body),
++      ...(signal ? { signal } : {}),
+     });
+ 
+     const responseBody = await parseResponseBody(response);
+@@ -140,11 +141,11 @@ export class IntuitClient {
+     return this.request(`/invoice/${encodeURIComponent(id)}`);
+   }
+ 
+-  query(queryText) {
+-    return this.request(`/query?query=${encodeURIComponent(queryText)}`);
++  query(queryText, { signal } = {}) {
++    return this.request(`/query?query=${encodeURIComponent(queryText)}`, { signal });
+   }
+ 
+-  getReport(reportName, parameters = {}) {
++  getReport(reportName, parameters = {}, { signal } = {}) {
+     if (!ALLOWED_REPORTS.has(reportName)) {
+       throw new Error('Only approved read-only QuickBooks reports may be requested.');
+     }
+@@ -157,7 +158,7 @@ export class IntuitClient {
+     }
+ 
+     const queryString = searchParams.toString();
+-    return this.request(`/reports/${reportName}${queryString ? `?${queryString}` : ''}`);
++    return this.request(`/reports/${reportName}${queryString ? `?${queryString}` : ''}`, { signal });
+   }
+ 
+   getBill(id) {
+diff --git a/test/open-ar.test.js b/test/open-ar.test.js
+new file mode 100644
+--- /dev/null
++++ b/test/open-ar.test.js
+@@ -0,0 +1,49 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { createDirectCostBillService } from '../src/direct-cost-bill-service.js';
++import { IntuitClient } from '../src/intuit-client.js';
++
++test('Open A/R validates company before connecting and uses only the reader with writes disabled', async () => {
++  let connections = 0;
++  const reader = {
++    async query(query) {
++      assert.match(query, /^select \* from (Invoice|Class|Customer|Payment|CreditMemo) /);
++      return { QueryResponse: {} };
++    },
++    async getReport(name) {
++      assert.equal(name, 'AgedReceivables');
++      return { Header: { Currency: 'USD', Option: [{ Name: 'report_date', Value: '2026-11-05' }, { Name: 'NoReportData', Value: 'true' }] } };
++    },
++  };
++  const service = createDirectCostBillService({
++    directory: 'must-not-be-read-for-ar', environment: 'production', realmId: '456', companyId: '123',
++    writesEnabled: false, now: () => new Date('2026-11-05T14:00:00Z'),
++    connect: async () => {
++      connections++;
++      return { reader, get writer() { throw new Error('Writer must never be accessed'); }, get productWriter() { throw new Error('Product writer must never be accessed'); } };
++    },
++  });
++
++  test('read-only report and query calls pass explicit abort signals without changing other callers', async () => {
++    const calls = [];
++    const client = new IntuitClient({ accessToken: 'test', realmId: '456', environment: 'sandbox', fetchImpl: async (url, options) => {
++      calls.push(options);
++      return new Response('{}', { headers: { 'Content-Type': 'application/json' } });
++    } });
++    const signal = AbortSignal.timeout(1000);
++    await client.query('select * from Invoice', { signal });
++    await client.getReport('AgedReceivables', {}, { signal });
++    await client.query('select * from Class');
++    assert.equal(calls[0].signal, signal); assert.equal(calls[1].signal, signal);
++    assert.equal(calls[2].signal, undefined);
++    assert.ok(calls.every(call => call.method === 'GET'));
++  });
++  await assert.rejects(service({ operation: 'open-ar', companyId: '999' }), /company/);
++  assert.equal(connections, 0);
++  const result = await service({ operation: 'open-ar', companyId: '123' });
++  assert.equal(connections, 1);
++  assert.equal(result.companyId, '123');
++  assert.equal(result.realmId, '456');
++  assert.deepEqual(result.invoices, []);
++  assert.equal(result.qboAging.total, 0);
++});

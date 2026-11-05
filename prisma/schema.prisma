@@ -146,6 +146,21 @@ datasource db {
   directUrl = env("DIRECT_DATABASE_URL")
 }
 
+model QboOpenArSnapshot {
+  id                String   @id @default(cuid())
+  companyId         String   @map("company_id")
+  realmId           String   @map("realm_id")
+  environment       String
+  sourceHash        String   @unique @map("source_hash")
+  sourceGeneratedAt DateTime @map("source_generated_at") @db.Timestamptz(6)
+  asOfDate          DateTime @map("as_of_date") @db.Date
+  payload           Json
+  importedAt        DateTime @default(now()) @map("imported_at") @db.Timestamptz(6)
+
+  @@index([companyId, sourceGeneratedAt(sort: Desc)])
+  @@map("qbo_open_ar_snapshots")
+}
+
 model QboProfitabilitySnapshot {
   id                String                       @id @default(cuid())
   sourceHash        String                       @unique @map("source_hash")

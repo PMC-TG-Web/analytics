@@ -1,6 +1,32 @@
 import { defineGuide } from './defineGuide.ts';
 
 export const reportGuides = [
+  defineGuide('qbo-open-ar', {
+    updated: '2026-11-05',
+    purpose: 'Review unpaid QuickBooks invoices in Current, 1-30, 31-60, 61-90 and 90+ day columns. Open A/R has an independent checkbox in employee Navigation Permissions and access templates. This report never creates or changes QBO accounting records.',
+    steps: [
+      { title: 'Refresh and check the date', body: 'Select Refresh from QBO to queue a read of the connected company through the shared QBO host. Keep the page open while it checks progress and saves the completed snapshot; reads can take several minutes. The host computer must be online. A pending refresh is reused on retry. Reload saved report reads the last saved database snapshot without contacting QBO. Check the Eastern as-of date and refresh timestamp before using the balances.' },
+      { title: 'Choose classes', body: 'Open Classes and check one or more classes. Exclude selected classes is the default; Only selected classes includes matching invoices instead. A selected parent includes its subclasses, including inactive classes. Unclassified matches invoices with an unclassified sales line. No selections means all invoices in either mode. Clear filters restores all invoices.' },
+      { title: 'Review and export', body: 'Search by customer/project, invoice number or QBO invoice ID. Totals and Download CSV include every matching invoice, not just the visible page. The CSV contains invoice-level balances and class names; it does not allocate unapplied payments or credits.' },
+    ],
+    data: [
+      'The authenticated host uses the QBO Invoice, Class, Customer, Payment and CreditMemo query APIs plus the A/R Aging Summary report. QBO customer and class IDs establish identity; names are display labels only. OAuth credentials stay on the QBO host.',
+      'A refresh saves an immutable PostgreSQL snapshot. Ordinary page reads and class filters do not call QBO. A failed refresh retains the previous snapshot and displays an error. Historical as-of reconstruction and automatic scheduled refresh are not included.',
+      'The invoice table shows positive current invoice balances. Credits and unapplied payments remain separate and unfiltered, because they cannot be reliably assigned to the selected invoice classes. The QBO aging control includes other A/R entries and remains unfiltered.',
+    ],
+    terms: [
+      ['Aging', 'Days between the invoice due date and the Eastern snapshot date. Not yet due or due today is Current; 1-30, 31-60 and 61-90 include both endpoints. 90+ means more than 90 days (91 and older). Missing due dates appear in No due date rather than an invented aging bucket.'],
+      ['Class filter', 'Matches whole invoices, not dollars within a class. A mixed-class invoice is fully excluded if any line matches an excluded class, or fully included if any line matches an included class. The full remaining balance is used even when partially paid.'],
+      ['Open invoice subtotal', 'The sum of unpaid invoice balances after the active filters. This is not net A/R.'],
+      ['QBO net A/R - all classes', 'The unfiltered QBO aging control total. All open invoices less unapplied payments and remaining credits are compared with this total. A difference is displayed for review, never hidden or forced to zero.'],
+    ],
+    example: 'An invoice with $800 in Concrete and $200 in Screeding and a $400 unpaid balance appears as $400. Excluding Screeding removes the entire invoice, not an estimated $80 share. A separate retainage-only invoice can be excluded by selecting its retainage class.',
+    checks: [
+      'If a class filter removes more than expected, inspect the mixed-class warning and clear the filters. Do not interpret the result as a line-level class allocation.',
+      'If Refresh fails, confirm the shared QBO host is online and connected, then retry. The saved report remains usable with its original date, but is not current.',
+      'A reconciliation difference can reflect other A/R transactions or transactions edited while the APIs were being read. Refresh again and compare with QBO before using it as a control total. Invalid source amounts, incomplete responses, foreign-currency receivables and future-dated open transactions block a new snapshot.',
+    ],
+  }),
   defineGuide('all-hours', {
     updated: '2026-11-05',
     purpose: 'Review all saved timecard and productivity labor hours in one entry-level report. All Hours has its own checkbox in employee Navigation Permissions and access templates.',

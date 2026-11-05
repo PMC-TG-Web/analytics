@@ -49,6 +49,7 @@ export function isOpenPmChange(type: PmChangeType, status: unknown, payload?: Un
 
 export function buildProcoreChangeUrl(params: {
   type: PmChangeType;
+  companyId?: unknown;
   projectId: unknown;
   sourceId: unknown;
   contractId?: unknown;
@@ -69,11 +70,15 @@ export function buildProcoreChangeUrl(params: {
     return new URL(`${projectPath}/change_events/${encodeURIComponent(sourceId)}`, origin).toString();
   }
 
+  const companyId = text(params.companyId);
   const contractId = text(params.contractId);
-  if (!contractId) return null;
-  const collection = params.type === "pco" ? "potential_change_orders" : "change_order_packages";
+  if (!companyId || !contractId) return null;
+  // Procore's browser routes differ from its REST resource names. These are
+  // the destinations linked by the Change Orders tool, scoped to the prime.
+  const collection = params.type === "pco" ? "prime-change-orders" : "prime-change-order-batches";
   return new URL(
-    `${projectPath}/contracts/${encodeURIComponent(contractId)}/${collection}/${encodeURIComponent(sourceId)}`,
+    `/webclients/host/companies/${encodeURIComponent(companyId)}/projects/${encodeURIComponent(projectId)}`
+      + `/tools/contracts/prime_contracts/${encodeURIComponent(contractId)}/change_orders/${collection}/${encodeURIComponent(sourceId)}`,
     origin,
   ).toString();
 }

@@ -31,13 +31,26 @@ test('change cards resolve to exact Procore records', () => {
     'https://us02.procore.com/123/project/change_events/9',
   );
   assert.equal(
-    buildProcoreChangeUrl({ type: 'pco', projectId: 123, contractId: 55, sourceId: 10 }),
-    'https://us02.procore.com/123/project/contracts/55/potential_change_orders/10',
+    buildProcoreChangeUrl({ type: 'pco', companyId: 456, projectId: 123, contractId: 55, sourceId: 10 }),
+    'https://us02.procore.com/webclients/host/companies/456/projects/123/tools/contracts/prime_contracts/55/change_orders/prime-change-orders/10',
   );
   assert.equal(
-    buildProcoreChangeUrl({ type: 'pcco', projectId: 123, contractId: 55, sourceId: 11 }),
-    'https://us02.procore.com/123/project/contracts/55/change_order_packages/11',
+    buildProcoreChangeUrl({ type: 'pcco', companyId: 456, projectId: 123, contractId: 55, sourceId: 11 }),
+    'https://us02.procore.com/webclients/host/companies/456/projects/123/tools/contracts/prime_contracts/55/change_orders/prime-change-order-batches/11',
   );
+});
+
+test('change-order links require complete identity and retain the configured Procore region', () => {
+  for (const type of ['pco', 'pcco']) {
+    const identity = { type, companyId: 'company', projectId: 'project', contractId: 'prime', sourceId: 'change' };
+    for (const field of ['companyId', 'projectId', 'contractId', 'sourceId']) {
+      assert.equal(buildProcoreChangeUrl({ ...identity, [field]: ' ' }), null, `${type}: missing ${field}`);
+    }
+    assert.equal(new URL(buildProcoreChangeUrl({ ...identity, procoreWebOrigin: 'https://app.procore.com' })).origin, 'https://app.procore.com');
+    assert.equal(new URL(buildProcoreChangeUrl({ ...identity, procoreWebOrigin: 'https://procore.com.example.test' })).origin, 'https://us02.procore.com');
+  }
+  const sourceUrl = 'https://us02.procore.com/123/project/change_events/9';
+  assert.equal(buildProcoreChangeUrl({ type: 'change_event', projectId: 123, sourceId: 9, existingUrl: sourceUrl }), sourceUrl);
 });
 
 test('changes API reads synchronized mirrors and never calls Procore', () => {

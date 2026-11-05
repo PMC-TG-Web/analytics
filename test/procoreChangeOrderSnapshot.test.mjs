@@ -111,6 +111,7 @@ test('Open Changes excludes missing packages but keeps current same-title record
   }).outputText;
   const { isOpenPmChange, buildProcoreChangeUrl } = await import('../src/lib/pmDashboardChanges.ts');
   const now = new Date();
+  let scopedCompanyId;
   const packages = [null, null, now].map((missingFromSourceAt, index) => ({
     projectId: 'project', contractId: 'prime', packageId: String(index), title: 'Same work',
     status: 'pending', payload: {}, syncedAt: now, missingFromSourceAt,
@@ -122,8 +123,12 @@ test('Open Changes excludes missing packages but keeps current same-title record
     '@/lib/prisma': { prisma: {
       employee: { findFirst: async () => null }, pmcActionItem: { findMany: async () => [] },
       pmcProject: { findMany: async () => [{ procoreProjectId: 'project', projectName: 'Project' }] },
-      procorePotentialChangeOrder: { findMany: async () => [] },
+      procorePotentialChangeOrder: { findMany: async () => [{
+        projectId: 'project', contractId: 'prime', changeOrderId: 'potential', title: 'Same work',
+        status: 'pending', payload: {}, syncedAt: now,
+      }] },
       procoreChangeOrderPackage: { findMany: async ({ where }) => {
+        scopedCompanyId = where.companyId;
         assert.equal(where.missingFromSourceAt, null);
         assert.deepEqual(where.projectId.in, ['project']);
         return packages.filter(row => row.missingFromSourceAt === where.missingFromSourceAt);
@@ -135,5 +140,10 @@ test('Open Changes excludes missing packages but keeps current same-title record
   const response = await module.exports.GET({});
   assert.equal(response.status, 200);
   assert.match(response.headers.get('cache-control'), /no-store/);
-  assert.deepEqual((await response.json()).items.map(item => item.sourceId), ['0', '1']);
+  const { items } = await response.json();
+  assert.deepEqual(items.map(item => item.sourceId), ['0', '1', 'potential']);
+  const base = `https://us02.procore.com/webclients/host/companies/${scopedCompanyId}/projects/project/tools/contracts/prime_contracts/prime/change_orders`;
+  assert.deepEqual(items.map(item => item.sourceUrl), [
+    `${base}/prime-change-order-batches/0`, `${base}/prime-change-order-batches/1`, `${base}/prime-change-orders/potential`,
+  ]);
 });

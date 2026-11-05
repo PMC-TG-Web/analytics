@@ -125,6 +125,7 @@ export async function GET(request: NextRequest) {
         updatedAt: (item.sourceUpdatedAt || item.syncedAt).toISOString(),
         sourceUrl: buildProcoreChangeUrl({
           type: "pco",
+          companyId,
           projectId: item.projectId,
           sourceId: item.changeOrderId,
           contractId: item.contractId,
@@ -148,6 +149,7 @@ export async function GET(request: NextRequest) {
         updatedAt: (item.sourceUpdatedAt || item.syncedAt).toISOString(),
         sourceUrl: buildProcoreChangeUrl({
           type: "pcco",
+          companyId,
           projectId: item.projectId,
           sourceId: item.packageId,
           contractId: item.contractId,

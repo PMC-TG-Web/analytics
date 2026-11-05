@@ -54,8 +54,10 @@ function EntryTable({ entries, review = false, filterRow }: { entries: HourEntry
       <td className="px-4 py-3"><span className={`inline-block rounded-full px-2 py-1 text-xs font-semibold ${row.source === 'Timecard' ? 'bg-blue-50 text-blue-800' : 'bg-teal-50 text-teal-800'}`}>{row.source}</span><p className="mt-1 text-xs text-slate-500">{row.laborType}</p></td>
       <td className="min-w-44 px-4 py-3"><p className="font-medium">{row.projectName}</p><p className="mt-1 text-xs text-slate-500">{row.projectNumber || row.projectId || 'Unassigned'}</p></td>
       <td className="min-w-60 max-w-md whitespace-pre-wrap break-words px-4 py-3"><p className="font-medium">{row.description || 'No description'}</p>
+        {row.source === 'Timecard' && row.laborType === 'Subcontractor' && row.worker && row.worker !== row.description && <p className="mt-1 text-xs text-slate-500">Worker: {row.worker}</p>}
+        {row.costCodeDescription && row.costCodeDescription !== row.description && <p className="mt-1 text-xs text-slate-500">Work: {row.costCodeDescription}</p>}
         {row.logDescription && row.logDescription !== row.description && <p className="mt-1 text-xs text-slate-500">Daily log: {row.logDescription}</p>}
-        {row.notes && <p className="mt-1 text-slate-600">{row.notes}</p>}{row.note && <p className="mt-1 text-xs text-amber-800">{row.note}</p>}
+        {row.notes && row.notes !== row.description && <p className="mt-1 text-slate-600">{row.notes}</p>}{row.note && <p className="mt-1 text-xs text-amber-800">{row.note}</p>}
       </td>
       <td className="px-4 py-3">{row.worker || '—'}</td><td className="whitespace-nowrap px-4 py-3">{row.costCode || 'Unassigned'}</td>
       <td className="whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums">{review ? `${row.quantity == null ? 'Unknown' : number(row.quantity)} ${row.unit}` : number(row.hours!)}</td>
@@ -135,6 +137,7 @@ export default function HoursReportPage() {
           <div className="flex flex-wrap gap-2"><button onClick={() => { setFilters(emptyHoursFilters); setPage(0); }} disabled={!hasColumnFilters} className={button}>Clear column filters</button><button onClick={() => download(entries, 'all-hours')} disabled={changed || !entries.length} className={button}>Download CSV</button></div>
         </div>
         <p className="border-b border-slate-200 px-5 py-3 text-xs text-slate-600">Combine filters across columns. Choose Contains or Does not contain for text filters. Matching ignores case; blank fields include all values in either mode. Filters update totals and every matching CSV row immediately, across all pages. Scroll sideways to reach every column on smaller screens.</p>
+        <p className="border-b border-slate-200 px-5 py-3 text-xs text-slate-600">Subcontractor descriptions follow Billing Analytics: Sub Contractor timecards and Subcontractor Hours productivity. Search <strong>subcontractor</strong> in Description / notes to include or exclude both, including named subcontractor timecard descriptions. Original work descriptions remain searchable.</p>
         {filterError && <p role="alert" className="border-b border-red-200 bg-red-50 px-5 py-3 text-sm text-red-800">{filterError}</p>}
         <EntryTable entries={entries.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)} filterRow={<ColumnFilters filters={filters} projects={projects} onChange={changeFilter} />} />
         {!entries.length && !filterError && <p className="p-8 text-center text-slate-500">No hours match these filters.</p>}

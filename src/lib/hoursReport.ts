@@ -4,6 +4,7 @@ export type HourEntry = {
   key: string; sourceId: string; projectId: string; projectName: string; projectNumber: string;
   source: 'Timecard' | 'Productivity'; date: string; description: string; logDescription: string;
   notes: string; worker: string; costCode: string; status: string; hours: number | null;
+  costCodeDescription: string;
   quantity: number | null; unit: string; laborType: string; note: string;
 };
 export type HoursReport = UsagePeriod & {
@@ -44,7 +45,12 @@ export function buildHoursReport(companyId: string, period: UsagePeriod, project
       sourceId: row.sourceId || row.id, projectId: row.projectId || '',
       projectName: project?.projectName || (row.projectId ? `Project ${row.projectId}` : 'Missing project ID'),
       projectNumber: project?.projectNumber || '', source: row.source === 'Timecard' ? 'Timecard' : 'Productivity',
-      date: row.date, description: row.description?.trim() || '', logDescription: row.logDescription?.trim() || '',
+      // Billing Analytics shows the entered timecard description, falling back to
+      // the Sub Contractor worker. Retain the work/cost-code description separately.
+      date: row.date, description: row.source === 'Timecard' && classification.subcontractor
+        ? row.notes?.trim() || row.worker?.trim() || '' : row.description?.trim() || '',
+      costCodeDescription: row.source === 'Timecard' ? row.description?.trim() || '' : '',
+      logDescription: row.logDescription?.trim() || '',
       notes: row.notes?.trim() || '', worker: row.worker?.trim() || '', costCode: row.costCode?.trim() || '',
       status: row.status?.trim() || 'Not recorded', hours: classification.kind === 'labor' ? quantity : null,
       quantity, unit: row.uom || '', laborType: classification.subcontractor ? 'Subcontractor' : 'Field labor', note: classification.note,
@@ -71,12 +77,13 @@ export function hoursFilterError(filters: HoursFilters): string {
 export function filterHourEntries(entries: HourEntry[], filters: HoursFilters): HourEntry[] {
   if (hoursFilterError(filters)) return [];
   const normalize = (value: string) => value.trim().normalize('NFKC').toLowerCase();
-  const matchesText = (values: string[], query: string, mode: HoursTextMatch) => {
+  const normalizeDescription = (value: string) => normalize(value).replace(/\bsub[\s_-]*contractors?\b/g, 'subcontractor');
+  const matchesText = (values: string[], query: string, mode: HoursTextMatch, normalizer = normalize) => {
     if (!query) return true;
-    const found = values.some(value => normalize(value).includes(query));
+    const found = values.some(value => normalizer(value).includes(query));
     return mode === 'not-contains' ? !found : found;
   };
-  const description = normalize(filters.description);
+  const description = normalizeDescription(filters.description);
   const worker = normalize(filters.worker);
   const costCode = normalize(filters.costCode);
   const status = normalize(filters.status);
@@ -85,7 +92,8 @@ export function filterHourEntries(entries: HourEntry[], filters: HoursFilters): 
   return entries.filter(row => (!filters.projectId || row.projectId === filters.projectId)
     && (!filters.source || row.source === filters.source)
     && (!filters.from || row.date >= filters.from) && (!filters.through || row.date <= filters.through)
-    && matchesText([row.description || 'No description', row.logDescription, row.notes, row.note], description, filters.descriptionMatch)
+    && matchesText([row.description || 'No description', row.costCodeDescription || '', row.logDescription, row.notes, row.note,
+      row.source === 'Timecard' && row.laborType === 'Subcontractor' ? row.worker : ''], description, filters.descriptionMatch, normalizeDescription)
     && matchesText([row.worker || '—'], worker, filters.workerMatch)
     && matchesText([row.costCode || 'Unassigned'], costCode, filters.costCodeMatch)
     && matchesText([row.status, row.sourceId], status, filters.statusMatch)
@@ -105,8 +113,8 @@ export function hoursReportCsv(entries: HourEntry[]) {
     const safe = typeof value === 'string' && /^\s*[=+\-@\t\r]/.test(value) ? `'${value}` : value ?? '';
     return `"${String(safe).replaceAll('"', '""')}"`;
   };
-  return [['Work date', 'Source', 'Project', 'Project number', 'Project ID', 'Description', 'Daily-log description', 'Notes', 'Worker', 'Cost code', 'Hours', 'Status', 'Labor type', 'Source ID', 'Recorded quantity', 'Recorded unit', 'Review / classification note'],
+  return [['Work date', 'Source', 'Project', 'Project number', 'Project ID', 'Description', 'Daily-log description', 'Notes', 'Worker', 'Cost code', 'Hours', 'Status', 'Labor type', 'Source ID', 'Recorded quantity', 'Recorded unit', 'Review / classification note', 'Cost-code description'],
     ...entries.map(row => [row.date, row.source, row.projectName, row.projectNumber, row.projectId, row.description,
-      row.logDescription, row.notes, row.worker, row.costCode, row.hours, row.status, row.laborType, row.sourceId, row.quantity, row.unit, row.note])]
+      row.logDescription, row.notes, row.worker, row.costCode, row.hours, row.status, row.laborType, row.sourceId, row.quantity, row.unit, row.note, row.costCodeDescription || ''])]
     .map(row => row.map(cell).join(',')).join('\r\n');
 }

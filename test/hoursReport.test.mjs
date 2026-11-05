@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildHoursReport, emptyHoursFilters, filterHourEntries, hoursFilterError, hoursReportCsv, hoursTotals } from '../src/lib/hoursReport.ts';
 import { buildProjectUsageReport, usagePeriod } from '../src/lib/projectUsageReport.ts';
+import { aggregateBillingHours } from '../src/lib/billingAnalytics.ts';
 
 const projects = ['p1', 'p2'].map(procoreProjectId => ({ procoreProjectId, projectName: 'Same name', projectNumber: procoreProjectId, customer: null, status: 'Active' }));
 const record = (id, overrides = {}) => ({ id, sourceId: id, companyId: 'company', projectId: 'p1', source: 'Timecard',
@@ -146,4 +147,32 @@ test('exclusion modes combine independently with positive filters, numbers, lite
   assert.deepEqual(select({ worker: '_[%]', workerMatch: 'not-contains' }), ['one', 'three', 'two']);
   assert.deepEqual(select({ worker: 'sam', workerMatch: 'not-contains', costCode: '03-1', costCodeMatch: 'contains', status: 'approved', statusMatch: 'not-contains', minHours: '4' }), ['one']);
   assert.equal(select({ workerMatch: 'not-contains', costCodeMatch: 'not-contains', statusMatch: 'not-contains' }).length, 4);
+});
+
+test('subcontractor descriptions match Billing Analytics and preserve searchable work descriptions', () => {
+  const records = [record('sub', { worker: 'Sub Contractor', description: 'Labor SOG Concrete', notes: null }),
+    record('named', { worker: 'Sub Contractor', description: 'Labor Site Concrete', notes: 'Example vendor hourly sub labor', quantity: 4 }),
+    record('productivity', { source: 'Daily log', description: 'Subcontractor Hours', costType: 'S', uom: 'LS', worker: null, quantity: 6 }),
+    record('employee', { description: 'Labor SOG Concrete', worker: 'Employee', quantity: 2 })];
+  const report = build(records);
+  const billing = aggregateBillingHours(records.map(row => ({ ...row,
+    procoreId: row.sourceId, source: row.source === 'Timecard' ? 'timesheet' : 'productivity', hours: row.quantity,
+    description: row.source === 'Timecard' ? row.notes : row.description, partyName: row.worker,
+    costCodeName: row.source === 'Timecard' ? row.description : null,
+  })), 'company');
+  const billed = billing.rows.flatMap(row => row.entries);
+  assert.equal(billed.length, 3);
+  for (const entry of billed) assert.equal(report.entries.find(row => row.sourceId === entry.id).description, entry.description);
+  assert.equal(report.entries.find(row => row.sourceId === 'sub').costCodeDescription, 'Labor SOG Concrete');
+  for (const description of ['Sub Contractor', 'subcontractor', 'SUB CONTRACTORS', 'sub-contractors']) {
+    const filters = { ...emptyHoursFilters, description };
+    const rows = filterHourEntries(report.entries, filters);
+    assert.equal(rows.length, 3, description); assert.equal(hoursTotals(rows).combined, 18);
+    assert.deepEqual(filterHourEntries(report.entries, { ...filters, descriptionMatch: 'not-contains' }).map(row => row.sourceId), ['employee']);
+  }
+  assert.equal(filterHourEntries(report.entries, { ...emptyHoursFilters, description: 'Example vendor' }).length, 1);
+  assert.equal(filterHourEntries(report.entries, { ...emptyHoursFilters, description: 'Labor SOG Concrete' }).length, 2, 'original work descriptions remain searchable');
+  assert.equal(filterHourEntries(report.entries, { ...emptyHoursFilters, description: 'Employee' }).length, 0, 'ordinary employee names remain a worker filter');
+  const csv = hoursReportCsv(filterHourEntries(report.entries, { ...emptyHoursFilters, description: 'subcontractor' }));
+  assert.match(csv, /Sub Contractor/); assert.match(csv, /Example vendor hourly sub labor/); assert.match(csv, /Cost-code description/); assert.match(csv, /Labor Site Concrete/);
 });

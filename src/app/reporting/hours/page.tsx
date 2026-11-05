@@ -9,6 +9,20 @@ const field = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text
 const button = 'rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-40';
 const PAGE_SIZE = 100;
 
+function TextColumnFilter({ column, label, inputLabel, placeholder, filters, onChange }: {
+  column: 'description' | 'worker' | 'costCode' | 'status'; label: string; inputLabel: string; placeholder: string;
+  filters: HoursFilters; onChange: (key: keyof HoursFilters, value: string) => void;
+}) {
+  const matchKey = `${column}Match` as const;
+  const control = 'w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-xs';
+  return <div className="space-y-2">
+    <select aria-label={`${label} match`} value={filters[matchKey]} onChange={e => onChange(matchKey, e.target.value)} className={control}>
+      <option value="contains">Contains</option><option value="not-contains">Does not contain</option>
+    </select>
+    <input type="search" aria-label={inputLabel} placeholder={placeholder} value={filters[column]} onChange={e => onChange(column, e.target.value)} className={control} />
+  </div>;
+}
+
 function ColumnFilters({ filters, projects, onChange }: {
   filters: HoursFilters; projects: { id: string; name: string; number: string }[];
   onChange: (key: keyof HoursFilters, value: string) => void;
@@ -20,15 +34,15 @@ function ColumnFilters({ filters, projects, onChange }: {
       <label className="block">Through<input type="date" aria-label="Filter work date through" value={filters.through} onChange={e => onChange('through', e.target.value)} className={`${field} mt-1`} /></label>
     </div></th>
     <th className="min-w-36 px-4 pb-3 pt-2 font-normal"><select aria-label="Source" value={filters.source} onChange={e => onChange('source', e.target.value)} className={field}><option value="">All sources</option><option>Timecard</option><option>Productivity</option></select></th>
-    <th className="min-w-48 px-4 pb-3 pt-2 font-normal"><select aria-label="Project" value={filters.projectId} onChange={e => onChange('projectId', e.target.value)} className={`${field} max-w-64`}><option value="">All projects</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name} ({p.number || p.id})</option>)}{filters.projectId && !projects.some(p => p.id === filters.projectId) && <option value={filters.projectId}>Project {filters.projectId} (no entries)</option>}</select></th>
-    <th className="min-w-64 px-4 pb-3 pt-2 font-normal"><input type="search" aria-label="Description or notes" placeholder="Search description / notes" value={filters.description} onChange={e => onChange('description', e.target.value)} className={field} /></th>
-    <th className="min-w-40 px-4 pb-3 pt-2 font-normal"><input type="search" aria-label="Filter worker" placeholder="Contains…" value={filters.worker} onChange={e => onChange('worker', e.target.value)} className={field} /></th>
-    <th className="min-w-40 px-4 pb-3 pt-2 font-normal"><input type="search" aria-label="Filter cost code" placeholder="Contains…" value={filters.costCode} onChange={e => onChange('costCode', e.target.value)} className={field} /></th>
+    <th className="min-w-44 px-4 pb-3 pt-2 font-normal"><select aria-label="Project" value={filters.projectId} onChange={e => onChange('projectId', e.target.value)} className={`${field} max-w-64`}><option value="">All projects</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name} ({p.number || p.id})</option>)}{filters.projectId && !projects.some(p => p.id === filters.projectId) && <option value={filters.projectId}>Project {filters.projectId} (no entries)</option>}</select></th>
+    <th className="min-w-60 px-4 pb-3 pt-2 font-normal"><TextColumnFilter column="description" label="Description" inputLabel="Description or notes" placeholder="Description / notes" filters={filters} onChange={onChange} /></th>
+    <th className="min-w-44 px-4 pb-3 pt-2 font-normal"><TextColumnFilter column="worker" label="Worker" inputLabel="Filter worker" placeholder="Worker" filters={filters} onChange={onChange} /></th>
+    <th className="min-w-44 px-4 pb-3 pt-2 font-normal"><TextColumnFilter column="costCode" label="Cost code" inputLabel="Filter cost code" placeholder="Cost code" filters={filters} onChange={onChange} /></th>
     <th className="min-w-32 px-4 pb-3 pt-2 font-normal"><div className="space-y-2">
       <input type="number" step="any" aria-label="Minimum hours" placeholder="Min" value={filters.minHours} onChange={e => onChange('minHours', e.target.value)} className={field} />
       <input type="number" step="any" aria-label="Maximum hours" placeholder="Max" value={filters.maxHours} onChange={e => onChange('maxHours', e.target.value)} className={field} />
     </div></th>
-    <th className="min-w-40 px-4 pb-3 pt-2 font-normal"><input type="search" aria-label="Filter status or source ID" placeholder="Status / ID" value={filters.status} onChange={e => onChange('status', e.target.value)} className={field} /></th>
+    <th className="min-w-44 px-4 pb-3 pt-2 font-normal"><TextColumnFilter column="status" label="Status" inputLabel="Filter status or source ID" placeholder="Status / ID" filters={filters} onChange={onChange} /></th>
   </tr>;
 }
 
@@ -39,7 +53,7 @@ function EntryTable({ entries, review = false, filterRow }: { entries: HourEntry
       <td className="whitespace-nowrap px-4 py-3 tabular-nums">{row.date}</td>
       <td className="px-4 py-3"><span className={`inline-block rounded-full px-2 py-1 text-xs font-semibold ${row.source === 'Timecard' ? 'bg-blue-50 text-blue-800' : 'bg-teal-50 text-teal-800'}`}>{row.source}</span><p className="mt-1 text-xs text-slate-500">{row.laborType}</p></td>
       <td className="min-w-44 px-4 py-3"><p className="font-medium">{row.projectName}</p><p className="mt-1 text-xs text-slate-500">{row.projectNumber || row.projectId || 'Unassigned'}</p></td>
-      <td className="min-w-64 max-w-md whitespace-pre-wrap break-words px-4 py-3"><p className="font-medium">{row.description || 'No description'}</p>
+      <td className="min-w-60 max-w-md whitespace-pre-wrap break-words px-4 py-3"><p className="font-medium">{row.description || 'No description'}</p>
         {row.logDescription && row.logDescription !== row.description && <p className="mt-1 text-xs text-slate-500">Daily log: {row.logDescription}</p>}
         {row.notes && <p className="mt-1 text-slate-600">{row.notes}</p>}{row.note && <p className="mt-1 text-xs text-amber-800">{row.note}</p>}
       </td>
@@ -59,7 +73,7 @@ export default function HoursReportPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const filterError = hoursFilterError(filters);
-  const hasColumnFilters = Object.values(filters).some(value => value.trim());
+  const hasColumnFilters = (Object.keys(filters) as (keyof HoursFilters)[]).some(key => filters[key] !== emptyHoursFilters[key]);
   const entries = useMemo(() => filterHourEntries(report?.entries || [], filters), [report, filters]);
   const review = useMemo(() => filterHourEntries(report?.review || [], filters), [report, filters]);
   const totals = useMemo(() => hoursTotals(entries), [entries]);
@@ -120,7 +134,7 @@ export default function HoursReportPage() {
           <p className="mt-1 text-xs text-slate-500">{report.from || 'All saved dates'} through {report.through || 'latest saved date'} · Loaded {new Date(report.loadedAt).toLocaleString()}</p></div>
           <div className="flex flex-wrap gap-2"><button onClick={() => { setFilters(emptyHoursFilters); setPage(0); }} disabled={!hasColumnFilters} className={button}>Clear column filters</button><button onClick={() => download(entries, 'all-hours')} disabled={changed || !entries.length} className={button}>Download CSV</button></div>
         </div>
-        <p className="border-b border-slate-200 px-5 py-3 text-xs text-slate-600">Combine filters across columns. Text searches ignore case; blank fields include all values. Filters update totals and every matching CSV row immediately, across all pages. Scroll sideways to reach every column on smaller screens.</p>
+        <p className="border-b border-slate-200 px-5 py-3 text-xs text-slate-600">Combine filters across columns. Choose Contains or Does not contain for text filters. Matching ignores case; blank fields include all values in either mode. Filters update totals and every matching CSV row immediately, across all pages. Scroll sideways to reach every column on smaller screens.</p>
         {filterError && <p role="alert" className="border-b border-red-200 bg-red-50 px-5 py-3 text-sm text-red-800">{filterError}</p>}
         <EntryTable entries={entries.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)} filterRow={<ColumnFilters filters={filters} projects={projects} onChange={changeFilter} />} />
         {!entries.length && !filterError && <p className="p-8 text-center text-slate-500">No hours match these filters.</p>}

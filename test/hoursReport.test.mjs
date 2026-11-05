@@ -110,3 +110,40 @@ test('hour bounds distinguish blank, zero, negative and unknown values; invalid 
     assert.ok(hoursFilterError(filters)); assert.deepEqual(filterHourEntries(rows, filters), []);
   }
 });
+
+test('does not contain excludes a match in any description field and leaves blank searches unrestricted', () => {
+  const report = build([
+    record('description', { description: 'Exclude this labor' }),
+    record('notes', { notes: 'EXCLUDE this note' }),
+    record('log', { source: 'Daily log', logDescription: 'Please exclude' }),
+    record('keep', { description: 'Foundation labor', notes: '' }),
+    record('blank', { description: null, notes: null }),
+    record('review', { source: 'Daily log', metadataMatches: 0, notes: 'Exclude this review row' }),
+  ]);
+  const filters = { ...emptyHoursFilters, description: '  ExCLuDe ', descriptionMatch: 'not-contains' };
+  const rows = filterHourEntries(report.entries, filters);
+  assert.deepEqual(rows.map(row => row.sourceId).sort(), ['blank', 'keep']);
+  assert.equal(hoursTotals(rows).combined, 16);
+  assert.doesNotMatch(hoursReportCsv(rows), /exclude/i);
+  assert.equal(filterHourEntries(report.review, filters).length, 0);
+  assert.equal(filterHourEntries(report.entries, { ...filters, description: '  ' }).length, report.entries.length);
+  const legacy = build([record('legacy', { source: 'Daily log', uom: 'LS' })]);
+  assert.equal(filterHourEntries(legacy.entries, { ...filters, description: 'legacy' }).length, 0, 'classification notes are searched too');
+});
+
+test('exclusion modes combine independently with positive filters, numbers, literal text and missing values', () => {
+  const report = build([
+    record('one', { worker: 'Alex', costCode: '03-100', status: 'Pending', quantity: 4 }),
+    record('two', { worker: 'Sam', costCode: '03-200', status: 'Approved', quantity: 6 }),
+    record('three', { worker: null, costCode: null, status: 'Pending', quantity: 2 }),
+    record('literal', { worker: 'A_[%]', costCode: '03-300', quantity: 1 }),
+  ]);
+  const select = overrides => filterHourEntries(report.entries, { ...emptyHoursFilters, ...overrides }).map(row => row.sourceId).sort();
+  assert.deepEqual(select({ worker: ' alex ', workerMatch: 'not-contains' }), ['literal', 'three', 'two']);
+  assert.deepEqual(select({ costCode: '03-2', costCodeMatch: 'not-contains' }), ['literal', 'one', 'three']);
+  assert.deepEqual(select({ status: 'pending', statusMatch: 'not-contains' }), ['literal', 'two']);
+  assert.deepEqual(select({ status: 'ONE', statusMatch: 'not-contains' }), ['literal', 'three', 'two'], 'status filter also checks source ID');
+  assert.deepEqual(select({ worker: '_[%]', workerMatch: 'not-contains' }), ['one', 'three', 'two']);
+  assert.deepEqual(select({ worker: 'sam', workerMatch: 'not-contains', costCode: '03-1', costCodeMatch: 'contains', status: 'approved', statusMatch: 'not-contains', minHours: '4' }), ['one']);
+  assert.equal(select({ workerMatch: 'not-contains', costCodeMatch: 'not-contains', statusMatch: 'not-contains' }).length, 4);
+});

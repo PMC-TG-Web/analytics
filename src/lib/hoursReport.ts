@@ -11,12 +11,15 @@ export type HoursReport = UsagePeriod & {
   entries: HourEntry[]; review: HourEntry[];
   excluded: { deleted: number; billingLogs: number; nonLabor: number };
 };
+export type HoursTextMatch = 'contains' | 'not-contains';
 export type HoursFilters = {
   description: string; projectId: string; source: string; from: string; through: string;
   worker: string; costCode: string; minHours: string; maxHours: string; status: string;
+  descriptionMatch: HoursTextMatch; workerMatch: HoursTextMatch; costCodeMatch: HoursTextMatch; statusMatch: HoursTextMatch;
 };
 export const emptyHoursFilters: HoursFilters = {
   description: '', projectId: '', source: '', from: '', through: '', worker: '', costCode: '', minHours: '', maxHours: '', status: '',
+  descriptionMatch: 'contains', workerMatch: 'contains', costCodeMatch: 'contains', statusMatch: 'contains',
 };
 const round = (value: number) => Math.round((value + Number.EPSILON) * 10_000) / 10_000;
 
@@ -68,7 +71,11 @@ export function hoursFilterError(filters: HoursFilters): string {
 export function filterHourEntries(entries: HourEntry[], filters: HoursFilters): HourEntry[] {
   if (hoursFilterError(filters)) return [];
   const normalize = (value: string) => value.trim().normalize('NFKC').toLowerCase();
-  const contains = (values: string[], query: string) => !query || values.some(value => normalize(value).includes(query));
+  const matchesText = (values: string[], query: string, mode: HoursTextMatch) => {
+    if (!query) return true;
+    const found = values.some(value => normalize(value).includes(query));
+    return mode === 'not-contains' ? !found : found;
+  };
   const description = normalize(filters.description);
   const worker = normalize(filters.worker);
   const costCode = normalize(filters.costCode);
@@ -78,10 +85,10 @@ export function filterHourEntries(entries: HourEntry[], filters: HoursFilters): 
   return entries.filter(row => (!filters.projectId || row.projectId === filters.projectId)
     && (!filters.source || row.source === filters.source)
     && (!filters.from || row.date >= filters.from) && (!filters.through || row.date <= filters.through)
-    && contains([row.description || 'No description', row.logDescription, row.notes, row.note], description)
-    && contains([row.worker || '—'], worker)
-    && contains([row.costCode || 'Unassigned'], costCode)
-    && contains([row.status, row.sourceId], status)
+    && matchesText([row.description || 'No description', row.logDescription, row.notes, row.note], description, filters.descriptionMatch)
+    && matchesText([row.worker || '—'], worker, filters.workerMatch)
+    && matchesText([row.costCode || 'Unassigned'], costCode, filters.costCodeMatch)
+    && matchesText([row.status, row.sourceId], status, filters.statusMatch)
     && (min === null || row.hours !== null && row.hours >= min)
     && (max === null || row.hours !== null && row.hours <= max));
 }

@@ -25,6 +25,28 @@ test('change-event status falls back to its nested Procore status', () => {
   assert.equal(changeEventStatus({ status: 'Open', change_event_status: { name: 'Pending' } }), 'Open');
 });
 
+test('CE status objects preserve display names and filter using the mapped lifecycle', () => {
+  for (const field of ['status', 'state', 'change_event_status']) {
+    for (const [name, mapped, open] of [
+      ['Closed', 'closed', false], ['Void', 'void', false],
+      ['Finalized by owner', 'closed', false], ['Cancelled scope', 'void', false],
+      ['Open', 'open', true], ['Awaiting pricing', 'pending', true],
+    ]) {
+      const payload = { [field]: { id: 123, name, mapped_to_status: mapped } };
+      assert.equal(changeEventStatus(payload), name);
+      assert.equal(isOpenPmChange('change_event', null, payload), open);
+      assert.equal(isOpenPmChange('change_event', 'Open', payload), open, 'source payload wins over the old saved status');
+    }
+  }
+  assert.equal(changeEventStatus({ status: {}, state: '', change_event_status: { mapped_to_status: 'closed' } }), 'closed');
+  assert.equal(isOpenPmChange('change_event', { name: 'Closed' }), false);
+  assert.equal(isOpenPmChange('change_event', null, { status: { name: 'Closed' } }), false);
+  assert.equal(isOpenPmChange('change_event', 'Open', { in_recycle_bin: true }), false);
+  assert.equal(isOpenPmChange('change_event', 'Open', { deleted_at: '2026-11-05T00:00:00Z' }), false);
+  assert.equal(isOpenPmChange('change_event', 'Closed', {}), false);
+  assert.equal(isOpenPmChange('change_event', null, {}), true, 'unknown status retains existing visibility');
+});
+
 test('change cards resolve to exact Procore records', () => {
   assert.equal(
     buildProcoreChangeUrl({ type: 'change_event', companyId: 456, projectId: 123, sourceId: 9 }),

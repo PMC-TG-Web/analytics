@@ -105,11 +105,11 @@ test('upserting a source package clears absence while preserving ordinary source
   assert.equal(JSON.parse(queries[0].at(-1)).grand_total, 123);
 });
 
-test('Open Changes excludes missing packages but keeps current same-title records', async () => {
+test('Open Changes excludes terminal CE payloads and missing packages but keeps current same-title records', async () => {
   const code = ts.transpileModule(readFileSync('src/app/api/pm-dashboard/changes/route.ts', 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
-  const { isOpenPmChange, buildProcoreChangeUrl } = await import('../src/lib/pmDashboardChanges.ts');
+  const { isOpenPmChange, buildProcoreChangeUrl, changeEventStatus } = await import('../src/lib/pmDashboardChanges.ts');
   const now = new Date();
   let scopedCompanyId;
   const packages = [null, null, now].map((missingFromSourceAt, index) => ({
@@ -119,11 +119,18 @@ test('Open Changes excludes missing packages but keeps current same-title record
   const mocks = {
     'next/server': { NextResponse: { json: (body, init) => Response.json(body, init) } },
     '@/lib/requestUser': { getRequestUserEmail: async () => 'pm@example.test' },
-    '@/lib/pmDashboardChanges': { isOpenPmChange, buildProcoreChangeUrl },
+    '@/lib/pmDashboardChanges': { isOpenPmChange, buildProcoreChangeUrl, changeEventStatus },
     '@/lib/prisma': { prisma: {
       employee: { findFirst: async () => null }, pmcActionItem: { findMany: async ({ where }) => where.sourceType === 'change_event' ? [{
-        procoreProjectId: 'project', sourceId: 'event', title: 'Same work', status: 'Open', payload: {}, syncedAt: now,
+        procoreProjectId: 'project', sourceId: 'event', title: 'Same work', status: null,
+        payload: { status: { name: 'Awaiting pricing', mapped_to_status: 'open' } }, syncedAt: now,
         sourceUrl: 'https://us02.procore.com/project/project/change_events/event',
+      }, {
+        procoreProjectId: 'project', sourceId: 'closed-event', title: 'Same work', status: null, isOpen: true, syncedAt: now,
+        payload: { status: { id: 123, name: 'Closed', mapped_to_status: 'closed' } },
+      }, {
+        procoreProjectId: 'project', sourceId: 'void-event', title: 'Same work', status: 'Open', isOpen: true, syncedAt: now,
+        payload: { status: { id: 124, name: 'Cancelled scope', mapped_to_status: 'void' } },
       }] : [] },
       pmcProject: { findMany: async () => [{ procoreProjectId: 'project', projectName: 'Project' }] },
       procorePotentialChangeOrder: { findMany: async () => [{
@@ -145,6 +152,7 @@ test('Open Changes excludes missing packages but keeps current same-title record
   assert.match(response.headers.get('cache-control'), /no-store/);
   const { items } = await response.json();
   assert.deepEqual(items.map(item => item.sourceId), ['event', '0', '1', 'potential']);
+  assert.equal(items[0].status, 'Awaiting pricing', 'visible CE labels are read from the retained source payload');
   const base = `https://us02.procore.com/webclients/host/companies/${scopedCompanyId}/projects/project/tools/contracts/prime_contracts/prime/change_orders`;
   assert.deepEqual(items.map(item => item.sourceUrl), [
     `https://us02.procore.com/webclients/host/companies/${scopedCompanyId}/projects/project/tools/change-events/events/event`,

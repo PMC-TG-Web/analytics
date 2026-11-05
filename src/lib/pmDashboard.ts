@@ -1,4 +1,4 @@
-import { buildProcoreChangeUrl } from "./pmDashboardChanges.ts";
+import { buildProcoreChangeUrl, changeEventStatus, isOpenPmChange } from "./pmDashboardChanges.ts";
 
 export const PM_DASHBOARD_TIME_ZONE = "America/New_York";
 export const DEFAULT_PROCORE_WEB_ORIGIN = "https://us02.procore.com";
@@ -155,6 +155,9 @@ export function toProcoreDate(value: unknown): Date | null {
 }
 
 export function isOpenPmItem(sourceType: PmActionItemType, record: UnknownRecord): boolean {
+  if (sourceType === "change_event") {
+    return isOpenPmChange("change_event", changeEventStatus(record), record);
+  }
   if (sourceType === "meeting") {
     const cancelled = record.cancelled ?? record.canceled ?? record.is_cancelled ?? record.is_canceled;
     return cancelled !== true && text(record.status).toLowerCase() !== "cancelled";
@@ -173,7 +176,8 @@ export function isOpenPmItem(sourceType: PmActionItemType, record: UnknownRecord
     "voided",
     "recycled",
     "deleted",
-    ...(sourceType === "change_event" ? [] : ["approved", "rejected"]),
+    "approved",
+    "rejected",
   ].includes(status);
 }
 
@@ -241,7 +245,8 @@ export function normalizePmActionItem(params: {
     number: number || null,
     title,
     description: firstText(record, ["description", "question", "overview", "agenda"]) || null,
-    status: firstText(record, ["status", "state", "mode"]) || nestedStatus || null,
+    status: sourceType === "change_event" ? changeEventStatus(record) || null
+      : firstText(record, ["status", "state", "mode"]) || nestedStatus || null,
     dueAt,
     startsAt,
     endsAt,

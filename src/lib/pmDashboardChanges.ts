@@ -29,20 +29,34 @@ function safeProcoreUrl(value: unknown): string | null {
   }
 }
 
+function readChangeEventStatus(changeEvent: UnknownRecord): { label: string; state: string } {
+  for (const value of [changeEvent.status, changeEvent.state, changeEvent.change_event_status]) {
+    if (typeof value === "string" && value.trim()) return { label: value.trim(), state: value.trim() };
+    const nested = record(value);
+    const label = text(nested?.name);
+    const mapped = text(nested?.mapped_to_status);
+    if (label || mapped) return { label: label || mapped, state: mapped || label };
+  }
+  return { label: "", state: "" };
+}
+
 export function changeEventStatus(changeEvent: UnknownRecord): string {
-  const direct = text(changeEvent.status ?? changeEvent.state);
-  if (direct) return direct;
-  const nested = record(changeEvent.change_event_status);
-  return text(nested?.name ?? nested?.mapped_to_status);
+  return readChangeEventStatus(changeEvent).label;
 }
 
 export function isOpenPmChange(type: PmChangeType, status: unknown, payload?: UnknownRecord | null): boolean {
   if (payload && (payload.deleted_at || payload.deletedAt)) return false;
-  const normalized = text(status).toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+  if (type === "change_event" && payload?.in_recycle_bin === true) return false;
+  // The retained source payload is authoritative when older mirrors saved a
+  // blank status/isOpen=true after ignoring Procore's structured status object.
+  const sourceStatus = type === "change_event"
+    ? (payload ? readChangeEventStatus(payload).state : "") || readChangeEventStatus({ status }).state
+    : text(status);
+  const normalized = sourceStatus.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
   if (!normalized) return true;
 
   const terminal = type === "change_event"
-    ? ["closed", "void", "voided", "deleted"]
+    ? ["closed", "complete", "completed", "void", "voided", "recycled", "deleted"]
     : ["approved", "closed", "complete", "completed", "rejected", "not proceeding", "void", "voided", "deleted"];
   return !terminal.includes(normalized);
 }

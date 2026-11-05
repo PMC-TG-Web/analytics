@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getRequestUserEmail } from "@/lib/requestUser";
 import {
   buildProcoreChangeUrl,
+  changeEventStatus,
   isOpenPmChange,
   type PmChangeType,
 } from "@/lib/pmDashboardChanges";
@@ -97,7 +98,7 @@ export async function GET(request: NextRequest) {
         number: item.number,
         title: item.title,
         description: item.description,
-        status: item.status,
+        status: changeEventStatus(payloadRecord(item.payload) || {}) || item.status,
         amount: null,
         updatedAt: item.syncedAt.toISOString(),
         sourceUrl: buildProcoreChangeUrl({

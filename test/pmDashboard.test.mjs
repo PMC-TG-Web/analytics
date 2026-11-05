@@ -125,6 +125,22 @@ test('closed work is excluded while future meetings remain actionable', () => {
   assert.equal(isOpenPmItem('change_event', { status: 'Pending' }), true);
 });
 
+test('CE sync stores structured status labels and the correct open flag', () => {
+  for (const [name, mapped_to_status, expectedOpen] of [
+    ['Closed', 'closed', false], ['Voided by owner', 'void', false],
+    ['Open', 'open', true], ['Pricing in progress', 'pending', true],
+  ]) {
+    const record = { id: 91, title: 'Added footers', status: { id: 12, name, mapped_to_status } };
+    const item = normalizePmActionItem({ sourceType: 'change_event', companyId: 456, projectId: 123, record });
+    assert.equal(item.status, name);
+    assert.equal(item.isOpen, expectedOpen);
+    assert.equal(isOpenPmItem('change_event', record), expectedOpen);
+    assert.deepEqual(item.payload, record, 'source evidence stays intact');
+  }
+  const recycled = normalizePmActionItem({ sourceType: 'change_event', record: { id: 91, status: 'Open', in_recycle_bin: true } });
+  assert.equal(recycled.isOpen, false);
+});
+
 test('the dashboard produces five stable workday keys across weekends and DST boundaries', () => {
   assert.deepEqual(nextBusinessDateKeys(new Date('2026-10-31T16:00:00Z'), 5), [
     '2026-11-02',

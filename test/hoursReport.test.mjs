@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildHoursReport, emptyHoursFilters, filterHourEntries, hoursReportCsv, hoursTotals } from '../src/lib/hoursReport.ts';
+import { buildHoursReport, emptyHoursFilters, filterHourEntries, hoursFilterError, hoursReportCsv, hoursTotals } from '../src/lib/hoursReport.ts';
 import { buildProjectUsageReport, usagePeriod } from '../src/lib/projectUsageReport.ts';
 
 const projects = ['p1', 'p2'].map(procoreProjectId => ({ procoreProjectId, projectName: 'Same name', projectNumber: procoreProjectId, customer: null, status: 'Active' }));
@@ -77,4 +77,36 @@ test('unresolved records remain outside hours, and invalid dates are rejected', 
   assert.equal(report.entries[0].projectName, 'Project unknown');
   assert.ok(report.review.every(row => row.hours === null));
   for (const period of [{ from: '2026-02-30', through: '' }, { from: '2026-11-06', through: '2026-11-05' }]) assert.throws(() => build([], period));
+});
+
+test('column filters combine dates, worker, cost code, hours and status across the complete report and CSV', () => {
+  const report = build([
+    record('match', { quantity: 4.5, worker: 'Alex FIELD', costCode: '03-100-10-10', status: 'Pending' }),
+    record('early', { date: '2026-11-04', quantity: 4.5, worker: 'Alex Field', status: 'Pending' }),
+    record('other-code', { quantity: 4.5, worker: 'Alex Field', costCode: '99-100', status: 'Pending' }),
+    record('other-worker', { quantity: 4.5, worker: 'Jordan', status: 'Pending' }),
+    record('other-status', { quantity: 4.5, worker: 'Alex Field', status: 'Approved' }),
+    record('too-many', { quantity: 5, worker: 'Alex Field', status: 'Pending' }),
+  ]);
+  const filters = { ...emptyHoursFilters, from: '2026-11-05', through: '2026-11-05', worker: ' alex ', costCode: '03-100', minHours: '4.5', maxHours: '4.5', status: 'pending' };
+  const rows = filterHourEntries(report.entries, filters);
+  assert.deepEqual(rows.map(row => row.sourceId), ['match']);
+  assert.equal(hoursTotals(rows).combined, 4.5);
+  assert.equal(hoursReportCsv(rows).split('\r\n').length, 2);
+  assert.equal(filterHourEntries(report.entries, emptyHoursFilters).length, 6, 'clearing restores all entries');
+  assert.equal(filterHourEntries(report.entries, { ...emptyHoursFilters, status: 'OTHER-WORKER' })[0].sourceId, 'other-worker');
+});
+
+test('hour bounds distinguish blank, zero, negative and unknown values; invalid bounds do not produce misleading results', () => {
+  const report = build([record('negative', { quantity: -1.25 }), record('zero', { quantity: 0 }), record('positive', { quantity: 0.25 }),
+    record('review', { source: 'Daily log', metadataMatches: 0, quantity: 100 })]);
+  const rows = [...report.entries, ...report.review];
+  assert.deepEqual(filterHourEntries(rows, { ...emptyHoursFilters, minHours: '0', maxHours: '0' }).map(row => row.sourceId), ['zero']);
+  assert.deepEqual(filterHourEntries(rows, { ...emptyHoursFilters, maxHours: '-1.25' }).map(row => row.sourceId), ['negative']);
+  assert.equal(filterHourEntries(report.review, emptyHoursFilters).length, 1);
+  assert.equal(filterHourEntries(report.review, { ...emptyHoursFilters, minHours: '-1000' }).length, 0, 'unknown hours must not be treated as quantity or zero');
+  for (const overrides of [{ minHours: '2', maxHours: '1' }, { minHours: 'NaN' }, { maxHours: 'Infinity' }, { from: '2026-02-30' }, { from: '2026-11-06', through: '2026-11-05' }]) {
+    const filters = { ...emptyHoursFilters, ...overrides };
+    assert.ok(hoursFilterError(filters)); assert.deepEqual(filterHourEntries(rows, filters), []);
+  }
 });

@@ -11,8 +11,13 @@ export type HoursReport = UsagePeriod & {
   entries: HourEntry[]; review: HourEntry[];
   excluded: { deleted: number; billingLogs: number; nonLabor: number };
 };
-export type HoursFilters = { description: string; projectId: string; source: string };
-export const emptyHoursFilters: HoursFilters = { description: '', projectId: '', source: '' };
+export type HoursFilters = {
+  description: string; projectId: string; source: string; from: string; through: string;
+  worker: string; costCode: string; minHours: string; maxHours: string; status: string;
+};
+export const emptyHoursFilters: HoursFilters = {
+  description: '', projectId: '', source: '', from: '', through: '', worker: '', costCode: '', minHours: '', maxHours: '', status: '',
+};
 const round = (value: number) => Math.round((value + Number.EPSILON) * 10_000) / 10_000;
 
 export function buildHoursReport(companyId: string, period: UsagePeriod, projects: UsageProject[], records: UsageRecord[]): HoursReport {
@@ -49,11 +54,36 @@ export function buildHoursReport(companyId: string, period: UsagePeriod, project
   return report;
 }
 
+export function hoursFilterError(filters: HoursFilters): string {
+  try { usagePeriod(filters.from, filters.through); } catch (error) { return `Work date filter: ${(error as Error).message}`; }
+  for (const value of [filters.minHours, filters.maxHours]) {
+    if (value.trim() && !Number.isFinite(Number(value))) return 'Enter a valid number for minimum and maximum hours.';
+  }
+  if (filters.minHours.trim() && filters.maxHours.trim() && Number(filters.minHours) > Number(filters.maxHours)) {
+    return 'Minimum hours must be less than or equal to maximum hours.';
+  }
+  return '';
+}
+
 export function filterHourEntries(entries: HourEntry[], filters: HoursFilters): HourEntry[] {
-  const description = filters.description.trim().normalize('NFKC').toLowerCase();
+  if (hoursFilterError(filters)) return [];
+  const normalize = (value: string) => value.trim().normalize('NFKC').toLowerCase();
+  const contains = (values: string[], query: string) => !query || values.some(value => normalize(value).includes(query));
+  const description = normalize(filters.description);
+  const worker = normalize(filters.worker);
+  const costCode = normalize(filters.costCode);
+  const status = normalize(filters.status);
+  const min = filters.minHours.trim() ? Number(filters.minHours) : null;
+  const max = filters.maxHours.trim() ? Number(filters.maxHours) : null;
   return entries.filter(row => (!filters.projectId || row.projectId === filters.projectId)
     && (!filters.source || row.source === filters.source)
-    && (!description || [row.description, row.logDescription, row.notes].some(value => value.normalize('NFKC').toLowerCase().includes(description))));
+    && (!filters.from || row.date >= filters.from) && (!filters.through || row.date <= filters.through)
+    && contains([row.description || 'No description', row.logDescription, row.notes, row.note], description)
+    && contains([row.worker || '—'], worker)
+    && contains([row.costCode || 'Unassigned'], costCode)
+    && contains([row.status, row.sourceId], status)
+    && (min === null || row.hours !== null && row.hours >= min)
+    && (max === null || row.hours !== null && row.hours <= max));
 }
 
 export function hoursTotals(entries: HourEntry[]) {

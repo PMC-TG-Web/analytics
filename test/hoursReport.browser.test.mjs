@@ -178,6 +178,45 @@ test('subcontractor description filters include and exclude both sources using B
   } finally { await browser.close(); }
 });
 
+test('billable selection distinguishes false and unknown, updates CSV and review rows, and clears to all', { skip: !enabled, timeout: 120_000 }, async () => {
+  const { browser, page } = await open();
+  const row = { id: 'yes', sourceId: 'yes', companyId: 'fixture', projectId: 'p1', source: 'Timecard', date: '2026-11-05',
+    updatedAt: '2026-11-05T12:00:00Z', quantity: 8, worker: 'Test Worker', description: 'Foundation labor', billable: true };
+  const report = buildHoursReport('fixture', { from: '', through: '' }, [], [row,
+    { ...row, id: 'no', sourceId: 'no', billable: false, quantity: 2 },
+    { ...row, id: 'unknown', sourceId: 'unknown', billable: null, quantity: 1 },
+    { ...row, id: 'productivity', sourceId: 'productivity', source: 'Daily log', uom: 'HR', costType: 'L', metadataMatches: 1, quantity: 4 },
+    { ...row, id: 'review', sourceId: 'review', quantity: null },
+  ]);
+  await page.route('**/api/reporting/hours?*', route => route.fulfill({ json: report }));
+  const total = () => page.getByRole('article').filter({ has: page.getByText('Combined hours', { exact: true }) }).locator('strong').innerText();
+  try {
+    await page.goto(`${base}/reporting/hours`, { waitUntil: 'networkidle' });
+    await page.getByRole('button', { name: 'Run report', exact: true }).click();
+    await page.getByRole('heading', { name: 'Hour entries', exact: true }).waitFor();
+    const filter = page.getByLabel('Billable', { exact: true });
+    assert.equal(await total(), '15');
+    await filter.selectOption('not-billable');
+    assert.equal(await total(), '2');
+    assert.equal(await page.getByRole('cell', { name: 'No', exact: true }).count(), 1);
+    assert.equal(await page.getByText(/Needs review:/).count(), 0);
+    const [file] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download CSV', exact: true }).click()]);
+    const csv = (await readFile(await file.path(), 'utf8')).split('\r\n');
+    assert.equal(csv.length, 2); assert.ok(csv[0].endsWith(',"Billable"')); assert.ok(csv[1].endsWith(',"No"'));
+    await filter.selectOption('billable');
+    assert.equal(await total(), '8');
+    await page.getByText('Needs review: 1 entry excluded from hours', { exact: true }).waitFor();
+    await filter.selectOption('not-recorded');
+    assert.equal(await total(), '5');
+    await page.getByLabel('Source', { exact: true }).selectOption('Productivity');
+    assert.equal(await total(), '4');
+    await filter.selectOption('billable');
+    await page.getByText('No hours match these filters.', { exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Clear column filters', exact: true }).click();
+    assert.equal(await filter.inputValue(), ''); assert.equal(await total(), '15');
+  } finally { await browser.close(); }
+});
+
 test('saved all-history hours reconcile with the existing project report without external writes', { skip: !enabled, timeout: 180_000 }, async () => {
   const { browser, page } = await open();
   try {

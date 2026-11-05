@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildHoursReport, emptyHoursFilters, filterHourEntries, hoursFilterError, hoursReportCsv, hoursTotals } from '../src/lib/hoursReport.ts';
+import { buildHoursReport, emptyHoursFilters, filterHourEntries, hoursBillableLabel, hoursFilterError, hoursReportCsv, hoursTotals } from '../src/lib/hoursReport.ts';
 import { buildProjectUsageReport, usagePeriod } from '../src/lib/projectUsageReport.ts';
 import { aggregateBillingHours } from '../src/lib/billingAnalytics.ts';
 
@@ -10,6 +10,39 @@ const record = (id, overrides = {}) => ({ id, sourceId: id, companyId: 'company'
   costCode: '03-100-10-10', description: 'Foundation labor', worker: 'Test Worker', holderId: null, lineItemId: null,
   costType: 'L', uom: 'HR', holderTitle: null, metadataMatches: 1, ...overrides });
 const build = (records, period = usagePeriod()) => buildHoursReport('company', period, projects, records);
+
+test('billable filtering preserves true, false and missing flags, with consistent totals, review and CSV', () => {
+  const report = build([
+    record('yes', { billable: true, quantity: 8 }),
+    record('no', { billable: false, quantity: 2 }),
+    record('unknown', { billable: null, quantity: 1 }),
+    record('legacy', { quantity: 3 }),
+    record('invalid', { billable: 'false', quantity: 5 }),
+    record('productivity', { source: 'Daily log', billable: true, quantity: 4 }),
+    record('old', { sourceId: 'changed', billable: true, quantity: 99 }),
+    record('new', { sourceId: 'changed', billable: false, quantity: 6, updatedAt: '2026-11-06' }),
+    record('review', { quantity: null, billable: true }),
+  ]);
+  const select = overrides => filterHourEntries(report.entries, { ...emptyHoursFilters, ...overrides });
+  assert.equal(hoursTotals(select({})).combined, 29);
+  assert.deepEqual(select({ billable: 'billable' }).map(r => r.sourceId), ['yes']);
+  assert.equal(hoursTotals(select({ billable: 'not-billable' })).combined, 8, 'false is retained and latest mirror wins');
+  assert.equal(hoursTotals(select({ billable: 'not-recorded' })).combined, 13);
+  assert.equal(select({ billable: 'not-recorded' }).length, 4, 'missing and malformed flags are never false; productivity has no saved flag');
+  assert.equal(select({ billable: 'billable', source: 'Productivity' }).length, 0);
+  assert.deepEqual(select({ billable: 'not-billable', minHours: '3', description: 'Foundation' }).map(r => r.sourceId), ['changed']);
+  assert.equal(filterHourEntries(report.review, { ...emptyHoursFilters, billable: 'billable' }).length, 1);
+  assert.equal(filterHourEntries(report.review, { ...emptyHoursFilters, billable: 'not-billable' }).length, 0);
+  assert.equal(filterHourEntries(report.review, { ...emptyHoursFilters, billable: 'not-recorded' }).length, 0);
+  assert.deepEqual([true, false, null, undefined].map(hoursBillableLabel), ['Yes', 'No', 'Not recorded', 'Not recorded']);
+  for (const [billable, label] of [['billable', 'Yes'], ['not-billable', 'No'], ['not-recorded', 'Not recorded']]) {
+    const rows = select({ billable }); const csv = hoursReportCsv(rows).split('\r\n');
+    assert.ok(csv[0].endsWith(',"Billable"'));
+    assert.equal(csv.length, rows.length + 1);
+    assert.ok(csv.slice(1).every(line => line.endsWith(`,"${label}"`)));
+  }
+  assert.equal(select({}).length, 7, 'clearing the selection restores every counted entry');
+});
 
 test('all labor sources and statuses reconcile with project usage, retaining legacy units and credits', () => {
   const records = [record('t1'), record('t2', { worker: 'Sub Contractor', quantity: 4 }),

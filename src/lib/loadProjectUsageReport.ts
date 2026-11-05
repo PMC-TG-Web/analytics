@@ -23,7 +23,7 @@ export async function loadProjectUsageData(companyId: string, from: string, thro
         SELECT t.id, t."procoreId" AS "sourceId", t."procoreCompanyId" AS "companyId", t."procoreProjectId" AS "projectId",
           'Timecard'::text AS source, TO_CHAR(t.date AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS date,
           t."updatedAt", t."procoreDeletedAt" AS "deletedAt", t.status, COALESCE(t.hours, t."totalHoursWorked") AS quantity,
-          t."costCodeFullCode" AS "costCode", t."costCodeName" AS description, t.description AS notes,
+          t."costCodeFullCode" AS "costCode", t."costCodeName" AS description, t.description AS notes, t.billable,
           COALESCE(NULLIF(BTRIM(t."partyName"), ''), t.party) AS worker,
           NULL::text AS "holderId", NULL::text AS "lineItemId", 'L'::text AS "costType", 'HR'::text AS uom,
           NULL::text AS "holderTitle", 1 AS "metadataMatches"
@@ -40,6 +40,7 @@ export async function loadProjectUsageData(companyId: string, from: string, thro
           'Daily log'::text AS source, TO_CHAR(p.date, 'YYYY-MM-DD') AS date,
           p."updatedAt", p."procoreDeletedAt" AS "deletedAt", p.status, p."quantityUsed" AS quantity,
           li."costCode", COALESCE(li.description, p."lineItemDescription") AS description, p."lineItemDescription" AS "logDescription", p.notes, NULL::text AS worker,
+          NULL::boolean AS billable,
           COALESCE(a.target_holder_id, p."lineItemHolderId") AS "holderId", COALESCE(a.target_line_item_id, p."lineItemId") AS "lineItemId",
           li."costType", li.uom, p."lineItemHolderTitle" AS "holderTitle", li.matches AS "metadataMatches"
         FROM latest p

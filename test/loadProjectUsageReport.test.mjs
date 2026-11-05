@@ -38,6 +38,8 @@ test('loader pages both sources without truncation and keeps identity joins and 
     assert.match(sql, /ORDER BY [tp]\.id LIMIT \?/);
   }
   const logs = queries.find(sql => sql.includes('FROM "ProductivityLog"'));
+  assert.match(queries.find(sql => sql.includes('FROM "TimecardEntry"')), /t\.billable/);
+  assert.match(logs, /NULL::boolean AS billable/, 'missing productivity flag must remain unknown');
   assert.match(logs, /i\."procoreProjectId" = p\."procoreProjectId"/);
   assert.match(logs, /i\."procoreCompanyId" = p\."procoreCompanyId"/);
   assert.match(logs, /i\."procorePurchaseOrderContractId" = CASE/);

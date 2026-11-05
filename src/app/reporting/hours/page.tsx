@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState, type ReactNode } from 'react';
-import { emptyHoursFilters, filterHourEntries, hoursFilterError, hoursReportCsv, hoursTotals, type HourEntry, type HoursFilters, type HoursReport } from '@/lib/hoursReport';
+import { emptyHoursFilters, filterHourEntries, hoursBillableLabel, hoursFilterError, hoursReportCsv, hoursTotals, type HourEntry, type HoursFilters, type HoursReport } from '@/lib/hoursReport';
 import { usagePeriod } from '@/lib/projectUsageReport';
 
 const number = (value: number) => value.toLocaleString('en-US', { maximumFractionDigits: 4 });
@@ -47,13 +47,16 @@ function ColumnFilters({ filters, projects, onChange }: {
       <input type="number" step="any" aria-label="Minimum hours" placeholder="Min" value={filters.minHours} onChange={e => onChange('minHours', e.target.value)} className={field} />
       <input type="number" step="any" aria-label="Maximum hours" placeholder="Max" value={filters.maxHours} onChange={e => onChange('maxHours', e.target.value)} className={field} />
     </div></th>
+    <th className="min-w-40 px-4 pb-3 pt-2 font-normal"><select aria-label="Billable" value={filters.billable} onChange={e => onChange('billable', e.target.value)} className={field}>
+      <option value="">All</option><option value="billable">Billable</option><option value="not-billable">Not billable</option><option value="not-recorded">Not recorded</option>
+    </select></th>
     <th className="min-w-44 px-4 pb-3 pt-2 font-normal"><TextColumnFilter column="status" label="Status" inputLabel="Filter status or source ID" placeholder="Status / ID" filters={filters} onChange={onChange} /></th>
   </tr>;
 }
 
 function EntryTable({ entries, review = false, filterRow }: { entries: HourEntry[]; review?: boolean; filterRow?: ReactNode }) {
   return <div className="overflow-x-auto"><table className="w-full text-left text-sm">
-    <thead className="bg-slate-50 text-xs text-slate-600"><tr>{['Work date', 'Source', 'Project', 'Description / notes', 'Worker', 'Cost code', review ? 'Recorded quantity' : 'Hours', 'Status'].map(label => <th scope="col" key={label} className="whitespace-nowrap px-4 py-3">{label}</th>)}</tr>{filterRow}</thead>
+    <thead className="bg-slate-50 text-xs text-slate-600"><tr>{['Work date', 'Source', 'Project', 'Description / notes', 'Worker', 'Cost code', review ? 'Recorded quantity' : 'Hours', 'Billable', 'Status'].map(label => <th scope="col" key={label} className="whitespace-nowrap px-4 py-3">{label}</th>)}</tr>{filterRow}</thead>
     <tbody>{entries.map(row => <tr key={row.key} className="border-t border-slate-100 align-top">
       <td className="whitespace-nowrap px-4 py-3 tabular-nums">{row.date}</td>
       <td className="px-4 py-3"><span className={`inline-block rounded-full px-2 py-1 text-xs font-semibold ${row.source === 'Timecard' ? 'bg-blue-50 text-blue-800' : 'bg-teal-50 text-teal-800'}`}>{row.source}</span><p className="mt-1 text-xs text-slate-500">{row.laborType}</p></td>
@@ -67,6 +70,7 @@ function EntryTable({ entries, review = false, filterRow }: { entries: HourEntry
       </td>
       <td className="px-4 py-3">{row.worker || '—'}</td><td className="whitespace-nowrap px-4 py-3">{row.costCode || 'Unassigned'}</td>
       <td className="whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums">{review ? `${row.quantity == null ? 'Unknown' : number(row.quantity)} ${row.unit}` : number(row.hours!)}</td>
+      <td className="px-4 py-3">{hoursBillableLabel(row.billable)}</td>
       <td className="px-4 py-3">{row.status}<p className="mt-1 text-xs text-slate-500">ID: {row.sourceId}</p></td>
     </tr>)}</tbody>
   </table></div>;
@@ -144,6 +148,7 @@ export default function HoursReportPage() {
         </div>
         <p className="border-b border-slate-200 px-5 py-3 text-xs text-slate-600">Combine filters across columns. Choose Contains or Does not contain for text filters. Matching ignores case; blank fields include all values in either mode. Filters update totals and every matching CSV row immediately, across all pages. Scroll sideways to reach every column on smaller screens.</p>
         <p className="border-b border-slate-200 px-5 py-3 text-xs text-slate-600">Under Source, set <strong>Subcontractor labor</strong> to <strong>Exclude</strong> to remove it from both timecards and productivity, or <strong>Only</strong> to see it. Descriptions follow Billing Analytics, with a searchable Subcontractor labor label. Other column filters still apply; use Clear column filters to start over.</p>
+        <p className="border-b border-slate-200 px-5 py-3 text-xs text-slate-600"><strong>Billable</strong> uses the saved timesheet flag. Productivity entries and timecards without a flag show <strong>Not recorded</strong> and are included under All or Not recorded. This flag does not indicate whether hours have already been invoiced.</p>
         {filterError && <p role="alert" className="border-b border-red-200 bg-red-50 px-5 py-3 text-sm text-red-800">{filterError}</p>}
         <EntryTable entries={entries.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)} filterRow={<ColumnFilters filters={filters} projects={projects} onChange={changeFilter} />} />
         {!entries.length && !filterError && <p className="p-8 text-center text-slate-500">No hours match these filters.</p>}

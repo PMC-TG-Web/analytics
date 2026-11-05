@@ -14,6 +14,7 @@ export type UsageRecord = {
   uom: string | null; holderTitle: string | null; metadataMatches: number;
   logDescription?: string | null;
   notes?: string | null;
+  billable?: boolean | null;
 };
 type ProjectIdentity = { projectId: string; projectName: string; projectNumber: string; customer: string; status: string };
 export type UsageLine = ProjectIdentity & {

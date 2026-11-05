@@ -18,6 +18,7 @@ test('A/R aging, whole-invoice class filters, CSV, paging, errors and mobile lay
       : route.request().method() === 'POST' ? { status: 202, json: { refresh: { id: 'fixture', state: 'queued' } } }
         : { json: { report: payload, ...(route.request().url().includes('refreshId=') ? { refresh: { id: 'fixture', state: 'succeeded' } } : {}) } });
   });
+
   const total = label => page.getByRole('article').filter({ has: page.getByRole('heading', { name: label, exact: true }) }).locator('strong');
   try {
     await page.goto(`${base}/accounting/open-ar`, { waitUntil: 'domcontentloaded' });
@@ -75,5 +76,44 @@ test('A/R aging, whole-invoice class filters, CSV, paging, errors and mobile lay
     await page.setViewportSize({ width: 390, height: 844 });
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'table scrolls internally on mobile');
     assert.deepEqual(errors, []);
+  } finally { await browser.close(); }
+});
+
+test('hourly health warnings and automatic saved-data reload preserve class filters without QBO calls', { skip: !enabled, timeout: 120_000 }, async () => {
+  const browser = await chromium.launch({ channel: 'msedge', headless: true });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  await page.context().addCookies([{ name: 'dev_user_email', value: 'todd@pmcdecor.com', url: base, sameSite: 'Lax' }]);
+  await page.clock.install({ time: new Date('2026-11-05T16:00:00Z') });
+  let payload = arFixture(), reads = 0, posts = 0;
+  let health = { hostOnline: false, latestRefresh: { state: 'failed', requestedAt: '2026-11-05T15:00:00Z', finishedAt: '2026-11-05T15:01:00Z' } };
+  await page.route('**/api/accounting/open-ar*', route => {
+    if (route.request().method() === 'POST') posts++; else reads++;
+    return route.fulfill({ json: { report: payload, health } });
+  });
+  const total = page.getByRole('article').filter({ has: page.getByRole('heading', { name: 'Open invoices in view', exact: true }) }).locator('strong');
+  try {
+    await page.goto(`${base}/accounting/open-ar`, { waitUntil: 'domcontentloaded' });
+    await total.getByText('$1,500.00', { exact: true }).waitFor();
+    await page.getByRole('alert').filter({ hasText: 'A/R data is stale' }).waitFor();
+    await page.getByRole('alert').filter({ hasText: 'QBO host is offline' }).waitFor();
+    await page.getByRole('alert').filter({ hasText: 'latest A/R refresh' }).waitFor();
+    await page.locator('summary').filter({ hasText: 'Classes (' }).click();
+    await page.getByRole('checkbox', { name: 'Concrete:retainages', exact: true }).check();
+    assert.equal(await total.innerText(), '$1,400.00');
+    const before = reads;
+    payload = arFixture();
+    payload.generatedAt = '2026-11-05T16:00:00Z';
+    payload.invoices[1].balanceCents = 22000;
+    payload.invoices[1].totalCents = 22000;
+    payload.qboAging.days1To30 += 2000; payload.qboAging.total += 2000;
+    health = { hostOnline: true, latestRefresh: { state: 'succeeded', requestedAt: '2026-11-05T16:00:00Z', finishedAt: '2026-11-05T16:00:30Z' } };
+    await page.clock.fastForward(61_000);
+    await total.getByText('$1,420.00', { exact: true }).waitFor();
+    assert.ok(reads > before);
+    assert.equal(posts, 0, 'automatic page reads never call QBO');
+    assert.equal(await page.getByRole('checkbox', { name: 'Concrete:retainages', exact: true }).isChecked(), true);
+    assert.equal(await page.getByRole('alert').filter({ hasText: 'A/R data is stale' }).count(), 0);
+    assert.equal(await page.getByRole('alert').filter({ hasText: 'QBO host is offline' }).count(), 0);
+    assert.equal(await page.getByRole('alert').filter({ hasText: 'latest A/R refresh' }).count(), 0);
   } finally { await browser.close(); }
 });

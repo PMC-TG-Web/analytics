@@ -2,17 +2,17 @@ import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from './prisma';
 
-export async function enqueueQboBillRelay(body: unknown, timeoutMs = 50_000) {
+export async function enqueueQboBillRelay(body: unknown, timeoutMs = 50_000, database: Pick<Prisma.TransactionClient, 'qboBillRelayHost' | 'qboBillRelayJob'> = prisma) {
   const request = body as { operation?: string; companyId?: string };
   if (!['open-ar', 'catalog', 'status', 'prepare', 'post', 'budget-plan', 'setup-options', 'setup', 'reconcile-preview', 'reconcile-confirm'].includes(request.operation || '') || !/^\d+$/.test(request.companyId || '')) throw new Error('Invalid QBO relay request.');
   const hostId = process.env.QBO_BILL_RELAY_HOST_ID || 'primary';
-  const host = await prisma.qboBillRelayHost.findUnique({ where: { id: hostId } });
+  const host = await database.qboBillRelayHost.findUnique({ where: { id: hostId } });
   if (!host || host.companyId !== request.companyId || Date.now() - host.updatedAt.getTime() > 20_000) throw new Error('The QBO host computer is offline. Turn it on and sign in, then refresh the review.');
   const id = randomUUID();
   const maximum = request.operation === 'open-ar' ? 300_000 : 50_000;
   const lifetime = Number.isFinite(timeoutMs) ? Math.max(1000, Math.min(maximum, timeoutMs)) : 50_000;
   const expiresAt = new Date(Date.now() + lifetime);
-  await prisma.qboBillRelayJob.create({ data: { id, hostId, companyId: request.companyId!, operation: request.operation!, payload: body as Prisma.InputJsonValue, expiresAt } });
+  await database.qboBillRelayJob.create({ data: { id, hostId, companyId: request.companyId!, operation: request.operation!, payload: body as Prisma.InputJsonValue, expiresAt } });
   return { id, expiresAt };
 }
 

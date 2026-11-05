@@ -18,6 +18,27 @@ export type OpenArReport = {
   remainingCreditCents: number; remainingCreditCount: number;
   qboAging: ArAmounts;
 };
+export type OpenArHealth = {
+  hostOnline: boolean;
+  latestRefresh: { state: string; requestedAt: string; finishedAt: string | null } | null;
+};
+export const AR_STALE_AFTER_MS = 75 * 60_000;
+export function isOpenArStale(generatedAt: string, now: number): boolean {
+  return now - Date.parse(generatedAt) > AR_STALE_AFTER_MS;
+}
+export function parseOpenArHealth(value: unknown): OpenArHealth {
+  const source = arRecord(value, 'A/R refresh status');
+  if (typeof source.hostOnline !== 'boolean') throw new OpenArDataError('The QBO host status is unavailable.');
+  const latest = source.latestRefresh == null ? null : arRecord(source.latestRefresh, 'Latest A/R refresh');
+  if (latest && (!['queued', 'processing', 'succeeded', 'failed', 'expired'].includes(String(latest.state))
+    || !Number.isFinite(Date.parse(arText(latest.requestedAt, 'Refresh requested time')))
+    || (latest.finishedAt != null && !Number.isFinite(Date.parse(arText(latest.finishedAt, 'Refresh finished time')))))) {
+    throw new OpenArDataError('The A/R refresh status is invalid.');
+  }
+  return { hostOnline: source.hostOnline, latestRefresh: latest ? {
+    state: String(latest.state), requestedAt: String(latest.requestedAt), finishedAt: latest.finishedAt == null ? null : String(latest.finishedAt),
+  } : null };
+}
 
 export class OpenArDataError extends Error {
   constructor(message: string) { super(message); this.name = 'OpenArDataError'; }

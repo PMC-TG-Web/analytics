@@ -1,7 +1,7 @@
-import { createHash } from 'node:crypto';
 import { prisma } from './prisma';
 import { enqueueQboBillRelay } from './qboBillRelay';
-import { OpenArDataError, parseOpenArReport } from './qboOpenAr';
+import { OpenArDataError, parseOpenArReport, type OpenArHealth } from './qboOpenAr';
+import { saveQboOpenArSnapshot } from './saveQboOpenArSnapshot.ts';
 
 export async function loadQboOpenAr(companyId: string) {
   const snapshot = await prisma.qboOpenArSnapshot.findFirst({
@@ -14,14 +14,47 @@ export async function loadQboOpenAr(companyId: string) {
   return report;
 }
 
-export async function queueQboOpenAr(companyId: string) {
+export async function queueQboOpenAr(companyId: string, hourly = false) {
   if (process.env.QBO_BILL_RELAY_ENABLED !== 'true') throw new OpenArDataError('The shared QBO report relay is not configured for this application.');
-  const existing = await prisma.qboBillRelayJob.findFirst({
-    where: { companyId, hostId: process.env.QBO_BILL_RELAY_HOST_ID || 'primary', operation: 'open-ar', state: { in: ['queued', 'processing'] }, expiresAt: { gt: new Date() } },
-    orderBy: { createdAt: 'desc' }, select: { id: true },
-  });
-  const job = existing || await enqueueQboBillRelay({ operation: 'open-ar', companyId }, 300_000);
-  return { id: job.id, state: 'queued' as const };
+  const hostId = process.env.QBO_BILL_RELAY_HOST_ID || 'primary';
+  return prisma.$transaction(async database => {
+    // Fence the initially empty scope too: scheduled and manual requests share this lock.
+    await database.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`qbo-open-ar:${hostId}:${companyId}`}, 0))`;
+    const now = new Date();
+    const scope = { companyId, hostId, operation: 'open-ar' };
+    const existing = await database.qboBillRelayJob.findFirst({
+      where: { ...scope, OR: [{ state: 'processing' }, { state: 'queued', expiresAt: { gt: now } }] },
+      orderBy: { createdAt: 'desc' }, select: { id: true },
+    });
+    if (existing) return { id: existing.id, state: 'queued' as const };
+    if (hourly) {
+      const completed = await database.qboBillRelayJob.findFirst({
+        where: { ...scope, state: 'succeeded', createdAt: { gte: new Date(Math.floor(now.getTime() / 3_600_000) * 3_600_000) } },
+        orderBy: { createdAt: 'desc' }, select: { id: true },
+      });
+      if (completed) return { id: completed.id, state: 'succeeded' as const };
+    }
+    const job = await enqueueQboBillRelay({ operation: 'open-ar', companyId }, 300_000, database);
+    return { id: job.id, state: 'queued' as const };
+  }, { maxWait: 5000, timeout: 10000 });
+}
+
+export async function loadQboOpenArHealth(companyId: string): Promise<OpenArHealth> {
+  const hostId = process.env.QBO_BILL_RELAY_HOST_ID || 'primary';
+  const [host, job] = await Promise.all([
+    prisma.qboBillRelayHost.findUnique({ where: { id: hostId }, select: { companyId: true, updatedAt: true } }),
+    prisma.qboBillRelayJob.findFirst({
+      where: { companyId, hostId, operation: 'open-ar' }, orderBy: { createdAt: 'desc' },
+      select: { state: true, createdAt: true, finishedAt: true, expiresAt: true },
+    }),
+  ]);
+  return {
+    hostOnline: !!host && host.companyId === companyId && Date.now() - host.updatedAt.getTime() <= 20_000,
+    latestRefresh: job ? {
+      state: ['queued', 'processing'].includes(job.state) && job.expiresAt.getTime() <= Date.now() ? 'expired' : job.state,
+      requestedAt: job.createdAt.toISOString(), finishedAt: job.finishedAt?.toISOString() || null,
+    } : null,
+  };
 }
 
 export async function completeQboOpenAr(companyId: string, id: string) {
@@ -38,15 +71,6 @@ export async function completeQboOpenAr(companyId: string, id: string) {
     if (!['queued', 'processing'].includes(job.state)) throw new OpenArDataError('The A/R refresh has an unexpected status.');
     return { refresh: { id, state: job.state }, report: null };
   }
-  const report = parseOpenArReport(job.result);
-  if (report.companyId !== companyId) throw new OpenArDataError('The QBO host returned a different company. The previous report was retained.');
-  const sourceHash = createHash('sha256').update(JSON.stringify(report)).digest('hex');
-  await prisma.qboOpenArSnapshot.upsert({
-    where: { sourceHash }, update: {},
-    create: {
-      companyId, realmId: report.realmId, environment: report.environment, sourceHash,
-      sourceGeneratedAt: new Date(report.generatedAt), asOfDate: new Date(report.asOfDate), payload: report,
-    },
-  });
+  const report = await saveQboOpenArSnapshot(prisma, companyId, job.result);
   return { refresh: { id, state: 'succeeded' }, report };
 }

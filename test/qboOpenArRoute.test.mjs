@@ -19,7 +19,7 @@ function route(email, assigned, active = true, failure = null) {
     '@/lib/permissions': permissions,
     '@/lib/prisma': { prisma: { $queryRaw: async () => active ? [{ email, permissions: assigned }] : [] } },
     '@/lib/qboOpenAr': domain,
-    '@/lib/loadQboOpenAr': Object.fromEntries(['loadQboOpenAr', 'queueQboOpenAr', 'completeQboOpenAr'].map(name => [name, async company => {
+    '@/lib/loadQboOpenAr': Object.fromEntries(['loadQboOpenAr', 'loadQboOpenArHealth', 'queueQboOpenAr', 'completeQboOpenAr'].map(name => [name, async company => {
       calls.push([name, company]); if (failure) throw failure; return { marker: 'report' };
     }])),
   };
@@ -47,7 +47,7 @@ test('saved reads and refreshes require active independent A/R permission before
       assert.equal(response.status, method === 'POST' && status === 200 ? 202 : status, `${method} ${assigned}`);
       assert.equal(response.headers.get('cache-control'), 'private, no-store');
     }
-    assert.deepEqual(handler.calls, status === 200 ? [['loadQboOpenAr', '123'], ['queueQboOpenAr', '123']] : []);
+    assert.deepEqual(handler.calls, status === 200 ? [['loadQboOpenAr', '123'], ['loadQboOpenArHealth', '123'], ['queueQboOpenAr', '123']] : []);
   }
 });
 test('refresh polling is protected, validates IDs, and never starts another QBO request', async () => {

@@ -5,13 +5,13 @@ export const reportGuides = [
     updated: '2026-11-05',
     purpose: 'Review unpaid QuickBooks invoices in Current, 1-30, 31-60, 61-90 and 90+ day columns. Open A/R has an independent checkbox in employee Navigation Permissions and access templates. This report never creates or changes QBO accounting records.',
     steps: [
-      { title: 'Refresh and check the date', body: 'Select Refresh from QBO to queue a read of the connected company through the shared QBO host. Keep the page open while it checks progress and saves the completed snapshot; reads can take several minutes. The host computer must be online. A pending refresh is reused on retry. Reload saved report reads the last saved database snapshot without contacting QBO. Check the Eastern as-of date and refresh timestamp before using the balances.' },
+      { title: 'Refresh and check the date', body: 'QBO refreshes automatically every hour on the hour, whether or not this page is open. The host saves each completed snapshot before marking the read successful. The host computer must be on and signed in. Refresh from QBO requests an additional read; a pending refresh is reused rather than overlapped. Reads can take several minutes. This page checks saved data every minute without resetting filters; Reload saved report does so immediately without contacting QBO. Check the Eastern as-of date and refresh timestamp before using the balances.' },
       { title: 'Choose classes', body: 'Open Classes and check one or more classes. Exclude selected classes is the default; Only selected classes includes matching invoices instead. A selected parent includes its subclasses, including inactive classes. Unclassified matches invoices with an unclassified sales line. No selections means all invoices in either mode. Clear filters restores all invoices.' },
       { title: 'Review and export', body: 'Search by customer/project, invoice number or QBO invoice ID. Totals and Download CSV include every matching invoice, not just the visible page. The CSV contains invoice-level balances and class names; it does not allocate unapplied payments or credits.' },
     ],
     data: [
       'The authenticated host uses the QBO Invoice, Class, Customer, Payment and CreditMemo query APIs plus the A/R Aging Summary report. QBO customer and class IDs establish identity; names are display labels only. OAuth credentials stay on the QBO host.',
-      'A refresh saves an immutable PostgreSQL snapshot. Ordinary page reads and class filters do not call QBO. A failed refresh retains the previous snapshot and displays an error. Historical as-of reconstruction and automatic scheduled refresh are not included.',
+      'A refresh saves an immutable PostgreSQL snapshot. Netlify schedules a read every hour on the hour in production; the host saves the result even with no browser open. Scheduled and manual requests share a company/host lock and reuse active work. Ordinary page reads and class filters do not call QBO. Failed refreshes retain the previous snapshot. Historical as-of reconstruction is not included.',
       'The invoice table shows positive current invoice balances. Credits and unapplied payments remain separate and unfiltered, because they cannot be reliably assigned to the selected invoice classes. The QBO aging control includes other A/R entries and remains unfiltered.',
     ],
     terms: [
@@ -24,6 +24,7 @@ export const reportGuides = [
     checks: [
       'If a class filter removes more than expected, inspect the mixed-class warning and clear the filters. Do not interpret the result as a line-level class allocation.',
       'If Refresh fails, confirm the shared QBO host is online and connected, then retry. The saved report remains usable with its original date, but is not current.',
+      'A stale-data warning appears when the last successful snapshot is more than 75 minutes old. Offline-host and failed/expired-refresh warnings remain visible even after reloading the page. A stopped host cannot refresh QBO; after restarting it, retry manually or wait for the next hourly run. Interrupted read-only A/R jobs are failed on host startup so they cannot permanently block new work.',
       'A reconciliation difference can reflect other A/R transactions or transactions edited while the APIs were being read. Refresh again and compare with QBO before using it as a control total. Invalid source amounts, incomplete responses, foreign-currency receivables and future-dated open transactions block a new snapshot.',
     ],
   }),

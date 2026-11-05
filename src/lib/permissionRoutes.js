@@ -206,6 +206,7 @@ const ROUTE_AUTHORIZED_API_REQUESTS = [
   { path: '/api/cron/project-onboarding', methods: ['POST'] },
   { path: '/api/cron/project-reconciliation', methods: ['POST'] },
   { path: '/api/cron/qbo-bill-batch', methods: ['POST'] },
+  { path: '/api/cron/qbo-open-ar', methods: ['POST'] },
   { path: '/api/cron/sync', methods: ['POST'] },
   { path: '/api/cron/sync/health', methods: ['GET', 'POST'] },
   { path: '/api/cron/timecard-notifications', methods: ['POST'] },

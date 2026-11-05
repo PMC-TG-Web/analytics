@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getRequestUserEmail } from '@/lib/requestUser';
 import { hasDatabasePageAccess } from '@/lib/permissions';
 import { prisma } from '@/lib/prisma';
-import { completeQboOpenAr, loadQboOpenAr, queueQboOpenAr } from '@/lib/loadQboOpenAr';
+import { completeQboOpenAr, loadQboOpenAr, loadQboOpenArHealth, queueQboOpenAr } from '@/lib/loadQboOpenAr';
 import { OpenArDataError } from '@/lib/qboOpenAr';
 
 export const dynamic = 'force-dynamic';
@@ -22,7 +22,8 @@ async function report(request: NextRequest, refresh: boolean) {
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(refreshId)) return json({ error: 'Invalid A/R refresh ID.' }, 400);
       return json(await completeQboOpenAr(companyId, refreshId));
     }
-    return json({ report: await loadQboOpenAr(companyId) });
+    const [report, health] = await Promise.all([loadQboOpenAr(companyId), loadQboOpenArHealth(companyId)]);
+    return json({ report, health });
   } catch (error) {
     console.error('[qbo-open-ar] Report failed', { operation: refresh ? 'refresh' : 'read', errorType: error instanceof Error ? error.name : 'UnknownError' });
     return json({ error: error instanceof OpenArDataError ? error.message

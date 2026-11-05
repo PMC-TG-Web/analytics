@@ -1,0 +1,40 @@
+diff --git a/src/bill-relay-worker.js b/src/bill-relay-worker.js
+index 5535e82c8..dccbb2d8c 100644
+--- a/src/bill-relay-worker.js
++++ b/src/bill-relay-worker.js
+@@ -3,6 +3,7 @@ import { parse } from 'dotenv';
+ import { readFile } from 'node:fs/promises';
+ import { createRequire } from 'node:module';
+ import path from 'node:path';
++import { pathToFileURL } from 'node:url';
+ import { configuredBillService } from './direct-cost-bill-runtime.js';
+ import { acquireBillServiceLock } from './bill-service-lock.js';
+ 
+@@ -33,6 +34,11 @@ async function heartbeat() {
+ const heartbeatTimer = setInterval(() => { heartbeat().catch(() => {}); }, 6000);
+ console.log('Shared QBO bill host started. Outbound database relay; no listening port.');
+ try {
++  // The exclusive service lock proves a previous process no longer owns these read-only jobs.
++  await prisma.qboBillRelayJob.updateMany({
++    where: { hostId, companyId, operation: 'open-ar', state: 'processing' },
++    data: { state: 'failed', error: 'The QBO host restarted during the A/R refresh. Retry to read current balances.', finishedAt: new Date() },
++  });
+   while (!stopping) {
+     try {
+       if (Date.now() - lastHeartbeat > 5000) {
+@@ -45,7 +51,14 @@ try {
+         if (!claim.count) continue;
+         lastWork = Date.now();
+         let result, error;
+-        try { result = await service(job.payload); }
++        try {
++          result = await service(job.payload);
++          if (job.operation === 'open-ar') {
++            const source = path.join(analyticsRoot, 'src', 'lib', 'saveQboOpenArSnapshot.ts');
++            const { saveQboOpenArSnapshot } = await import(pathToFileURL(source).href);
++            await saveQboOpenArSnapshot(prisma, companyId, result);
++          }
++        }
+         catch (e) { error = e instanceof Error ? e.message : 'QBO bill request failed.'; }
+         await prisma.qboBillRelayJob.update({ where: { id: job.id }, data: { state: error ? 'failed' : 'succeeded', ...(error ? { error: error.slice(0, 1000) } : { result }), finishedAt: new Date() } });
+       }

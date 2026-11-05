@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AR_BUCKET_LABELS, AR_BUCKETS, arBucket, arReconciliationDifference, arTotals,
-  filterArInvoices, openArCsv, parseOpenArReport, type ArAmounts, type OpenArReport,
+  filterArInvoices, isOpenArStale, openArCsv, parseOpenArHealth, parseOpenArReport, type ArAmounts, type OpenArHealth, type OpenArReport,
 } from '@/lib/qboOpenAr';
 
 const button = 'rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50';
@@ -19,10 +19,12 @@ export default function OpenArPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [refreshStatus, setRefreshStatus] = useState('');
+  const [health, setHealth] = useState<OpenArHealth | null>(null);
+  const [checkedAt, setCheckedAt] = useState(Date.now);
   const refreshController = useRef<AbortController | null>(null);
 
-  async function load(refresh = false, signal?: AbortSignal) {
-    setLoading(true); setError('');
+  async function load(refresh = false, signal?: AbortSignal, quiet = false) {
+    if (!quiet) { setLoading(true); setError(''); }
     if (refresh) {
       refreshController.current = new AbortController();
       signal = refreshController.current.signal;
@@ -49,16 +51,36 @@ export default function OpenArPage() {
         if (!data.report) throw new Error('The completed QBO refresh did not contain a report. The previous report was retained.');
       }
       const next = data.report == null ? null : parseOpenArReport(data.report);
-      if (!signal?.aborted) { setReport(next); setPage(0); }
+      const nextHealth = data.health == null ? null : parseOpenArHealth(data.health);
+      if (!signal?.aborted) {
+        setReport(next); setHealth(nextHealth); setError('');
+        if (!quiet) setPage(0);
+      }
     } catch (error) {
       if (!signal?.aborted) setError(error instanceof Error ? error.message : 'Unable to load Open A/R.');
-    } finally { if (!signal?.aborted) { setLoading(false); setRefreshStatus(''); } }
+    } finally {
+      if (!signal?.aborted) {
+        setCheckedAt(Date.now());
+        if (!quiet) { setLoading(false); setRefreshStatus(''); }
+      }
+    }
   }
   useEffect(() => {
     const controller = new AbortController();
     void load(false, controller.signal);
     return () => { controller.abort(); refreshController.current?.abort(); };
   }, []);
+  useEffect(() => {
+    if (loading) return;
+    const controller = new AbortController();
+    let pending = false;
+    const timer = setInterval(() => {
+      if (pending) return;
+      pending = true;
+      void load(false, controller.signal, true).finally(() => { pending = false; });
+    }, 60_000);
+    return () => { clearInterval(timer); controller.abort(); };
+  }, [loading]);
 
   const invalidFilter = report && selected.some(id => !report.classes.some(row => row.id === id));
   const rows = useMemo(() => report && !invalidFilter ? filterArInvoices(report, selected, mode, search) : [], [report, selected, mode, search, invalidFilter]);
@@ -67,7 +89,8 @@ export default function OpenArPage() {
   const money = (cents: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: report?.currency || 'USD' }).format(cents / 100);
   const mixedCount = report?.invoices.filter(row => row.classIds.length > 1).length || 0;
   const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-  const visible = rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const visiblePage = Math.min(page, pages - 1);
+  const visible = rows.slice(visiblePage * PAGE_SIZE, (visiblePage + 1) * PAGE_SIZE);
   const difference = report ? arReconciliationDifference(report) : 0;
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   function clearFilters() { setSelected([]); setMode('exclude'); setSearch(''); setPage(0); }
@@ -89,6 +112,7 @@ export default function OpenArPage() {
         <h1 className="mt-2 text-3xl font-bold">Open A/R</h1>
         <p className="mt-2 text-teal-50">Open invoices aged by due date, with class filters. No invoices or payments are changed in QBO.</p>
         {report && <p className="mt-3 text-sm text-teal-100">As of {report.asOfDate} (Eastern) · Refreshed {new Date(report.generatedAt).toLocaleString()} · {report.currency} · {report.environment}</p>}
+        <p className="mt-2 text-sm text-teal-100">Automatic QBO refresh: every hour, on the hour. This page checks saved data every minute without resetting your filters.</p>
         <Link href="/help/qbo-open-ar" className="mt-3 inline-block underline underline-offset-4">Info / Help</Link>
       </header>
 
@@ -99,8 +123,12 @@ export default function OpenArPage() {
       </div>
       {error && <div role="alert" className="rounded-lg border border-red-300 bg-red-50 p-4 text-red-900">{error}{report && ' The previous saved snapshot remains displayed; it has not been refreshed.'}</div>}
       {refreshStatus && <p role="status" className="rounded-lg border border-teal-200 bg-teal-50 p-4 text-teal-900">{refreshStatus}</p>}
+      {health && !health.hostOnline && <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-4">The QBO host is offline or not responding. Automatic refresh requires that computer to be on and signed in. The last saved report is retained.</p>}
+      {health?.latestRefresh && ['failed', 'expired'].includes(health.latestRefresh.state) && <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-4">The latest A/R refresh ({new Date(health.latestRefresh.requestedAt).toLocaleString()}) {health.latestRefresh.state === 'failed' ? 'failed' : 'did not finish in time'}. The last good snapshot is still displayed. Check the QBO host and retry Refresh from QBO.</p>}
+      {health?.latestRefresh && ['queued', 'processing'].includes(health.latestRefresh.state) && !refreshStatus && <p role="status" className="rounded-lg border border-teal-200 bg-teal-50 p-4">An A/R refresh is {health.latestRefresh.state}. The completed snapshot will appear automatically.</p>}
       {!loading && !report && !error && <p className="rounded-lg border bg-white p-6">No A/R snapshot has been saved yet. Select Refresh from QBO to build the report.</p>}
       {report && <>
+        {isOpenArStale(report.generatedAt, checkedAt) && <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-4">A/R data is stale: the last successful refresh is more than 75 minutes old. Values below are the last good snapshot, not live balances.</p>}
         {report.asOfDate !== today && <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-4">This is a saved report for {report.asOfDate}, not today. Refresh from QBO to update balances and aging.</p>}
         {difference !== 0 && <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-4">Reconciliation needs review: open invoices less unapplied payments and credits differ from QBO net A/R by {money(difference)}. Other A/R transactions or changes during refresh may explain the difference. Do not treat the invoice subtotal as net A/R.</p>}
         <section aria-label="Report filters" className="rounded-xl border border-slate-200 bg-white p-4">
@@ -142,8 +170,8 @@ export default function OpenArPage() {
 
         {!invalidFilter && <section className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white">
           <div className="flex flex-wrap items-center justify-between gap-3 p-4">
-            <div><h2 className="text-lg font-bold">Open invoices</h2><p className="text-sm text-slate-600">{rows.length} matching invoices · Page {page + 1} of {pages}. Totals and CSV include all matching pages.</p></div>
-            <div className="flex gap-2"><button className={button} disabled={page === 0} onClick={() => setPage(previous => previous - 1)}>Previous</button><button className={button} disabled={page + 1 >= pages} onClick={() => setPage(previous => previous + 1)}>Next</button></div>
+            <div><h2 className="text-lg font-bold">Open invoices</h2><p className="text-sm text-slate-600">{rows.length} matching invoices · Page {visiblePage + 1} of {pages}. Totals and CSV include all matching pages.</p></div>
+            <div className="flex gap-2"><button className={button} disabled={visiblePage === 0} onClick={() => setPage(visiblePage - 1)}>Previous</button><button className={button} disabled={visiblePage + 1 >= pages} onClick={() => setPage(visiblePage + 1)}>Next</button></div>
           </div>
           <div className="overflow-x-auto"><table className="w-full text-left text-sm">
             <thead className="bg-slate-100 text-xs text-slate-700"><tr>{['Customer / project', 'Invoice', 'Invoice date', 'Due date', 'Classes', ...AR_BUCKETS.map(key => AR_BUCKET_LABELS[key]), 'Open balance'].map(label => <th scope="col" key={label} className="whitespace-nowrap px-4 py-3">{label}</th>)}</tr></thead>

@@ -3,7 +3,7 @@ import { buildProjectUsageReport, usagePeriod, type UsageRecord } from './projec
 
 const PAGE_SIZE = 1000;
 
-export async function loadProjectUsageReport(companyId: string, from: string, through: string) {
+export async function loadProjectUsageData(companyId: string, from: string, through: string) {
   const period = usagePeriod(from, through);
   // Filter dates AFTER choosing each source record's latest mirror, so a moved/deleted
   // entry cannot revive an older copy. UTC dates match the field source's work dates.
@@ -23,7 +23,7 @@ export async function loadProjectUsageReport(companyId: string, from: string, th
         SELECT t.id, t."procoreId" AS "sourceId", t."procoreCompanyId" AS "companyId", t."procoreProjectId" AS "projectId",
           'Timecard'::text AS source, TO_CHAR(t.date AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS date,
           t."updatedAt", t."procoreDeletedAt" AS "deletedAt", t.status, COALESCE(t.hours, t."totalHoursWorked") AS quantity,
-          t."costCodeFullCode" AS "costCode", t."costCodeName" AS description,
+          t."costCodeFullCode" AS "costCode", t."costCodeName" AS description, t.description AS notes,
           COALESCE(NULLIF(BTRIM(t."partyName"), ''), t.party) AS worker,
           NULL::text AS "holderId", NULL::text AS "lineItemId", 'L'::text AS "costType", 'HR'::text AS uom,
           NULL::text AS "holderTitle", 1 AS "metadataMatches"
@@ -39,7 +39,7 @@ export async function loadProjectUsageReport(companyId: string, from: string, th
         SELECT p.id, p."procoreId" AS "sourceId", p."procoreCompanyId" AS "companyId", p."procoreProjectId" AS "projectId",
           'Daily log'::text AS source, TO_CHAR(p.date, 'YYYY-MM-DD') AS date,
           p."updatedAt", p."procoreDeletedAt" AS "deletedAt", p.status, p."quantityUsed" AS quantity,
-          li."costCode", COALESCE(li.description, p."lineItemDescription") AS description, p."lineItemDescription" AS "logDescription", NULL::text AS worker,
+          li."costCode", COALESCE(li.description, p."lineItemDescription") AS description, p."lineItemDescription" AS "logDescription", p.notes, NULL::text AS worker,
           COALESCE(a.target_holder_id, p."lineItemHolderId") AS "holderId", COALESCE(a.target_line_item_id, p."lineItemId") AS "lineItemId",
           li."costType", li.uom, p."lineItemHolderTitle" AS "holderTitle", li.matches AS "metadataMatches"
         FROM latest p
@@ -74,5 +74,10 @@ export async function loadProjectUsageReport(companyId: string, from: string, th
     prisma.pmcProject.findMany({ where: { companyId }, select: { procoreProjectId: true, projectName: true, projectNumber: true, customer: true, status: true } }),
     read('Timecard'), read('Daily log'),
   ]);
-  return buildProjectUsageReport(companyId, period, projects, [...timecards, ...logs]);
+  return { period, projects, records: [...timecards, ...logs] };
+}
+
+export async function loadProjectUsageReport(companyId: string, from: string, through: string) {
+  const { period, projects, records } = await loadProjectUsageData(companyId, from, through);
+  return buildProjectUsageReport(companyId, period, projects, records);
 }

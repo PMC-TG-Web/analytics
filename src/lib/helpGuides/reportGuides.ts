@@ -1,6 +1,19 @@
 import { defineGuide } from './defineGuide.ts';
 
 export const reportGuides = [
+  defineGuide('all-hours', {
+    updated: '2026-11-05',
+    purpose: 'Review all saved timecard and productivity labor hours in one entry-level report. All Hours has its own checkbox in employee Navigation Permissions and access templates.',
+    steps: [
+      { title: 'Choose work dates', body: 'Set From work date and Through work date, then Run report. Both endpoints are included. Leave dates blank or select All dates for all saved history.' },
+      { title: 'Filter descriptions', body: 'Type part of a description or note. The search ignores case and covers timecard cost-code descriptions, productivity item/daily-log descriptions, and entry notes. Project and Source filters are optional. These filters immediately update totals, entries, review rows, and exports.' },
+      { title: 'Inspect and export', body: 'Review source, worker, project, status, and source ID before using the combined total. Download CSV includes every matching hour entry across all table pages. Download review CSV contains every matching excluded review entry. Rerun after changing dates.' },
+    ],
+    data: ['Reads synchronized PostgreSQL timecards, productivity logs, purchase-order metadata, and canonical projects for the configured company. Run report reloads saved data; it does not trigger a Procore synchronization. Loaded time is the read time, not proof of synchronization completeness.', 'Employee and subcontractor hours are included, with all non-deleted statuses displayed. Latest copies of the same source ID are counted once within their company, project, and source. Separate timecard and productivity records both contribute, even when they may describe the same work.', 'Productivity uses the same labor classifications as Project labor & materials: hour units, established legacy Labor/Subcontractor LS hours, and exact Project Management EA rules. Material, expense, and equipment quantities do not become labor hours. Deleted/void records and Billing File productivity logs are excluded.'],
+    terms: [['Combined hours', 'Timecard hours plus productivity labor hours after the active filters. This is a sum of recorded sources, not deduplication of work across sources.'], ['Needs review', 'Entries with unresolved project identity, coding, units, or quantity. They are excluded from hours and export separately.'], ['Description or notes', 'Literal partial-text search across the descriptive fields shown in the table. It does not search project names or workers.'], ['Recorded quantity / unit', 'Original productivity quantity and unit, retained in the CSV alongside the interpreted hours and classification note.']],
+    example: 'Eight timecard hours and two productivity labor hours matching “foundation” produce ten combined recorded hours. A concrete quantity of 20 CY does not add twenty hours.',
+    checks: ['If hours are missing, clear the description, project, and source filters, check the date range, and inspect Needs review. Confirm missing source records have synchronized.', 'The same work can appear in both sources. Check source IDs and entry descriptions before using combined totals for payroll or billing.', 'A failed read shows an error and no partial report. Retry Run report. Date changes disable downloads until the report is rerun.'],
+  }),
   defineGuide('billing-analytics', {
     updated: '2026-11-03',
     purpose: 'Prepare subcontractor hour totals for billing review. An administrator can grant any active employee access using the separate Billing Analytics checkbox in Employees → Navigation Permissions. The general Analytics checkbox does not grant this report. Viewing or exporting this report does not create an invoice or change source records.',

@@ -68,6 +68,7 @@ export const PATH_PERMISSION_RULES = [
   { prefix: '/help/field-productivity', permission: 'analytics' },
   { prefix: '/help/market-outlook', permission: 'analytics' },
   { prefix: '/help/reporting', permission: 'reporting' },
+  { prefix: '/help/all-hours', permission: 'reporting' },
   { prefix: '/help/crew-management', permission: 'crew-management' },
   { prefix: '/help/crew-scorecard', permission: 'analytics' },
   { prefix: '/help/employees', permission: 'employees' },

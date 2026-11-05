@@ -13,6 +13,7 @@ export type UsageRecord = {
   holderId: string | null; lineItemId: string | null; costType: string | null;
   uom: string | null; holderTitle: string | null; metadataMatches: number;
   logDescription?: string | null;
+  notes?: string | null;
 };
 type ProjectIdentity = { projectId: string; projectName: string; projectNumber: string; customer: string; status: string };
 export type UsageLine = ProjectIdentity & {
@@ -56,6 +57,47 @@ export function usagePeriod(from = '', through = ''): UsagePeriod {
 const clean = (value: string | null | undefined) => value?.trim() || '';
 const round = (value: number) => Math.round((value + Number.EPSILON) * 10_000) / 10_000;
 
+/** Shared classification for project totals and the entry-level hours report. */
+export function classifyUsageRecord(row: UsageRecord) {
+  let kind: 'labor' | 'materials' | 'other' | 'review' = 'review';
+  let note = '';
+  let unit = clean(row.uom).toUpperCase();
+  const subcontractor = row.source === 'Timecard' ? isSubcontractorTimecard({ partyName: row.worker }) : isSubcontractorProductivity(row.description);
+  const labor = /^(l|labor|labour)$/i.test(clean(row.costType));
+  const itemClassification = row.source === 'Daily log' && row.metadataMatches === 1 ? classifyProjectUsageItem(row) : null;
+  if (!row.projectId) note = 'Missing Procore project ID.';
+  else if (row.quantity == null || !Number.isFinite(row.quantity)) note = 'Missing or invalid quantity.';
+  else if (row.source === 'Timecard') { kind = 'labor'; unit = 'HR'; }
+  else if (row.metadataMatches !== 1) note = 'Purchase-order line not found or has conflicting coding.';
+  else if (itemClassification) {
+    kind = itemClassification.kind; unit = itemClassification.unit; note = itemClassification.note;
+  }
+  else if ((labor || subcontractor) && (/^(h|hr|hrs|hour|hours)$/i.test(unit) || /^ls$/i.test(unit))) {
+    kind = 'labor';
+    if (unit === 'LS') note = 'Legacy labor LS quantities are recorded as hours, consistent with field analytics.';
+    unit = 'HR';
+  } else if (labor || subcontractor) note = `Labor quantity is recorded in ${unit || 'an unknown unit'}; excluded from hours.`;
+  else if (/^(m|material|materials)$/i.test(clean(row.costType))) {
+    unit = (normalizeProductivityCompletionUom(row) || '').toUpperCase();
+    if (!unit) note = 'Material unit is missing.';
+    else kind = 'materials';
+  } else if (!clean(row.costType)) note = 'Cost type is missing; cannot identify labor or material.';
+  else { kind = 'other'; note = `Cost type ${row.costType}; excluded from labor and material totals.`; }
+  return { kind, note, unit, subcontractor };
+}
+
+export function latestUsageRecords(companyId: string, records: UsageRecord[]) {
+  const latest = new Map<string, UsageRecord>();
+  for (const row of records) {
+    if (row.companyId !== companyId) continue;
+    const key = JSON.stringify([row.projectId, row.source, row.sourceId || `local:${row.id}`]);
+    const previous = latest.get(key);
+    if (!previous || new Date(row.updatedAt).getTime() > new Date(previous.updatedAt).getTime()
+      || (String(row.updatedAt) === String(previous.updatedAt) && row.id > previous.id)) latest.set(key, row);
+  }
+  return [...latest.values()];
+}
+
 /** Source identities, never names, control deduplication and project grouping. */
 export function buildProjectUsageReport(companyId: string, period: UsagePeriod, projects: UsageProject[], records: UsageRecord[]): ProjectUsageReport {
   usagePeriod(period.from, period.through);
@@ -72,47 +114,16 @@ export function buildProjectUsageReport(companyId: string, period: UsagePeriod, 
   for (const row of projects) Object.assign(project(row.procoreProjectId), {
     projectName: row.projectName, projectNumber: row.projectNumber || '', customer: row.customer || '', status: row.status || '',
   });
-  const latest = new Map<string, UsageRecord>();
-  for (const row of records) {
-    if (row.companyId !== companyId) continue;
-    const key = JSON.stringify([row.projectId, row.source, row.sourceId || `local:${row.id}`]);
-    const previous = latest.get(key);
-    if (!previous || new Date(row.updatedAt).getTime() > new Date(previous.updatedAt).getTime()
-      || (String(row.updatedAt) === String(previous.updatedAt) && row.id > previous.id)) latest.set(key, row);
-  }
   const groups = { labor: new Map<string, UsageLine>(), materials: new Map<string, UsageLine>(), other: new Map<string, UsageLine>(), review: new Map<string, UsageLine>() };
-  for (const row of latest.values()) {
+  for (const row of latestUsageRecords(companyId, records)) {
     if ((period.from && row.date < period.from) || (period.through && row.date > period.through)) continue;
     if (row.deletedAt || /^(deleted|void|voided)$/i.test(clean(row.status))) { report.excluded.deleted++; continue; }
     if (row.source === 'Daily log' && /billing file/i.test(row.holderTitle || '')) { report.excluded.billingLogs++; continue; }
     const summary = project(row.projectId);
     const update = new Date(row.updatedAt).toISOString();
     if (!report.latestMirrorUpdate || update > report.latestMirrorUpdate) report.latestMirrorUpdate = update;
-    let kind: keyof typeof groups = 'review';
-    let note = '';
-    let unit = clean(row.uom).toUpperCase();
+    const { kind, note, unit, subcontractor } = classifyUsageRecord(row);
     let laborType = '';
-    const subcontractor = row.source === 'Timecard' ? isSubcontractorTimecard({ partyName: row.worker }) : isSubcontractorProductivity(row.description);
-    const labor = /^(l|labor|labour)$/i.test(clean(row.costType));
-    const itemClassification = row.source === 'Daily log' && row.metadataMatches === 1 ? classifyProjectUsageItem(row) : null;
-    if (!row.projectId) note = 'Missing Procore project ID.';
-    else if (row.quantity == null || !Number.isFinite(row.quantity)) note = 'Missing or invalid quantity.';
-    else if (row.source === 'Timecard') { kind = 'labor'; unit = 'HR'; }
-    else if (row.metadataMatches !== 1) note = 'Purchase-order line not found or has conflicting coding.';
-    else if (itemClassification) {
-      kind = itemClassification.kind; unit = itemClassification.unit; note = itemClassification.note;
-    }
-    else if ((labor || subcontractor) && (/^(h|hr|hrs|hour|hours)$/i.test(unit) || /^ls$/i.test(unit))) {
-      kind = 'labor';
-      if (unit === 'LS') note = 'Legacy labor LS quantities are recorded as hours, consistent with field analytics.';
-      unit = 'HR';
-    } else if (labor || subcontractor) note = `Labor quantity is recorded in ${unit || 'an unknown unit'}; excluded from hours.`;
-    else if (/^(m|material|materials)$/i.test(clean(row.costType))) {
-      unit = (normalizeProductivityCompletionUom(row) || '').toUpperCase();
-      if (!unit) note = 'Material unit is missing.';
-      else kind = 'materials';
-    } else if (!clean(row.costType)) note = 'Cost type is missing; cannot identify labor or material.';
-    else { kind = 'other'; note = `Cost type ${row.costType}; excluded from labor and material totals.`; }
     if (kind === 'labor') {
       laborType = subcontractor ? 'Subcontractor' : 'Field labor';
       if (row.source === 'Timecard') summary.timecardHours += row.quantity!;

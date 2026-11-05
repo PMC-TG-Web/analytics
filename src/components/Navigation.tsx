@@ -51,6 +51,7 @@ const navLinks: NavLink[] = [
   { href: "/accounting/billing-analytics", label: "Billing analytics", page: "billing-analytics" },
   { href: "/accounting/direct-cost-bills", label: "QBO Direct Costs", page: "accounting-direct-cost-bills", fallbackPage: "admin" },
   { href: "/reporting", label: "Reporting", page: "reporting" },
+  { href: "/reporting/hours", label: "All Hours", page: "reporting-hours", fallbackPage: "reporting" },
   { href: "/onboarding/submissions", label: "Onboarding", page: "onboarding" },
   { href: "/employees/handbook", label: "Handbook", page: "handbook" },
   { href: "/kpi-cards-management", label: "Manage", page: "kpi-cards-management" },

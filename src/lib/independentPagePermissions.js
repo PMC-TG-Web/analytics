@@ -107,6 +107,7 @@ export function updateIndependentPagePermission(assigned, path, enabled) {
 // API consumers are reviewed explicitly; discovery never infers or grants API access.
 // Shared endpoints accept any authorized consuming page, without unlocking sibling pages.
 const API_PAGE_RULES = [
+  ['/api/reporting/hours', ['/reporting/hours']],
   ['/api/health', ['/diagnostics']],
   ['/api/debug/cookies', ['/debug-cookies']],
   ['/api/procore/test', ['/procore/test', '/auth0-test']],

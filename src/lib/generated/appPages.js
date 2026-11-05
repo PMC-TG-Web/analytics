@@ -350,6 +350,12 @@ export const APP_PAGES = [
     ]
   },
   {
+    "pathname": "/reporting/hours",
+    "sources": [
+      "reporting/hours/page.tsx"
+    ]
+  },
+  {
     "pathname": "/scheduling",
     "sources": [
       "scheduling/page.tsx"

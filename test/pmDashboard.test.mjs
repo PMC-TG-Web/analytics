@@ -25,9 +25,19 @@ test('each dashboard item resolves to its exact Procore record', () => {
     'https://us02.procore.com/123/project/meetings/90',
   );
   assert.equal(
-    buildProcoreItemUrl({ sourceType: 'change_event', projectId: 123, sourceId: 91 }),
-    'https://us02.procore.com/123/project/change_events/91',
+    buildProcoreItemUrl({ sourceType: 'change_event', companyId: 456, projectId: 123, sourceId: 91 }),
+    'https://us02.procore.com/webclients/host/companies/456/projects/123/tools/change-events/events/91',
   );
+});
+
+test('CE ingestion and saved-card reads use the same current Procore destination', () => {
+  const params = { sourceType: 'change_event', companyId: 456, projectId: 123 };
+  const legacyUrl = 'https://us02.procore.com/123/project/change_events/91';
+  const expected = 'https://us02.procore.com/webclients/host/companies/456/projects/123/tools/change-events/events/91';
+  const item = normalizePmActionItem({ ...params, record: { id: 91, title: 'Added footers', status: 'Open', url: legacyUrl } });
+  assert.equal(item.sourceUrl, expected);
+  assert.equal(buildProcoreItemUrl({ ...params, sourceId: 91, existingUrl: legacyUrl }), expected);
+  assert.equal(normalizePmActionItem({ ...params, record: { id: 91 } }).sourceUrl, expected);
 });
 
 test('Procore-supplied deep links win while unrelated meeting links are ignored', () => {

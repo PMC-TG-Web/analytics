@@ -1,3 +1,5 @@
+import { buildProcoreChangeUrl } from "./pmDashboardChanges.ts";
+
 export const PM_DASHBOARD_TIME_ZONE = "America/New_York";
 export const DEFAULT_PROCORE_WEB_ORIGIN = "https://us02.procore.com";
 
@@ -72,11 +74,15 @@ function safeProcoreUrl(value: unknown): string | null {
 
 export function buildProcoreItemUrl(params: {
   sourceType: PmActionItemType;
+  companyId?: unknown;
   projectId: unknown;
   sourceId: unknown;
   existingUrl?: unknown;
   procoreWebOrigin?: unknown;
 }): string | null {
+  if (params.sourceType === "change_event") {
+    return buildProcoreChangeUrl({ ...params, type: "change_event" });
+  }
   const existingUrl = safeProcoreUrl(params.existingUrl);
   if (existingUrl) return existingUrl;
 
@@ -91,9 +97,7 @@ export function buildProcoreItemUrl(params: {
     ? `${projectPath}/rfi/show/${encodeURIComponent(sourceId)}`
     : params.sourceType === "task"
       ? `${projectPath}/task_items/${encodeURIComponent(sourceId)}`
-      : params.sourceType === "meeting"
-        ? `${projectPath}/meetings/${encodeURIComponent(sourceId)}`
-        : `${projectPath}/change_events/${encodeURIComponent(sourceId)}`;
+      : `${projectPath}/meetings/${encodeURIComponent(sourceId)}`;
   return new URL(itemPath, origin).toString();
 }
 
@@ -198,6 +202,7 @@ function sourceMemberFields(sourceType: PmActionItemType): string[] {
 export function normalizePmActionItem(params: {
   sourceType: PmActionItemType;
   record: UnknownRecord;
+  companyId?: unknown;
   projectId?: unknown;
   procoreWebOrigin?: unknown;
   memberDirectory?: Map<string, MemberIdentity>;
@@ -223,6 +228,7 @@ export function normalizePmActionItem(params: {
     || `${sourceType === "rfi" ? "RFI" : sourceType === "meeting" ? "Meeting" : sourceType === "change_event" ? "Change Event" : "Task"}${number ? ` ${number}` : ""}`;
   const sourceUrl = buildProcoreItemUrl({
     sourceType,
+    companyId: params.companyId,
     projectId: params.projectId,
     sourceId,
     existingUrl: firstText(record, ["url", "link", "web_url"]),

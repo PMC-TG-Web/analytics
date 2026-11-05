@@ -121,7 +121,10 @@ test('Open Changes excludes missing packages but keeps current same-title record
     '@/lib/requestUser': { getRequestUserEmail: async () => 'pm@example.test' },
     '@/lib/pmDashboardChanges': { isOpenPmChange, buildProcoreChangeUrl },
     '@/lib/prisma': { prisma: {
-      employee: { findFirst: async () => null }, pmcActionItem: { findMany: async () => [] },
+      employee: { findFirst: async () => null }, pmcActionItem: { findMany: async ({ where }) => where.sourceType === 'change_event' ? [{
+        procoreProjectId: 'project', sourceId: 'event', title: 'Same work', status: 'Open', payload: {}, syncedAt: now,
+        sourceUrl: 'https://us02.procore.com/project/project/change_events/event',
+      }] : [] },
       pmcProject: { findMany: async () => [{ procoreProjectId: 'project', projectName: 'Project' }] },
       procorePotentialChangeOrder: { findMany: async () => [{
         projectId: 'project', contractId: 'prime', changeOrderId: 'potential', title: 'Same work',
@@ -141,9 +144,10 @@ test('Open Changes excludes missing packages but keeps current same-title record
   assert.equal(response.status, 200);
   assert.match(response.headers.get('cache-control'), /no-store/);
   const { items } = await response.json();
-  assert.deepEqual(items.map(item => item.sourceId), ['0', '1', 'potential']);
+  assert.deepEqual(items.map(item => item.sourceId), ['event', '0', '1', 'potential']);
   const base = `https://us02.procore.com/webclients/host/companies/${scopedCompanyId}/projects/project/tools/contracts/prime_contracts/prime/change_orders`;
   assert.deepEqual(items.map(item => item.sourceUrl), [
+    `https://us02.procore.com/webclients/host/companies/${scopedCompanyId}/projects/project/tools/change-events/events/event`,
     `${base}/prime-change-order-batches/0`, `${base}/prime-change-order-batches/1`, `${base}/prime-change-orders/potential`,
   ]);
 });

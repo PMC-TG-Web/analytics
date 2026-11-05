@@ -102,6 +102,7 @@ export async function GET(request: NextRequest) {
         updatedAt: item.syncedAt.toISOString(),
         sourceUrl: buildProcoreChangeUrl({
           type: "change_event",
+          companyId,
           projectId: item.procoreProjectId,
           sourceId: item.sourceId,
           existingUrl: item.sourceUrl,

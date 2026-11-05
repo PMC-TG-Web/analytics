@@ -210,6 +210,7 @@ async function readSource(params: {
       .map((record) => normalizePmActionItem({
         sourceType: params.sourceType,
         record,
+        companyId: params.project.companyId,
         projectId: params.project.procoreProjectId,
         procoreWebOrigin: process.env.PROCORE_WEB_ORIGIN,
         memberDirectory: directory,
@@ -386,6 +387,7 @@ async function syncPmDashboardActionItemInConnection(
   const item = normalizePmActionItem({
     sourceType: ref.sourceType,
     record,
+    companyId: ref.companyId,
     projectId: ref.procoreProjectId,
     procoreWebOrigin: process.env.PROCORE_WEB_ORIGIN,
     memberDirectory,

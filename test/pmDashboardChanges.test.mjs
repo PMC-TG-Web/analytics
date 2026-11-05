@@ -27,8 +27,8 @@ test('change-event status falls back to its nested Procore status', () => {
 
 test('change cards resolve to exact Procore records', () => {
   assert.equal(
-    buildProcoreChangeUrl({ type: 'change_event', projectId: 123, sourceId: 9 }),
-    'https://us02.procore.com/123/project/change_events/9',
+    buildProcoreChangeUrl({ type: 'change_event', companyId: 456, projectId: 123, sourceId: 9 }),
+    'https://us02.procore.com/webclients/host/companies/456/projects/123/tools/change-events/events/9',
   );
   assert.equal(
     buildProcoreChangeUrl({ type: 'pco', companyId: 456, projectId: 123, contractId: 55, sourceId: 10 }),
@@ -41,16 +41,32 @@ test('change cards resolve to exact Procore records', () => {
 });
 
 test('change-order links require complete identity and retain the configured Procore region', () => {
-  for (const type of ['pco', 'pcco']) {
+  for (const type of ['change_event', 'pco', 'pcco']) {
     const identity = { type, companyId: 'company', projectId: 'project', contractId: 'prime', sourceId: 'change' };
-    for (const field of ['companyId', 'projectId', 'contractId', 'sourceId']) {
+    for (const field of ['companyId', 'projectId', 'sourceId', ...(type === 'change_event' ? [] : ['contractId'])]) {
       assert.equal(buildProcoreChangeUrl({ ...identity, [field]: ' ' }), null, `${type}: missing ${field}`);
     }
     assert.equal(new URL(buildProcoreChangeUrl({ ...identity, procoreWebOrigin: 'https://app.procore.com' })).origin, 'https://app.procore.com');
     assert.equal(new URL(buildProcoreChangeUrl({ ...identity, procoreWebOrigin: 'https://procore.com.example.test' })).origin, 'https://us02.procore.com');
   }
-  const sourceUrl = 'https://us02.procore.com/123/project/change_events/9';
-  assert.equal(buildProcoreChangeUrl({ type: 'change_event', projectId: 123, sourceId: 9, existingUrl: sourceUrl }), sourceUrl);
+});
+
+test('saved legacy CE links cannot override the current company/project/source destination', () => {
+  const identity = { type: 'change_event', companyId: 456, projectId: 123, sourceId: 9 };
+  const destination = 'https://us02.procore.com/webclients/host/companies/456/projects/123/tools/change-events/events/9';
+  for (const existingUrl of [
+    'https://us02.procore.com/123/project/change_events/9',
+    'https://us02.procore.com/123/project/change_events/events/9',
+    destination.replace('/projects/123/', '/projects/999/'),
+    destination.replace('/companies/456/', '/companies/999/'),
+    destination.replace('/events/9', '/events/99'),
+    'https://example.test/change-event/9',
+  ]) {
+    assert.equal(buildProcoreChangeUrl({ ...identity, existingUrl }), destination);
+  }
+  assert.equal(buildProcoreChangeUrl({ ...identity, existingUrl: `${destination}?view=details` }), `${destination}?view=details`);
+  assert.equal(buildProcoreChangeUrl({ ...identity, companyId: undefined, existingUrl: destination }), null);
+  assert.equal(buildProcoreChangeUrl({ ...identity, existingUrl: 'https://app.procore.com/123/project/change_events/9' }), destination.replace('us02.', 'app.'));
 });
 
 test('changes API reads synchronized mirrors and never calls Procore', () => {

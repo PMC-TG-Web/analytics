@@ -15,11 +15,13 @@ export type HoursReport = UsagePeriod & {
 export type HoursTextMatch = 'contains' | 'not-contains';
 export type HoursFilters = {
   description: string; projectId: string; source: string; from: string; through: string;
+  subcontractor: '' | 'exclude' | 'only';
   worker: string; costCode: string; minHours: string; maxHours: string; status: string;
   descriptionMatch: HoursTextMatch; workerMatch: HoursTextMatch; costCodeMatch: HoursTextMatch; statusMatch: HoursTextMatch;
 };
 export const emptyHoursFilters: HoursFilters = {
   description: '', projectId: '', source: '', from: '', through: '', worker: '', costCode: '', minHours: '', maxHours: '', status: '',
+  subcontractor: '',
   descriptionMatch: 'contains', workerMatch: 'contains', costCodeMatch: 'contains', statusMatch: 'contains',
 };
 const round = (value: number) => Math.round((value + Number.EPSILON) * 10_000) / 10_000;
@@ -91,8 +93,11 @@ export function filterHourEntries(entries: HourEntry[], filters: HoursFilters): 
   const max = filters.maxHours.trim() ? Number(filters.maxHours) : null;
   return entries.filter(row => (!filters.projectId || row.projectId === filters.projectId)
     && (!filters.source || row.source === filters.source)
+    && (filters.subcontractor !== 'exclude' || row.laborType !== 'Subcontractor')
+    && (filters.subcontractor !== 'only' || row.laborType === 'Subcontractor')
     && (!filters.from || row.date >= filters.from) && (!filters.through || row.date <= filters.through)
     && matchesText([row.description || 'No description', row.costCodeDescription || '', row.logDescription, row.notes, row.note,
+      row.laborType === 'Subcontractor' ? 'Subcontractor labor' : '',
       row.source === 'Timecard' && row.laborType === 'Subcontractor' ? row.worker : ''], description, filters.descriptionMatch, normalizeDescription)
     && matchesText([row.worker || '—'], worker, filters.workerMatch)
     && matchesText([row.costCode || 'Unassigned'], costCode, filters.costCodeMatch)

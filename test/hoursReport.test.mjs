@@ -164,7 +164,7 @@ test('subcontractor descriptions match Billing Analytics and preserve searchable
   assert.equal(billed.length, 3);
   for (const entry of billed) assert.equal(report.entries.find(row => row.sourceId === entry.id).description, entry.description);
   assert.equal(report.entries.find(row => row.sourceId === 'sub').costCodeDescription, 'Labor SOG Concrete');
-  for (const description of ['Sub Contractor', 'subcontractor', 'SUB CONTRACTORS', 'sub-contractors']) {
+  for (const description of ['Sub Contractor', 'subcontractor', 'SUB CONTRACTORS', 'sub-contractors', 'Sub contractor labor', 'SUBCONTRACTOR LABOR', 'sub-contractors labor']) {
     const filters = { ...emptyHoursFilters, description };
     const rows = filterHourEntries(report.entries, filters);
     assert.equal(rows.length, 3, description); assert.equal(hoursTotals(rows).combined, 18);
@@ -175,4 +175,29 @@ test('subcontractor descriptions match Billing Analytics and preserve searchable
   assert.equal(filterHourEntries(report.entries, { ...emptyHoursFilters, description: 'Employee' }).length, 0, 'ordinary employee names remain a worker filter');
   const csv = hoursReportCsv(filterHourEntries(report.entries, { ...emptyHoursFilters, description: 'subcontractor' }));
   assert.match(csv, /Sub Contractor/); assert.match(csv, /Example vendor hourly sub labor/); assert.match(csv, /Cost-code description/); assert.match(csv, /Labor Site Concrete/);
+});
+
+test('subcontractor selection uses classification across both sources, combines with columns and preserves review uncertainty', () => {
+  const report = build([
+    record('sub', { worker: 'Sub Contractor', notes: 'Named vendor', quantity: 8 }),
+    record('productivity', { source: 'Daily log', description: 'Subcontractor Hours', costType: 'S', uom: 'LS', worker: null, quantity: 6 }),
+    record('employee', { notes: 'Coordinated subcontractor labor', quantity: 2 }),
+    record('field-productivity', { source: 'Daily log', quantity: 3 }),
+    record('unknown', { worker: 'Sub Contractor', quantity: null }),
+  ]);
+  const select = overrides => filterHourEntries(report.entries, { ...emptyHoursFilters, ...overrides });
+  const only = select({ subcontractor: 'only' });
+  const excluded = select({ subcontractor: 'exclude' });
+  assert.deepEqual(hoursTotals(only), { timecard: 8, productivity: 6, combined: 14, count: 2 });
+  assert.deepEqual(hoursTotals(excluded), { timecard: 2, productivity: 3, combined: 5, count: 2 });
+  assert.equal(only.length + excluded.length, report.entries.length);
+  assert.deepEqual(select({ subcontractor: 'only', source: 'Productivity' }).map(row => row.sourceId), ['productivity']);
+  assert.deepEqual(select({ subcontractor: 'only', description: 'Named vendor', minHours: '8' }).map(row => row.sourceId), ['sub']);
+  assert.deepEqual(select({ subcontractor: 'exclude', description: 'subcontractor labor' }).map(row => row.sourceId), ['employee'], 'text in notes never reclassifies an employee');
+  assert.equal(filterHourEntries(report.review, { ...emptyHoursFilters, subcontractor: 'only' }).length, 1);
+  assert.equal(filterHourEntries(report.review, { ...emptyHoursFilters, subcontractor: 'exclude' }).length, 0);
+  assert.equal(select({}).length, 4, 'clearing restores all classified hour entries');
+  const csv = hoursReportCsv(excluded);
+  assert.match(csv, /"employee"/); assert.match(csv, /"field-productivity"/);
+  assert.doesNotMatch(csv, /"Subcontractor"/);
 });

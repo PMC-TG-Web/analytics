@@ -33,7 +33,12 @@ function ColumnFilters({ filters, projects, onChange }: {
       <label className="block">From<input type="date" aria-label="Filter work date from" value={filters.from} onChange={e => onChange('from', e.target.value)} className={`${field} mt-1`} /></label>
       <label className="block">Through<input type="date" aria-label="Filter work date through" value={filters.through} onChange={e => onChange('through', e.target.value)} className={`${field} mt-1`} /></label>
     </div></th>
-    <th className="min-w-36 px-4 pb-3 pt-2 font-normal"><select aria-label="Source" value={filters.source} onChange={e => onChange('source', e.target.value)} className={field}><option value="">All sources</option><option>Timecard</option><option>Productivity</option></select></th>
+    <th className="min-w-36 px-4 pb-3 pt-2 font-normal"><div className="space-y-2">
+      <select aria-label="Source" value={filters.source} onChange={e => onChange('source', e.target.value)} className={field}><option value="">All sources</option><option>Timecard</option><option>Productivity</option></select>
+      <label className="block">Subcontractor labor<select aria-label="Subcontractor labor" value={filters.subcontractor} onChange={e => onChange('subcontractor', e.target.value)} className={`${field} mt-1`}>
+        <option value="">Include</option><option value="exclude">Exclude</option><option value="only">Only</option>
+      </select></label>
+    </div></th>
     <th className="min-w-44 px-4 pb-3 pt-2 font-normal"><select aria-label="Project" value={filters.projectId} onChange={e => onChange('projectId', e.target.value)} className={`${field} max-w-64`}><option value="">All projects</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name} ({p.number || p.id})</option>)}{filters.projectId && !projects.some(p => p.id === filters.projectId) && <option value={filters.projectId}>Project {filters.projectId} (no entries)</option>}</select></th>
     <th className="min-w-60 px-4 pb-3 pt-2 font-normal"><TextColumnFilter column="description" label="Description" inputLabel="Description or notes" placeholder="Description / notes" filters={filters} onChange={onChange} /></th>
     <th className="min-w-44 px-4 pb-3 pt-2 font-normal"><TextColumnFilter column="worker" label="Worker" inputLabel="Filter worker" placeholder="Worker" filters={filters} onChange={onChange} /></th>
@@ -54,6 +59,7 @@ function EntryTable({ entries, review = false, filterRow }: { entries: HourEntry
       <td className="px-4 py-3"><span className={`inline-block rounded-full px-2 py-1 text-xs font-semibold ${row.source === 'Timecard' ? 'bg-blue-50 text-blue-800' : 'bg-teal-50 text-teal-800'}`}>{row.source}</span><p className="mt-1 text-xs text-slate-500">{row.laborType}</p></td>
       <td className="min-w-44 px-4 py-3"><p className="font-medium">{row.projectName}</p><p className="mt-1 text-xs text-slate-500">{row.projectNumber || row.projectId || 'Unassigned'}</p></td>
       <td className="min-w-60 max-w-md whitespace-pre-wrap break-words px-4 py-3"><p className="font-medium">{row.description || 'No description'}</p>
+        {row.laborType === 'Subcontractor' && <p className="mt-1 text-xs font-medium text-blue-700">Subcontractor labor</p>}
         {row.source === 'Timecard' && row.laborType === 'Subcontractor' && row.worker && row.worker !== row.description && <p className="mt-1 text-xs text-slate-500">Worker: {row.worker}</p>}
         {row.costCodeDescription && row.costCodeDescription !== row.description && <p className="mt-1 text-xs text-slate-500">Work: {row.costCodeDescription}</p>}
         {row.logDescription && row.logDescription !== row.description && <p className="mt-1 text-xs text-slate-500">Daily log: {row.logDescription}</p>}
@@ -137,7 +143,7 @@ export default function HoursReportPage() {
           <div className="flex flex-wrap gap-2"><button onClick={() => { setFilters(emptyHoursFilters); setPage(0); }} disabled={!hasColumnFilters} className={button}>Clear column filters</button><button onClick={() => download(entries, 'all-hours')} disabled={changed || !entries.length} className={button}>Download CSV</button></div>
         </div>
         <p className="border-b border-slate-200 px-5 py-3 text-xs text-slate-600">Combine filters across columns. Choose Contains or Does not contain for text filters. Matching ignores case; blank fields include all values in either mode. Filters update totals and every matching CSV row immediately, across all pages. Scroll sideways to reach every column on smaller screens.</p>
-        <p className="border-b border-slate-200 px-5 py-3 text-xs text-slate-600">Subcontractor descriptions follow Billing Analytics: Sub Contractor timecards and Subcontractor Hours productivity. Search <strong>subcontractor</strong> in Description / notes to include or exclude both, including named subcontractor timecard descriptions. Original work descriptions remain searchable.</p>
+        <p className="border-b border-slate-200 px-5 py-3 text-xs text-slate-600">Under Source, set <strong>Subcontractor labor</strong> to <strong>Exclude</strong> to remove it from both timecards and productivity, or <strong>Only</strong> to see it. Descriptions follow Billing Analytics, with a searchable Subcontractor labor label. Other column filters still apply; use Clear column filters to start over.</p>
         {filterError && <p role="alert" className="border-b border-red-200 bg-red-50 px-5 py-3 text-sm text-red-800">{filterError}</p>}
         <EntryTable entries={entries.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)} filterRow={<ColumnFilters filters={filters} projects={projects} onChange={changeFilter} />} />
         {!entries.length && !filterError && <p className="p-8 text-center text-slate-500">No hours match these filters.</p>}

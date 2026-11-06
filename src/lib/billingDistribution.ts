@@ -1,12 +1,20 @@
-import type { BillingHourRow } from './billingAnalytics.ts';
+import { billingDateRange, type BillingHourRow } from './billingAnalytics.ts';
 
 export type BillingMonthGroup = { month: string; projects: BillingProjectGroup[]; totalHours: number };
 export type BillingProjectGroup = { projectId: string; projectName: string; projectNumber: string; rows: BillingHourRow[]; totalHours: number };
 
 /** Display groups preserve canonical IDs even when projects have the same name. */
 export function groupBillingYear(rows: BillingHourRow[], year: number): BillingMonthGroup[] {
-  return Array.from({ length: 12 }, (_, index) => {
-    const month = `${year}-${String(index + 1).padStart(2, '0')}`;
+  return groupBillingRange(rows, `${year}-01`, `${year}-12`);
+}
+
+/** Rows are already date-filtered by the loader; include empty months within the range. */
+export function groupBillingRange(rows: BillingHourRow[], from: string, through: string): BillingMonthGroup[] {
+  const { start, end } = billingDateRange(from, through);
+  const last = new Date(end.getTime() - 1);
+  const count = (last.getUTCFullYear() - start.getUTCFullYear()) * 12 + last.getUTCMonth() - start.getUTCMonth() + 1;
+  return Array.from({ length: count }, (_, index) => {
+    const month = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + index, 1)).toISOString().slice(0, 7);
     const projects = new Map<string, BillingProjectGroup>();
     for (const row of rows.filter(row => row.month === month)) {
       const project = projects.get(row.projectId) || { projectId: row.projectId, projectName: row.projectName, projectNumber: row.projectNumber, rows: [], totalHours: 0 };
@@ -71,11 +79,11 @@ export function distributeBillingInvoice(rows: BillingHourRow[], projectIds: str
   }
 }
 
-export function billingDistributionCsv(distribution: BillingDistribution, reference: string): string {
+export function billingDistributionCsv(distribution: BillingDistribution, reference: string, range?: { from: string; through: string }): string {
   if (distribution.error || distribution.invoiceCents === null) throw new Error(distribution.error || 'Enter the invoice amount before exporting its distribution.');
   const cell = (value: string | number) => `"${String(typeof value === 'string' && /^[=+\-@\t\r]/.test(value) ? `'${value}` : value).replace(/"/g, '""')}"`;
-  return [['Invoice reference', 'Work month', 'Project ID', 'Project number', 'Project', 'Cost code', 'Description', 'Timesheet hours', 'Productivity hours', 'Combined hours', '% of project hours', '% of invoice hours', 'Allocated cost (USD)', 'Invoice total (USD)'],
+  return [['Invoice reference', 'Work month', 'Project ID', 'Project number', 'Project', 'Cost code', 'Description', 'Timesheet hours', 'Productivity hours', 'Combined hours', '% of project hours', '% of invoice hours', 'Allocated cost (USD)', 'Invoice total (USD)', ...(range ? ['Range start', 'Range end'] : [])],
     ...distribution.lines.map(({ row, projectShare, invoiceShare, cents }) => [reference, row.month, row.projectId, row.projectNumber, row.projectName, row.costCode, row.costCodeName,
-      row.timesheetHours, row.productivityHours, row.totalHours, (projectShare * 100).toFixed(4), (invoiceShare * 100).toFixed(4), (cents! / 100).toFixed(2), (distribution.invoiceCents! / 100).toFixed(2)])]
+      row.timesheetHours, row.productivityHours, row.totalHours, (projectShare * 100).toFixed(4), (invoiceShare * 100).toFixed(4), (cents! / 100).toFixed(2), (distribution.invoiceCents! / 100).toFixed(2), ...(range ? [range.from, range.through] : [])])]
     .map(row => row.map(cell).join(',')).join('\r\n');
 }

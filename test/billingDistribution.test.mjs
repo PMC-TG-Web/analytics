@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { groupBillingYear, distributeBillingInvoice, billingDistributionCsv } from '../src/lib/billingDistribution.ts';
+import { groupBillingRange, groupBillingYear, distributeBillingInvoice, billingDistributionCsv } from '../src/lib/billingDistribution.ts';
 
 const row = (projectId, costCode, totalHours, month = '2026-10') => ({ key: JSON.stringify([projectId, month, costCode]), projectId, projectName: 'Same name', projectNumber: projectId,
   month, costCode, costCodeName: 'Labor', timesheetHours: totalHours, productivityHours: 0, totalHours, entries: [] });
@@ -13,6 +13,20 @@ test('year view has twelve chronological months and separates same-name projects
   assert.equal(groups[9].totalHours, 16);
   assert.deepEqual(groups[9].projects.map(p => [p.projectId, p.totalHours]), [['a', 8], ['b', 8]]);
   assert.deepEqual(groups[9].projects[0].rows.map(r => r.costCode), ['01', '02']);
+});
+
+test('range groups span years, retain empty months, and omit months outside the selection', () => {
+  const groups = groupBillingRange([row('a', '01', 3, '2025-12'), row('a', '01', 9, '2026-02'), row('a', '01', 100, '2026-03')], '2025-12-20', '2026-02-01');
+  assert.deepEqual(groups.map(group => [group.month, group.totalHours]), [['2025-12', 3], ['2026-01', 0], ['2026-02', 9]]);
+  assert.equal(groupBillingRange([], '2026-11-06', '2026-11-06').length, 1);
+});
+
+test('invoice exports identify the selected dates used by a partial-month allocation', () => {
+  const distribution = distributeBillingInvoice([row('a', '01', 2), row('b', '01', 6)], ['a', 'b'], '100');
+  const csv = billingDistributionCsv(distribution, 'Partial month', { from: '2026-10-05', through: '2026-10-12' });
+  assert.match(csv, /"Range start","Range end"/);
+  assert.match(csv, /"25.00","100.00","2026-10-05","2026-10-12"/);
+  assert.match(csv, /"75.00","100.00","2026-10-05","2026-10-12"/);
 });
 
 test('one-project invoice allocates only that project and retains both source hours', () => {

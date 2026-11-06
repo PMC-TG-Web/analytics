@@ -7,7 +7,7 @@ import { downloadCsv, fieldClass, hours } from './billingAnalyticsUi';
 const dollars = (cents: number) => (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 const percent = (share: number) => `${(share * 100).toFixed(2)}%`;
 
-export default function BillingMonth({ month, initiallyOpen }: { month: BillingMonthGroup; initiallyOpen: boolean }) {
+export default function BillingMonth({ month, range, initiallyOpen }: { month: BillingMonthGroup; range: { from: string; through: string }; initiallyOpen: boolean }) {
   const [open, setOpen] = useState(initiallyOpen);
   const [selected, setSelected] = useState(() => month.projects.map(project => project.projectId));
   const [amount, setAmount] = useState('');
@@ -22,12 +22,12 @@ export default function BillingMonth({ month, initiallyOpen }: { month: BillingM
 
   return <details className="rounded-xl border border-slate-200 bg-white" open={open} onToggle={event => setOpen(event.currentTarget.open)}>
     <summary className="cursor-pointer rounded-xl bg-slate-50 px-5 py-4 font-semibold"><span className="ml-2">{label}</span><span className="ml-4 text-sm font-normal text-slate-600">{month.projects.length} projects · {hours(month.totalHours)} hours</span></summary>
-    {!month.projects.length ? <p className="p-6 text-sm text-slate-500">No subcontractor hours recorded for this month.</p> : <div className="space-y-5 p-4 md:p-5">
+    {!month.projects.length ? <p className="p-6 text-sm text-slate-500">No subcontractor hours recorded within the selected dates for this month.</p> : <div className="space-y-5 p-4 md:p-5">
       <section aria-label={`Invoice worksheet for ${label}`} className="space-y-3 rounded-lg border border-teal-200 bg-teal-50 p-4">
         <div className="flex flex-wrap items-end gap-4">
           <label className="grid gap-1 text-xs font-semibold">Invoice reference (optional)<input className={fieldClass} placeholder="Vendor / invoice number" value={reference} onChange={event => setReference(event.target.value)} /></label>
           <label className="grid gap-1 text-xs font-semibold">Invoice total (USD)<input className={fieldClass} inputMode="decimal" placeholder="0.00" value={amount} onChange={event => setAmount(event.target.value)} /></label>
-          <button className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40" disabled={!hasAmount} onClick={() => downloadCsv(billingDistributionCsv(distribution, reference), `invoice-distribution-${month.month}.csv`)}>Export invoice distribution</button>
+          <button className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40" disabled={!hasAmount} onClick={() => downloadCsv(billingDistributionCsv(distribution, reference, range), `invoice-distribution-${month.month}-${range.from}-through-${range.through}.csv`)}>Export invoice distribution</button>
         </div>
         <div className="flex flex-wrap items-center gap-3 text-sm"><strong>{selected.length} of {month.projects.length} projects included</strong><button className="text-teal-800 underline" onClick={() => setSelected(month.projects.map(project => project.projectId))}>Select all projects</button><button className="text-teal-800 underline" onClick={() => setSelected([])}>Clear selection</button><span className="text-slate-600">Use the checkboxes below to match the invoice.</span></div>
         {distribution.error ? <p role="status" className="text-sm font-medium text-amber-900">{distribution.error}</p> : <p aria-live="polite" className="text-sm text-teal-950">Allocation basis: <strong>{hours(distribution.totalHours)} hours</strong>{hasAmount && <> · Allocated: <strong>{dollars(allocated)}</strong> · Difference: <strong>{dollars(distribution.invoiceCents! - allocated)}</strong></>}</p>}

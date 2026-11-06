@@ -1,9 +1,9 @@
 import { prisma } from '@/lib/prisma';
-import { aggregateBillingHours, billingMonthRange, type BillingHourEntry } from './billingAnalytics';
+import { aggregateBillingHours, billingDateRange, type BillingHourEntry } from './billingAnalytics';
 
 /** Reporting reads only the synchronized mirrors; explicit company/project IDs scope every join. */
 export async function loadBillingAnalytics(companyId: string, from: string, through: string) {
-  const { start, end } = billingMonthRange(from, through);
+  const { start, end } = billingDateRange(from, through);
   const entries = await prisma.$queryRaw<BillingHourEntry[]>`
     WITH sources AS (
       SELECT t.id, t."procoreId", t."procoreCompanyId" AS "companyId", t."procoreProjectId" AS "projectId",

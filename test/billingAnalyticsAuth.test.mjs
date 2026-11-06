@@ -59,7 +59,14 @@ test('API enforces identity and active database permission before reading report
     assert.equal(response.status, expected);
     assert.equal(response.headers.get('cache-control'), 'private, no-store');
     assert.equal(reads, expected === 200 ? 1 : 0);
-    if (expected === 200) assert.equal((await GET(request('/api/accounting/billing-analytics?from=invalid'))).status, 400);
+    if (expected === 200) {
+      assert.equal((await GET(request('/api/accounting/billing-analytics?from=2026-11-06&through=2026-11-06'))).status, 200);
+      assert.equal(reads, 2);
+      for (const query of ['from=invalid', 'from=2026-02-29&through=2026-03-01', 'from=2026-11-07&through=2026-11-06']) {
+        assert.equal((await GET(request(`/api/accounting/billing-analytics?${query}`))).status, 400);
+      }
+      assert.equal(reads, 2, 'invalid ranges must not read the database');
+    }
   }
   }
 });

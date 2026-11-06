@@ -40,6 +40,22 @@ export function billingMonthRange(from: string, through: string) {
   return { start: new Date(Date.UTC(fy, fm - 1, 1)), end: new Date(Date.UTC(ty, tm, 1)) };
 }
 
+/** Inclusive UTC work dates; legacy month requests still include both whole months. */
+export function billingDateRange(from: string, through: string) {
+  if ([from, through].every(value => /^\d{4}-\d{2}$/.test(value))) return billingMonthRange(from, through);
+  if (![from, through].every(value => /^\d{4}-\d{2}-\d{2}$/.test(value))) throw new Error('Select valid start and end dates.');
+  const start = new Date(`${from}T00:00:00Z`);
+  const last = new Date(`${through}T00:00:00Z`);
+  if ([start, last].some(date => !Number.isFinite(date.getTime())) || start.toISOString().slice(0, 10) !== from || last.toISOString().slice(0, 10) !== through) {
+    throw new Error('Select valid start and end dates.');
+  }
+  if (from > through) throw new Error('Start date must be on or before end date.');
+  billingMonthRange(from.slice(0, 7), through.slice(0, 7));
+  const end = new Date(last);
+  end.setUTCDate(end.getUTCDate() + 1);
+  return { start, end };
+}
+
 const roundHours = (value: number) => Math.round((value + Number.EPSILON) * 10000) / 10000;
 
 export function aggregateBillingHours(entries: BillingHourEntry[], companyId: string) {
@@ -89,9 +105,9 @@ export function aggregateBillingHours(entries: BillingHourEntry[], companyId: st
   return { rows: result, warnings };
 }
 
-export function billingHoursCsv(rows: BillingHourRow[]): string {
+export function billingHoursCsv(rows: BillingHourRow[], range?: { from: string; through: string }): string {
   const cell = (value: string | number) => `"${String(typeof value === 'string' && /^[=+\-@\t\r]/.test(value) ? `'${value}` : value).replace(/"/g, '""')}"`;
-  return [['Project ID', 'Project number', 'Project', 'Month', 'Cost code', 'Description', 'Timesheet hours', 'Productivity hours', 'Total hours'],
-    ...rows.map(row => [row.projectId, row.projectNumber, row.projectName, row.month, row.costCode, row.costCodeName, row.timesheetHours, row.productivityHours, row.totalHours])]
+  return [['Project ID', 'Project number', 'Project', 'Month', 'Cost code', 'Description', 'Timesheet hours', 'Productivity hours', 'Total hours', ...(range ? ['Range start', 'Range end'] : [])],
+    ...rows.map(row => [row.projectId, row.projectNumber, row.projectName, row.month, row.costCode, row.costCodeName, row.timesheetHours, row.productivityHours, row.totalHours, ...(range ? [range.from, range.through] : [])])]
     .map(row => row.map(cell).join(',')).join('\r\n');
 }

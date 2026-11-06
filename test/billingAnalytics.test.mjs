@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { aggregateBillingHours, billingHoursCsv, billingMonthRange, isSubcontractorHours, isSubcontractorParty } from '../src/lib/billingAnalytics.ts';
+import { aggregateBillingHours, billingDateRange, billingHoursCsv, billingMonthRange, isSubcontractorHours, isSubcontractorParty } from '../src/lib/billingAnalytics.ts';
 import { isBillingAnalyticsPath } from '../src/lib/billingAnalyticsAccess.ts';
 import { resolvePermissionForPath } from '../src/lib/permissionRoutes.js';
 
@@ -72,4 +72,34 @@ test('CSV preserves filtered totals and safely quotes spreadsheet text', () => {
   const csv = billingHoursCsv(rows);
   assert.ok(csv.includes(`"'=HYPERLINK(""example"")"`));
   assert.ok(csv.endsWith('"8","0","8"'));
+});
+
+test('date ranges include both UTC work dates, including leap days and year boundaries', () => {
+  for (const [from, through, end] of [
+    ['2026-11-06', '2026-11-06', '2026-11-07'],
+    ['2024-02-29', '2024-02-29', '2024-03-01'],
+    ['2025-12-31', '2026-01-01', '2026-01-02'],
+    ['2025-01-01', '2026-12-31', '2027-01-01'],
+  ]) {
+    const range = billingDateRange(from, through);
+    assert.equal(range.start.toISOString(), `${from}T00:00:00.000Z`);
+    assert.equal(range.end.toISOString(), `${end}T00:00:00.000Z`);
+  }
+  assert.deepEqual(billingDateRange('2026-01', '2026-12'), billingMonthRange('2026-01', '2026-12'));
+});
+
+test('date ranges reject missing, impossible, reversed, mixed-precision and excessive dates', () => {
+  for (const [from, through] of [
+    ['', '2026-01-01'], ['2026-01-01', ''], ['2026-02-29', '2026-03-01'],
+    ['2026-04-01', '2026-04-31'], ['2026-13-01', '2027-01-01'], ['2026-01-00', '2026-01-01'],
+    ['2026-11-07', '2026-11-06'], ['2026-11', '2026-11-06'], ['2026-1-1', '2026-01-02'],
+    ['1999-12-31', '2000-01-01'], ['2100-12-31', '2101-01-01'], ['2024-12-31', '2026-12-01'],
+  ]) assert.throws(() => billingDateRange(from, through), undefined, `${from} / ${through}`);
+});
+
+test('range hours exports retain inclusive date context', () => {
+  const { rows } = aggregateBillingHours([entry()], 'co');
+  const csv = billingHoursCsv(rows, { from: '2026-10-01', through: '2026-10-05' });
+  assert.match(csv, /"Range start","Range end"/);
+  assert.ok(csv.endsWith('"8","0","8","2026-10-01","2026-10-05"'));
 });

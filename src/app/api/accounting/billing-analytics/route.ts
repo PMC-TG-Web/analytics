@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getRequestUserEmail } from '@/lib/requestUser';
 import { hasDatabasePageAccess } from '@/lib/permissions';
 import { prisma } from '@/lib/prisma';
-import { billingMonthRange } from '@/lib/billingAnalytics';
+import { billingDateRange } from '@/lib/billingAnalytics';
 import { loadBillingAnalytics } from '@/lib/loadBillingAnalytics';
 
 export const dynamic = 'force-dynamic';
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
   if (!await hasDatabasePageAccess(prisma, email, 'billing-analytics')) return json({ error: 'Forbidden' }, 403);
   const from = request.nextUrl.searchParams.get('from') || '';
   const through = request.nextUrl.searchParams.get('through') || '';
-  try { billingMonthRange(from, through); } catch (error) { return json({ error: (error as Error).message }, 400); }
+  try { billingDateRange(from, through); } catch (error) { return json({ error: (error as Error).message }, 400); }
   const companyId = process.env.PROCORE_COMPANY_ID?.trim();
   if (!companyId) return json({ error: 'Billing company is not configured.' }, 503);
   try {

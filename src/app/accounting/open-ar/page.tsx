@@ -161,8 +161,8 @@ export default function OpenArPage() {
           {[
             ['Open invoices in view', invalidFilter ? 'Unavailable' : money(totals.total), `${rows.length} matching invoices`],
             ['Past due in view', invalidFilter ? 'Unavailable' : money(totals.days1To30 + totals.days31To60 + totals.days61To90 + totals.daysOver90), 'Due date before the snapshot date'],
-            ['Unapplied payments / credits', money(report.unappliedPaymentCents + report.remainingCreditCents), 'All classes; not allocated to filtered invoices'],
-            ['QBO net A/R - all classes', money(report.qboAging.total), 'QBO aging control; unaffected by filters'],
+            ['Current in view', invalidFilter ? 'Unavailable' : money(totals.current), 'Matching invoices due today or later'],
+            ['90+ days in view', invalidFilter ? 'Unavailable' : money(totals.daysOver90), 'Matching invoices more than 90 days past due'],
           ].map(([label, amount, note]) => <article key={label} className="rounded-xl border border-slate-200 bg-white p-4">
             <h2 className="text-sm font-semibold text-slate-600">{label}</h2><strong className="mt-2 block text-2xl tabular-nums">{amount}</strong><p className="mt-2 text-xs text-slate-500">{note}</p>
           </article>)}
@@ -191,13 +191,21 @@ export default function OpenArPage() {
           {!rows.length && <p className="p-6 text-center text-slate-600">No open invoices match these filters.</p>}
         </section>}
 
-        <section className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white p-4">
+        <section aria-label="Filtered aging summary" className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white p-4">
+          <h2 className="text-lg font-bold">Aging summary - current filters</h2>
+          <p className="mt-1 text-sm text-slate-600">The same class and customer / invoice filters apply here, across all matching pages. These are unpaid invoice balances, not net A/R after unallocated payments or credits.</p>
+          {invalidFilter ? <p className="mt-3 text-sm text-red-700">Summary unavailable until the invalid class filter is cleared.</p>
+            : <div className="mt-3 overflow-x-auto"><table className="w-full text-sm"><thead><tr>{[...AR_BUCKETS.map(key => AR_BUCKET_LABELS[key]), 'Open invoice balance'].map(label => <th key={label} scope="col" className="whitespace-nowrap px-4 py-2 text-right">{label}</th>)}</tr></thead><tbody><tr>{amountCells(totals)}</tr></tbody></table></div>}
+        </section>
+
+        <details className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white p-4">
+          <summary className="cursor-pointer font-semibold">Full-company QBO reconciliation (unfiltered)</summary>
+          <p className="mt-3 text-sm text-slate-600">Reference only: these full-company figures do not change with filters. Unapplied payments and credits cannot be reliably allocated to the selected invoice classes, so they are not deducted from the filtered summaries.</p>
           <h2 className="text-lg font-bold">QBO aging control - all classes</h2>
-          <p className="mt-1 text-sm text-slate-600">This unfiltered QBO report includes credits, unapplied payments and other A/R entries. It is not the filtered invoice subtotal above.</p>
           <div className="mt-3 overflow-x-auto"><table className="w-full text-sm"><thead><tr>{[...AR_BUCKETS.map(key => AR_BUCKET_LABELS[key]), 'Net A/R'].map(label => <th key={label} className="whitespace-nowrap px-4 py-2 text-right">{label}</th>)}</tr></thead><tbody><tr>{amountCells(report.qboAging)}</tr></tbody></table></div>
           <p className="mt-3 text-sm text-slate-600">All open invoices {money(arTotals(report.invoices, report.asOfDate).total)} less {report.unappliedPaymentCount} unapplied payments ({money(report.unappliedPaymentCents)}) and {report.remainingCreditCount} remaining credits ({money(report.remainingCreditCents)}).
             {difference === 0 ? ' Reconciles exactly to QBO net A/R.' : ` Difference: ${money(difference)}.`}</p>
-        </section>
+        </details>
       </>}
     </div>
   </main>;

@@ -65,3 +65,22 @@ test('CSV exports all filtered rows, fixed aging columns and safe text', () => {
   assert.match(csv, /Concrete:Flatwork; Screeding/);
   assert.doesNotMatch(csv, /Unclassified project/);
 });
+
+test('summary aging follows combined filters and preserves the separate full-company control', () => {
+  const report = parseOpenArReport(arFixture());
+  const expected = [
+    [[], 'exclude', '', [10000, 20000, 30000, 40000, 50000, 0, 150000]],
+    [['retainage'], 'exclude', '', [0, 20000, 30000, 40000, 50000, 0, 140000]],
+    [['concrete'], 'exclude', '', [0, 0, 0, 40000, 0, 0, 40000]],
+    [['concrete'], 'include', '', [10000, 20000, 30000, 0, 50000, 0, 110000]],
+    [['concrete'], 'include', 'INV-2', [0, 20000, 0, 0, 0, 0, 20000]],
+    [['screed'], 'include', '', [0, 0, 30000, 0, 0, 0, 30000]],
+    [[], 'exclude', 'absent', [0, 0, 0, 0, 0, 0, 0]],
+  ];
+  for (const [classes, mode, search, values] of expected) {
+    const totals = arTotals(filterArInvoices(report, classes, mode, search), report.asOfDate);
+    assert.deepEqual([...AR_BUCKETS, 'total'].map(key => totals[key]), values);
+  }
+  assert.equal(report.qboAging.total, 149000);
+  assert.equal(report.unappliedPaymentCents, 1000);
+});

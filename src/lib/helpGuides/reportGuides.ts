@@ -2,23 +2,23 @@ import { defineGuide } from './defineGuide.ts';
 
 export const reportGuides = [
   defineGuide('qbo-open-ar', {
-    updated: '2026-11-05',
+    updated: '2026-11-06',
     purpose: 'Review unpaid QuickBooks invoices in Current, 1-30, 31-60, 61-90 and 90+ day columns. Open A/R has an independent checkbox in employee Navigation Permissions and access templates. This report never creates or changes QBO accounting records.',
     steps: [
       { title: 'Refresh and check the date', body: 'QBO refreshes automatically every hour on the hour, whether or not this page is open. The host saves each completed snapshot before marking the read successful. The host computer must be on and signed in. Refresh from QBO requests an additional read; a pending refresh is reused rather than overlapped. Reads can take several minutes. This page checks saved data every minute without resetting filters; Reload saved report does so immediately without contacting QBO. Check the Eastern as-of date and refresh timestamp before using the balances.' },
       { title: 'Choose classes', body: 'Open Classes and check one or more classes. Exclude selected classes is the default; Only selected classes includes matching invoices instead. A selected parent includes its subclasses, including inactive classes. Unclassified matches invoices with an unclassified sales line. No selections means all invoices in either mode. Clear filters restores all invoices.' },
-      { title: 'Review and export', body: 'Search by customer/project, invoice number or QBO invoice ID. Totals and Download CSV include every matching invoice, not just the visible page. The CSV contains invoice-level balances and class names; it does not allocate unapplied payments or credits.' },
+      { title: 'Review and export', body: 'Search by customer/project, invoice number or QBO invoice ID. All four summary cards, the invoice subtotal, the bottom Aging summary - current filters and Download CSV include every matching invoice, not just the visible page. Class and search filters update them together, including after an automatic saved-data reload. The cards show open balance, past due, current and over-90-day balances. These are invoice balances; they do not allocate unapplied payments or credits. Expand Full-company QBO reconciliation (unfiltered) only when you need the separate company-wide accounting control.' },
     ],
     data: [
       'The authenticated host uses the QBO Invoice, Class, Customer, Payment and CreditMemo query APIs plus the A/R Aging Summary report. QBO customer and class IDs establish identity; names are display labels only. OAuth credentials stay on the QBO host.',
       'A refresh saves an immutable PostgreSQL snapshot. Netlify schedules a read every hour on the hour in production; the host saves the result even with no browser open. Scheduled and manual requests share a company/host lock and reuse active work. Ordinary page reads and class filters do not call QBO. Failed refreshes retain the previous snapshot. Historical as-of reconstruction is not included.',
-      'The invoice table shows positive current invoice balances. Credits and unapplied payments remain separate and unfiltered, because they cannot be reliably assigned to the selected invoice classes. The QBO aging control includes other A/R entries and remains unfiltered.',
+      'The invoice table, summary cards and bottom filtered aging summary show positive unpaid invoice balances after the active class and search filters. Credits, unapplied payments and the QBO aging control remain separate in the expandable Full-company QBO reconciliation (unfiltered) section, because those accounting amounts cannot be reliably assigned to the selected invoice classes.',
     ],
     terms: [
       ['Aging', 'Days between the invoice due date and the Eastern snapshot date. Not yet due or due today is Current; 1-30, 31-60 and 61-90 include both endpoints. 90+ means more than 90 days (91 and older). Missing due dates appear in No due date rather than an invented aging bucket.'],
       ['Class filter', 'Matches whole invoices, not dollars within a class. A mixed-class invoice is fully excluded if any line matches an excluded class, or fully included if any line matches an included class. The full remaining balance is used even when partially paid.'],
       ['Open invoice subtotal', 'The sum of unpaid invoice balances after the active filters. This is not net A/R.'],
-      ['QBO net A/R - all classes', 'The unfiltered QBO aging control total. All open invoices less unapplied payments and remaining credits are compared with this total. A difference is displayed for review, never hidden or forced to zero.'],
+      ['Full-company QBO reconciliation (unfiltered)', 'An expandable accounting reference, separate from the filtered summaries. All open invoices less unapplied payments and remaining credits are compared with the full QBO net A/R total. A difference is displayed for review, never hidden or forced to zero.'],
     ],
     example: 'An invoice with $800 in Concrete and $200 in Screeding and a $400 unpaid balance appears as $400. Excluding Screeding removes the entire invoice, not an estimated $80 share. A separate retainage-only invoice can be excluded by selecting its retainage class.',
     checks: [

@@ -1,5 +1,6 @@
 import { makeRequest } from '@/lib/procore';
 import { notifyMissingProjectManager } from '@/lib/missingProjectManagerNotification';
+import { dateKeyInTimeZone } from '@/lib/pmDashboard';
 import {
   selectProjectManagerRecipientsForDomain,
   type ProjectRoleLike,
@@ -64,6 +65,14 @@ function addDays(date: Date, days: number): Date {
   const result = new Date(date.getTime());
   result.setUTCDate(result.getUTCDate() + days);
   return result;
+}
+
+function officeReviewDueDate(createdAt: Date): string {
+  if (!Number.isFinite(createdAt.getTime())) {
+    throw new Error('A valid office review task creation timestamp is required to set its due date.');
+  }
+  // Procore stores a calendar date. Use PMC's date at creation + 24 elapsed hours.
+  return dateKeyInTimeZone(new Date(createdAt.getTime() + 24 * 60 * 60 * 1000));
 }
 
 function readTaskAssigneeIds(task: JsonObject): number[] {
@@ -269,6 +278,7 @@ export async function ensureProductivityOfficeReviewTask(params: {
   completionCount: number;
   projectName: string;
   reviewedByEmail: string;
+  now?: Date;
 }) {
   const tag = `[analytics:productivity-office-review:${params.reviewId}:${params.completionCount}]`;
   const tasks = await fetchAll({
@@ -279,7 +289,21 @@ export async function ensureProductivityOfficeReviewTask(params: {
   if (existing) {
     const id = readId(existing.id);
     if (!id) throw new Error('The existing office review task is missing its ID.');
-    return { taskId: id, created: false };
+    const existingDueDate = normalizeDate(existing.due_date || existing.dueDate);
+    if (existingDueDate) return { taskId: id, created: false, dueDate: existingDueDate };
+    // A retry must retain the original deadline, even if the first attempt was days ago.
+    const dueDate = officeReviewDueDate(new Date(String(existing.created_at || '')));
+    await makeRequest(
+      `/rest/v1.0/task_items/${encodeURIComponent(id)}?project_id=${encodeURIComponent(params.projectId)}`,
+      params.token,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_item: { due_date: dueDate } }),
+      },
+      params.companyId,
+    );
+    return { taskId: id, created: false, dueDate };
   }
   const users = await fetchAll({
     ...params,
@@ -295,6 +319,7 @@ export async function ensureProductivityOfficeReviewTask(params: {
     }
     return id;
   });
+  const dueDate = officeReviewDueDate(params.now ?? new Date());
   const result = asObject(await makeRequest(
     `/rest/v1.0/task_items?project_id=${encodeURIComponent(params.projectId)}`,
     params.token,
@@ -306,6 +331,7 @@ export async function ensureProductivityOfficeReviewTask(params: {
         description: [tag, `Project: ${params.projectName}`,
           `Field Productivity review completed by: ${params.reviewedByEmail}`,
           'Todd and David: review the completed field productivity information.'].join('\n'),
+        due_date: dueDate,
         status: 'initiated',
         assigned_id: assigneeIds[0],
         assignee_ids: assigneeIds,
@@ -316,5 +342,5 @@ export async function ensureProductivityOfficeReviewTask(params: {
   ));
   const taskId = readId(result?.id) || readId(asObject(result?.task_item)?.id);
   if (!taskId) throw new Error('Procore created the office review task without returning its ID.');
-  return { taskId, created: true };
+  return { taskId, created: true, dueDate };
 }

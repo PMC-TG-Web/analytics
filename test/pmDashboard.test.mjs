@@ -6,6 +6,7 @@ import { isRouteAuthorizedApiRequest } from '../src/lib/permissionRoutes.js';
 import {
   buildProcoreItemUrl,
   dateKeyAfter,
+  dateKeyInTimeZone,
   isOpenPmItem,
   nextBusinessDateKeys,
   normalizePmActionItem,
@@ -85,6 +86,25 @@ test('task normalization resolves assignee IDs through the project directory', (
   assert.equal(item.dueAt?.toISOString(), '2026-09-03T12:00:00.000Z');
   assert.equal(item.isOpen, true);
   assert.equal(item.sourceUrl, 'https://us02.procore.com/123/project/task_items/42');
+});
+
+test('task calendar deadlines returned as midnight UTC keep their date in My Work', () => {
+  for (const dueDate of ['2026-10-28', '2026-10-28T00:00:00Z', '2026-10-28T00:00:00.000Z']) {
+    const item = normalizePmActionItem({ sourceType: 'task', record: { id: 42, due_date: dueDate } });
+    assert.equal(item.dueAt.toISOString(), '2026-10-28T12:00:00.000Z');
+    assert.equal(dateKeyInTimeZone(item.dueAt), '2026-10-28');
+  }
+});
+
+test('task calendar handling preserves explicit timestamps and meeting times', () => {
+  for (const [sourceType, field, timestamp] of [
+    ['task', 'due_date', '2026-10-28T17:40:20Z'],
+    ['task', 'due_at', '2026-10-28T00:00:00Z'],
+    ['meeting', 'starts_at', '2026-10-28T00:00:00Z'],
+  ]) {
+    const item = normalizePmActionItem({ sourceType, record: { id: 42, [field]: timestamp } });
+    assert.equal(item.dueAt.toISOString(), new Date(timestamp).toISOString());
+  }
 });
 
 test('RFI and meeting normalization use their manager and attendee identities', () => {

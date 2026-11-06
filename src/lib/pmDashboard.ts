@@ -221,9 +221,15 @@ export function normalizePmActionItem(params: {
   const assigneeNames = unique(members.map((member) => text(member.name)).filter(Boolean));
   const startsAt = toProcoreDate(record.starts_at ?? record.start_at ?? record.start_time);
   const endsAt = toProcoreDate(record.ends_at ?? record.end_at ?? record.end_time);
+  const rawDueDate = record.due_date ?? record.due_at ?? record.deadline;
+  // Task Items return date-only deadlines as midnight UTC. Keep that calendar
+  // date in My Work, where converting midnight UTC to Eastern would lose a day.
+  const dueDate = sourceType === "task" && record.due_date
+    ? text(rawDueDate).replace(/T00:00:00(?:\.0+)?Z$/, "")
+    : rawDueDate;
   const dueAt = sourceType === "meeting"
     ? startsAt
-    : toProcoreDate(record.due_date ?? record.due_at ?? record.deadline);
+    : toProcoreDate(dueDate);
   const number = firstText(record, ["alphanumeric_number", "number", "rfi_number", "position"]);
   const nestedStatus = isRecord(record.change_event_status)
     ? firstText(record.change_event_status, ["name", "mapped_to_status"])

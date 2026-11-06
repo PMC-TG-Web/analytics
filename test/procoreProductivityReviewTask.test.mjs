@@ -3,6 +3,7 @@ import fs from "node:fs";
 import test from "node:test";
 import ts from "typescript";
 import vm from "node:vm";
+import { dateKeyInTimeZone } from '../src/lib/pmDashboard.ts';
 
 function loadModule(makeRequest, notifyMissingProjectManager = async () => ({
   recipient: "todd@pmcdecor.com",
@@ -15,6 +16,7 @@ function loadModule(makeRequest, notifyMissingProjectManager = async () => ({
   const module = { exports: {} };
   const require = (id) => {
     if (id === "@/lib/procore") return { makeRequest };
+    if (id === "@/lib/pmDashboard") return { dateKeyInTimeZone };
     if (id === "@/lib/missingProjectManagerNotification") {
       return { notifyMissingProjectManager };
     }
@@ -233,9 +235,10 @@ const officeParams = {
   token: 'token', companyId: 'company', projectId: 'project',
   reviewId: 'review-1', completionCount: 1, projectName: 'Test Project',
   reviewedByEmail: 'pm@pmcdecor.com',
+  now: new Date('2026-10-27T17:40:20Z'),
 };
 
-test('office handoff creates one task assigned to Todd and David without an invented due date', async () => {
+test('office handoff creates one task assigned to Todd and David due 24 hours after creation', async () => {
   let created;
   const { ensureProductivityOfficeReviewTask } = loadModule(async (path, token, options) => {
     if (options?.method === 'POST') {
@@ -252,7 +255,7 @@ test('office handoff creates one task assigned to Todd and David without an inve
   assert.equal((await ensureProductivityOfficeReviewTask(officeParams)).taskId, '99');
   assert.deepEqual(created.assignee_ids, [1, 2]);
   assert.equal(created.title, 'Field Productivity Office Review');
-  assert.equal(created.due_date, undefined);
+  assert.equal(created.due_date, '2026-10-28');
   assert.match(created.description, /office-review:review-1:1/);
 });
 
@@ -263,11 +266,12 @@ test('office handoff retry finds its tag on later pages without another mutation
     calls++;
     return path.includes('page=1&')
       ? Array.from({ length: 100 }, (_, id) => ({ id, description: 'unrelated' }))
-      : [{ id: 99, description: '[analytics:productivity-office-review:review-1:1]' }];
+      : [{ id: 99, description: '[analytics:productivity-office-review:review-1:1]', due_date: '2026-11-05' }];
   });
   const result = await ensureProductivityOfficeReviewTask(officeParams);
   assert.equal(result.created, false);
   assert.equal(result.taskId, '99');
+  assert.equal(result.dueDate, '2026-11-05', 'Preserve an existing deadline on retry');
   assert.equal(calls, 2);
 });
 
@@ -294,8 +298,61 @@ test('office handoff resolves both fixed recipients from paginated Procore email
   assert.equal(mutations[0].assigned_id, 1);
   assert.deepEqual(mutations[0].assignee_ids, [1, 2]);
   assert.deepEqual(mutations[0].distribution_member_ids, []);
-  assert.equal(mutations[0].due_date, undefined);
+  assert.equal(mutations[0].due_date, '2026-10-28');
 });
+
+test('an undated office task retry sets only its original creation +24-hour deadline', async () => {
+  const mutations = [];
+  const { ensureProductivityOfficeReviewTask } = loadModule(async (path, token, options, companyId) => {
+    assert.equal(companyId, officeParams.companyId);
+    if (options) {
+      assert.equal(options.method, 'PATCH');
+      assert.equal(path, '/rest/v1.0/task_items/99?project_id=project');
+      mutations.push(JSON.parse(options.body));
+      return { id: 99 };
+    }
+    assert.ok(path.startsWith('/rest/v1.0/task_items?'));
+    return [{ id: 99, description: '[analytics:productivity-office-review:review-1:1]',
+      created_at: '2026-10-27T17:40:20Z', due_date: null }];
+  });
+  const result = await ensureProductivityOfficeReviewTask({ ...officeParams, now: new Date('2026-11-06T15:00:00Z') });
+  assert.equal(result.created, false);
+  assert.equal(result.dueDate, '2026-10-28');
+  assert.deepEqual(mutations, [{ task_item: { due_date: '2026-10-28' } }]);
+});
+
+for (const createdAt of [undefined, 'invalid']) {
+  test(`an undated office task with ${createdAt} creation time fails without moving its deadline`, async () => {
+    const { ensureProductivityOfficeReviewTask } = loadModule(async (path, token, options) => {
+      assert.equal(options, undefined);
+      return [{ id: 99, description: '[analytics:productivity-office-review:review-1:1]', created_at: createdAt }];
+    });
+    await assert.rejects(ensureProductivityOfficeReviewTask(officeParams), /creation timestamp/);
+  });
+}
+
+for (const [createdAt, expected] of [
+  ['2026-10-28T02:30:00Z', '2026-10-28'], // Still October 27 in PMC's time zone.
+  ['2026-03-08T04:30:00Z', '2026-03-09'], // +24 elapsed hours crosses the spring clock change.
+  ['2026-11-01T04:30:00Z', '2026-11-01'], // +24 elapsed hours across the fall clock change.
+  ['2026-12-31T17:00:00Z', '2027-01-01'],
+]) {
+  test(`office due date uses PMC's date at ${createdAt} +24 hours`, async () => {
+    let dueDate;
+    const { ensureProductivityOfficeReviewTask } = loadModule(async (path, token, options) => {
+      if (options?.method === 'POST') {
+        dueDate = JSON.parse(options.body).task_item.due_date;
+        return { id: 99 };
+      }
+      return path.includes('/users?') ? [
+        { id: 1, email_address: 'todd@pmcdecor.com' },
+        { id: 2, email_address: 'david@pmcdecor.com' },
+      ] : [];
+    });
+    await ensureProductivityOfficeReviewTask({ ...officeParams, now: new Date(createdAt) });
+    assert.equal(dueDate, expected);
+  });
+}
 
 for (const [label, candidates] of [
   ['missing', []],

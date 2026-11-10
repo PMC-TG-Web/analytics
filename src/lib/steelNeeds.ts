@@ -36,9 +36,22 @@ export function steelKind(description: string, costType = '', unit = ''): SteelK
   return /\b(rebar|reinforcing bars?|reinforcement bars?)\b/i.test(description) ? 'Rebar' : null;
 }
 
-/** Owner's ordering convention: all rebar is supplied as 20-foot sticks by bar size. */
+const isWireMesh = (description: string) => /\b(wire\s+mesh|welded\s+wire|wwf|wwr|reinforcing\s+mesh)\b/i.test(description);
+
+/** Explicit feet distinguish sheet dimensions from mesh spacing such as 6x6. */
+export function wireMeshDescription(description: string): string | null {
+  if (!isWireMesh(description)) return null;
+  const gauges = new Set([...description.matchAll(/\b(\d+(?:\.\d+)?)\s*(?:ga|gauge)\b/gi)].map(match => Number(match[1])));
+  const sheets = new Set([...description.matchAll(/\b(\d+(?:\.\d+)?)\s*(?:['’′]|ft\.?|feet|foot)?\s*[x×]\s*(\d+(?:\.\d+)?)\s*(?:['’′]|ft\b\.?|feet\b|foot\b)/gi)]
+    .filter(match => Number(match[1]) > 0 && Number(match[2]) > 0)
+    .map(match => [Number(match[1]), Number(match[2])].sort((a, b) => a - b).map(value => `${value}'`).join('x')));
+  if (gauges.size !== 1 || [...gauges][0] <= 0 || sheets.size !== 1) return null;
+  return `Wire Mesh ${[...gauges][0]} ga ${[...sheets][0]}`;
+}
+
+/** Ordering groups use rebar size or wire mesh gauge + sheet dimensions. */
 export function steelDescription(description: string, kind: SteelKind): string {
-  if (kind !== 'Rebar') return description;
+  if (kind === 'Wire') return wireMeshDescription(description) || description;
   const sizes = new Set([...description.matchAll(/#\s*(\d+)\b/g)].map(match => Number(match[1])));
   // Never invent a bar size for missing or conflicting specifications.
   if (sizes.size !== 1 || [...sizes][0] <= 0) return description;
@@ -74,6 +87,9 @@ export function buildSteelNeeds(companyId: string, projects: WipProject[], lines
       const kind = steelKind(sourceDescription, clean(costItem.cost_type_code || costItem.type), unit);
       if (!kind) continue;
       const description = steelDescription(sourceDescription, kind);
+      if (kind === 'Wire' && isWireMesh(sourceDescription) && !wireMeshDescription(sourceDescription)) {
+        issues.push(`${sourceDescription}: wire mesh gauge or sheet size is missing or ambiguous; kept separate for review.`);
+      }
       const quantity = line.quantity === null || line.quantity === undefined || clean(line.quantity) === '' ? NaN : Number(line.quantity);
       if (!unit || !Number.isFinite(quantity) || quantity < 0) {
         issues.push(`${description}: missing unit or invalid quantity; excluded from totals.`); continue;

@@ -11,7 +11,11 @@ const project = { key: 'p1', projectId: 'p1', projectName: 'Warehouse', projectN
 const line = { companyId: 'company', bidBoardProjectId: 'b1', proposalId: 'e1', lineItemId: 'l1', name: "#4 Rebar - 20' Pc", uom: 'EA', quantity: 100, syncedAt: '2026-11-10T12:00:00Z', payload: {} };
 const projects = buildSteelNeeds('company', [project,
   { ...project, key: 'p2', projectId: 'p2', projectName: 'School', source: { ...source, bidBoardId: 'b2' }, plan: null },
-], [{ ...line, quantity: 60 }, { ...line, lineItemId: 'footer', name: '#4 Rebar 2 Continuous Footer', quantity: 40 }, { ...line, bidBoardProjectId: 'b2', name: '#4 Rebar 10 ft Wall', quantity: 50 }, { ...line, lineItemId: 'wire', name: "Wire Mesh 6 ga 5'x10' Sheet", quantity: 20 }], [{ projectId: 'p1', dailyLogs: 2, timesheets: 3, firstActivity: '2026-11-01' }]);
+], [{ ...line, quantity: 60 }, { ...line, lineItemId: 'footer', name: '#4 Rebar 2 Continuous Footer', quantity: 40 }, { ...line, bidBoardProjectId: 'b2', name: '#4 Rebar 10 ft Wall', quantity: 50 },
+  { ...line, lineItemId: 'wire', name: "Wire Mesh 6 ga (2.9x2.9 6x6) 5'x10' Sheet", quantity: 12 },
+  { ...line, lineItemId: 'wire-sog', name: "Wire Mesh 6 ga (6x6) 5'x10' SOG", quantity: 8 },
+  { ...line, lineItemId: 'wire-large', name: "Wire Mesh 6 ga (6x6) 8'x15' Sheet", quantity: 7 },
+], [{ projectId: 'p1', dailyLogs: 2, timesheets: 3, firstActivity: '2026-11-01' }]);
 
 test('Steel needs browser: grouping, project detail, filters, CSV, mobile and failed reload', { skip: !enabled, timeout: 120000 }, async () => {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
@@ -26,6 +30,11 @@ test('Steel needs browser: grouping, project detail, filters, CSV, mobile and fa
     await page.goto(`${base}/steel-needs`, { waitUntil: 'networkidle' });
     const table = page.getByRole('table', { name: 'Steel totals by description', exact: true });
     await table.getByText('150', { exact: true }).waitFor();
+    const smallWire = table.getByRole('row').filter({ has: page.getByRole('button', { name: /Wire Mesh 6 ga 5'x10'$/ }) });
+    assert.equal(await smallWire.count(), 1);
+    assert.equal(await smallWire.getByRole('cell').nth(4).innerText(), '20');
+    await table.getByRole('button', { name: /Wire Mesh 6 ga 8'x15'$/ }).waitFor();
+    assert.doesNotMatch(await table.innerText(), /2.9x2.9|6x6|SOG/);
     await table.getByRole('button', { name: /#4 Rebar/ }).click();
     const detail = page.getByRole('table', { name: `Projects for ${line.name}`, exact: true });
     assert.match(await detail.innerText(), /Warehouse/); assert.match(await detail.innerText(), /School/);

@@ -10,6 +10,40 @@ export const project = { key: 'p1', projectId: 'p1', projectName: 'Warehouse', p
 export const line = { companyId: 'company', bidBoardProjectId: 'b1', proposalId: 'e1', lineItemId: 'l1', name: "#4 Rebar - 20' Pc", uom: 'EA', quantity: 100, syncedAt: '2026-11-10T12:00:00Z', payload: { cost_item: { type: 'CUSTOM', description: '#5 Rebar By The Piece' } } };
 const filters = { status: '', kind: '', query: '', projectId: '', through: '', timing: '' };
 
+test('wire mesh groups by explicit gauge and sheet size, ignoring mesh spacing and scope text', () => {
+  const second = { ...project, key: 'p2', projectId: 'p2', source: { ...source, bidBoardId: 'b2' } };
+  const wire = (lineItemId, name, quantity, extra = {}) => ({ ...line, lineItemId, name, quantity, ...extra });
+  const rows = buildSteelNeeds('company', [project, second], [
+    wire('w1', "Wire Mesh 6 ga (2.9x2.9 6x6) 5'x10' Sheet", 100),
+    wire('w2', 'WIRE MESH 6 GA (6x6) 5 ft x 10 ft Foundation', 50),
+    wire('w3', 'Wire Mesh 6 gauge 10′ × 5′ Sheet', 20),
+    wire('w4', "Wire Mesh 6 ga (6x6) 5'x10' SOG", 40, { bidBoardProjectId: 'b2' }),
+    wire('large', "Wire Mesh 6 ga (6x6) 8'x15' Sheet", 30),
+    wire('gauge', "Wire Mesh 8 ga (6x6) 5'x10' Sheet", 10),
+    wire('units', "Wire Mesh 6 ga 5'x10' Sheet", 200, { uom: 'SF' }),
+  ], [{ projectId: 'p2', dailyLogs: 1, timesheets: 0, firstActivity: '2026-11-01' }]);
+  const total = aggregateSteelNeeds(rows).find(item => item.description === "Wire Mesh 6 ga 5'x10'" && item.unit === 'EA');
+  assert.equal(total.quantity, 210); assert.equal(total.notStartedQuantity, 170); assert.equal(total.startedQuantity, 40);
+  assert.equal(total.projects.length, 2); assert.equal(total.projects[0].quantity, 170);
+  assert.equal(aggregateSteelNeeds(rows).length, 4);
+  assert.ok(rows.every(row => !row.issues.some(issue => issue.includes('wire mesh'))));
+  const csv = steelNeedsCsv(rows);
+  assert.match(csv, /Wire Mesh 6 ga 5'x10'/); assert.match(csv, /Wire Mesh 6 ga 8'x15'/);
+  assert.doesNotMatch(csv, /2.9x2.9|Foundation|SOG|6x6/);
+  assert.equal(steelDescription('WWF 10 ga 5x10 feet', 'Wire'), "Wire Mesh 10 ga 5'x10'");
+});
+
+test('mesh spacing cannot become sheet size, missing/conflicting specs stay separate, other wire stays unchanged', () => {
+  const descriptions = ['Wire Mesh 6 ga (6x6)', 'Wire Mesh 6 ga - House Keeping Pds',
+    "Wire Mesh 6x6 W4.0 W4.0 5'x10' Sheet", 'Wire Mesh 6 ga 60"x120" Sheet',
+    "Wire Mesh 6 ga or 8 ga 5'x10' Sheet", "Wire Mesh 6 ga 5'x10' or 8'x15' Sheet"];
+  const rows = buildSteelNeeds('company', [project], descriptions.map((name, i) => ({ ...line, lineItemId: String(i), name })), []);
+  assert.equal(rows[0].items.length, descriptions.length);
+  assert.equal(rows[0].issues.length, descriptions.length);
+  for (const description of descriptions) assert.equal(steelDescription(description, 'Wire'), description);
+  assert.equal(steelDescription('Tie Wire 16 ga 3 lb Roll', 'Wire'), 'Tie Wire 16 ga 3 lb Roll');
+});
+
 test('rebar aggregates by size as 20-foot sticks across scopes and lengths in project rows, totals and CSV', () => {
   const names = ["#4 Rebar - 20' Pc - 18\" OCEW", '#4 Rebar 2 Continuous Footer', '# 4 Rebar 10 ft', 'Rebar #4 Dowels', '#4 Rebar'];
   const second = { ...project, key: 'p2', projectId: 'p2', source: { ...source, bidBoardId: 'b2' } };

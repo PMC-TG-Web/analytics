@@ -24,16 +24,20 @@ test('Steel needs browser: grouping, project detail, filters, CSV, mobile and fa
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   let fail = false, failSave = false;
+  let saveGate = null, releaseSave;
   const fixtureProjects = structuredClone(projects);
+  for (const project of fixtureProjects) for (const item of project.items) item.orderSnapshot = 'fixture-snapshot';
   await page.context().addCookies([{ name: 'dev_user_email', value: 'todd@pmcdecor.com', url: base, sameSite: 'Lax' }]);
   // Refresh the signed permission cookie after adding a new page in a running dev session.
   assert.equal((await page.request.get(`${base}/api/permissions/me`)).status(), 200);
-  await page.route('**/api/steel-needs', route => {
+  await page.route('**/api/steel-needs', async route => {
     if (route.request().method() === 'POST') {
-      if (failSave) return route.fulfill({ status: 503, json: { error: 'Unable to save the order mark. Refresh saved data before retrying.' } });
       const input = route.request().postDataJSON();
+      if (input.projectId === 'p1' && saveGate) await saveGate;
+      if (failSave) return route.fulfill({ status: 503, json: { error: 'Unable to save the order mark. Refresh saved data before retrying.' } });
       const item = fixtureProjects.find(project => project.projectId === input.projectId)?.items.find(item => item.key === input.itemKey);
       assert.ok(item); assert.equal(input.quantity, item.quantity); assert.equal(input.revision, item.order?.revision || 0);
+      assert.equal(input.orderSnapshot, item.orderSnapshot);
       item.order = { revision: input.revision + 1, orderedAt: input.ordered ? '2026-11-11T02:00:00Z' : null, quantity: input.ordered ? item.quantity : null };
       return route.fulfill({ json: { order: item.order } });
     }
@@ -54,8 +58,25 @@ test('Steel needs browser: grouping, project detail, filters, CSV, mobile and fa
     const detail = page.getByRole('table', { name: `Projects for ${line.name}`, exact: true });
     assert.match(await detail.innerText(), /Warehouse/); assert.match(await detail.innerText(), /School/);
     const warehouseMark = page.getByRole('checkbox', { name: `Ordered ${line.name} for Warehouse`, exact: true });
+    const schoolMark = page.getByRole('checkbox', { name: `Ordered ${line.name} for School`, exact: true });
+    saveGate = new Promise(resolve => { releaseSave = resolve; });
     await warehouseMark.click();
-    await detail.getByText('11/10/2026', { exact: true }).waitFor();
+    // A deliberately held save must show the requested check immediately, without blocking another project.
+    assert.equal(await warehouseMark.isChecked(), true);
+    assert.equal(await warehouseMark.isDisabled(), true);
+    await detail.getByText('Saving…', { exact: true }).waitFor();
+    assert.equal(await schoolMark.isEnabled(), true);
+    assert.equal(await page.getByRole('button', { name: 'Refresh saved data' }).isDisabled(), true);
+    assert.equal(await page.getByRole('button', { name: 'Export order worksheet' }).isDisabled(), true);
+    await schoolMark.click();
+    const schoolRow = detail.getByRole('row').filter({ has: schoolMark });
+    await schoolRow.getByText('11/10/2026', { exact: true }).waitFor();
+    assert.equal(await schoolMark.isChecked(), true);
+    assert.equal(await warehouseMark.isDisabled(), true);
+    await schoolMark.click();
+    await schoolRow.getByText('Saving…', { exact: true }).waitFor({ state: 'detached' });
+    saveGate = null; releaseSave();
+    await detail.getByRole('row').filter({ has: warehouseMark }).getByText('11/10/2026', { exact: true }).waitFor();
     assert.equal(await warehouseMark.isChecked(), true);
     assert.equal(await page.getByRole('checkbox', { name: `Ordered ${line.name} for School`, exact: true }).isChecked(), false);
     await page.reload({ waitUntil: 'networkidle' });
@@ -77,10 +98,15 @@ test('Steel needs browser: grouping, project detail, filters, CSV, mobile and fa
     await page.getByRole('table', { name: 'Steel for Warehouse', exact: true }).waitFor();
     assert.equal(await warehouseMark.isChecked(), true);
     await warehouseMark.click();
+    await page.getByText('Saving…', { exact: true }).waitFor({ state: 'detached' });
     await page.getByRole('table', { name: 'Steel for Warehouse', exact: true }).getByText('11/10/2026', { exact: true }).waitFor({ state: 'detached' });
     assert.equal(await warehouseMark.isChecked(), false);
     failSave = true;
+    saveGate = new Promise(resolve => { releaseSave = resolve; });
     await warehouseMark.click();
+    assert.equal(await warehouseMark.isChecked(), true);
+    await page.getByText('Saving…', { exact: true }).waitFor();
+    saveGate = null; releaseSave();
     await page.getByRole('alert').filter({ hasText: 'Unable to save the order mark.' }).waitFor();
     assert.equal(await warehouseMark.isChecked(), false);
     failSave = false;

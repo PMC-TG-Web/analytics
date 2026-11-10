@@ -6,6 +6,7 @@ import { loadSteelNeeds } from '@/lib/loadSteelNeeds';
 import { wipCompanyId } from '@/lib/loadWipPlanning';
 import { validateCsrfRequest } from '@/lib/csrfProtection';
 import { parseSteelOrderInput, saveSteelOrderMark, SteelOrderConflict } from '@/lib/steelOrderMarks';
+import { createSteelOrderSnapshot, verifySteelOrderSnapshot } from '@/lib/steelOrderSnapshot';
 
 export const dynamic = 'force-dynamic';
 const json = (body: unknown, status = 200) => NextResponse.json(body, { status, headers: { 'Cache-Control': 'private, no-store' } });
@@ -14,7 +15,11 @@ export async function GET(request: NextRequest) {
     const actor = await getRequestUserEmail(request);
     if (!actor) return json({ error: 'Sign in to view Steel needs.' }, 401);
     if (!await hasDatabasePageAccess(prisma, actor, 'page:/steel-needs')) return json({ error: 'Steel needs access is required.' }, 403);
-    return json(await loadSteelNeeds());
+    const report = await loadSteelNeeds();
+    const companyId = wipCompanyId();
+    return json({ ...report, projects: report.projects.map(project => ({ ...project, items: project.items.map(item => ({
+      ...item, orderSnapshot: project.projectId ? createSteelOrderSnapshot(companyId, { projectId: project.projectId, itemKey: item.key, quantity: item.quantity }) : undefined,
+    })) })) });
   } catch {
     return json({ error: 'Unable to load Steel needs. Retry or check estimate, WIP and field-entry synchronization.' }, 503);
   }
@@ -32,10 +37,9 @@ export async function POST(request: NextRequest) {
     try { body = JSON.parse(raw); } catch { return json({ error: 'Invalid order mark.' }, 400); }
     const input = parseSteelOrderInput(body);
     if (!input) return json({ error: 'Invalid order mark.' }, 400);
-    const report = await loadSteelNeeds();
-    const item = report.projects.find(project => project.projectId === input.projectId)?.items.find(item => item.key === input.itemKey);
-    if (!item || item.quantity !== input.quantity) return json({ error: 'The estimate changed. Refresh saved data before marking this item.' }, 409);
-    return json({ order: await saveSteelOrderMark(prisma, wipCompanyId(), actor, input) });
+    const companyId = wipCompanyId();
+    if (!verifySteelOrderSnapshot(body.orderSnapshot, companyId, input)) return json({ error: 'Refresh saved data before marking this item. Its estimate snapshot is missing or expired.' }, 409);
+    return json({ order: await saveSteelOrderMark(prisma, companyId, actor, input) });
   } catch (error) {
     if (error instanceof SteelOrderConflict) return json({ error: error.message }, 409);
     return json({ error: 'Unable to save the order mark. Refresh saved data before retrying.' }, 503);

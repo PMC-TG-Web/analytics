@@ -4,6 +4,9 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { validateCsrfRequest } from '../src/lib/csrfProtection.ts';
 import { parseSteelOrderInput, SteelOrderConflict } from '../src/lib/steelOrderMarks.ts';
+import { createSteelOrderSnapshot, verifySteelOrderSnapshot } from '../src/lib/steelOrderSnapshot.ts';
+
+const secret = 'fixture-only-signing-key';
 
 const compiled = ts.transpileModule(readFileSync('src/app/api/steel-needs/route.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 function setup({ actor = 'user@example.com', allowed = true, fail = false, projects = [], conflict = false } = {}) {
@@ -16,9 +19,14 @@ function setup({ actor = 'user@example.com', allowed = true, fail = false, proje
     '@/lib/loadSteelNeeds': { loadSteelNeeds: async () => { reads++; if (fail) throw Error('private database details'); return { projects, loadedAt: 'now', localOnly: false }; } },
     '@/lib/loadWipPlanning': { wipCompanyId: () => 'company' },
     '@/lib/csrfProtection': { validateCsrfRequest },
+    '@/lib/steelOrderSnapshot': {
+      createSteelOrderSnapshot: (company, input) => createSteelOrderSnapshot(company, input, secret),
+      verifySteelOrderSnapshot: (token, company, input) => verifySteelOrderSnapshot(token, company, input, secret),
+    },
     '@/lib/steelOrderMarks': { parseSteelOrderInput, SteelOrderConflict, saveSteelOrderMark: async (_db, company, email, input) => {
       assert.equal(company, 'company'); assert.equal(email, actor); writes++;
       if (conflict) throw new SteelOrderConflict('Refresh saved data.');
+      if (fail) throw Error('private database details');
       return { revision: input.revision + 1, orderedAt: input.ordered ? '2026-11-10T12:00:00Z' : null, quantity: input.ordered ? input.quantity : null };
     } },
   };
@@ -34,6 +42,7 @@ test('Steel needs denies unauthenticated and unauthorized requests before any so
 });
 
 const input = { projectId: '101', itemKey: 'material', quantity: 100, revision: 0, ordered: true };
+input.orderSnapshot = createSteelOrderSnapshot('company', input, secret);
 const request = (body = input, origin = 'https://example.com') => new Request('https://example.com/api/steel-needs', {
   method: 'POST', headers: { origin, 'Content-Type': 'application/json' }, body: typeof body === 'string' ? body : JSON.stringify(body),
 });
@@ -44,23 +53,34 @@ test('order checkboxes require authentication, independent page access and same-
     assert.equal(fixture.reads(), 0); assert.equal(fixture.writes(), 0);
   }
 });
-test('invalid, stale and unknown project/material requests cannot save checkmarks', async () => {
+test('invalid and unsigned project/material requests cannot save checkmarks', async () => {
   for (const body of ['bad json', { ...input, ordered: 'yes' }, { ...input, quantity: -2 }, { ...input, revision: -1 }, { ...input, projectId: 'p1' }]) {
     const fixture = setup(); assert.equal((await fixture.POST(request(body))).status, 400); assert.equal(fixture.writes(), 0);
   }
-  for (const projects of [[], [{ projectId: '102', items: [{ key: 'material', quantity: 100 }] }], [{ projectId: '101', items: [{ key: 'material', quantity: 101 }] }]]) {
-    const fixture = setup({ projects }); assert.equal((await fixture.POST(request())).status, 409); assert.equal(fixture.writes(), 0);
+  for (const body of [{ ...input, orderSnapshot: undefined }, { ...input, projectId: '102' }, { ...input, itemKey: 'unknown' }, { ...input, quantity: 101 }, { ...input, orderSnapshot: createSteelOrderSnapshot('other-company', input, secret) }]) {
+    const fixture = setup(); assert.equal((await fixture.POST(request(body))).status, 409); assert.equal(fixture.writes(), 0); assert.equal(fixture.reads(), 0);
   }
 });
-test('valid project/material toggles return the server stamp and conflicts require refresh', async () => {
+test('valid snapshots save without rebuilding the report; server stamps and revision conflicts remain enforced', async () => {
   const projects = [{ projectId: '101', items: [{ key: 'material', quantity: 100 }] }];
   const fixture = setup({ projects });
   const response = await fixture.POST(request({ ...input, companyId: 'untrusted', orderedAt: '2001-01-01' }));
   assert.equal(response.status, 200); assert.match(response.headers.get('Cache-Control'), /no-store/);
   assert.equal((await response.json()).order.orderedAt, '2026-11-10T12:00:00Z');
   assert.equal(fixture.writes(), 1);
+  assert.equal(fixture.reads(), 0);
   assert.equal((await setup({ projects, conflict: true }).POST(request())).status, 409);
   assert.equal((await setup({ fail: true }).POST(request())).status, 503);
+});
+
+test('GET signs only linked material snapshots that POST accepts without source reads', async () => {
+  const fixture = setup({ projects: [{ projectId: '101', items: [{ key: 'material', quantity: 100 }] }, { projectId: null, items: [{ key: 'unlinked', quantity: 10 }] }] });
+  const report = await (await fixture.GET({})).json();
+  const token = report.projects[0].items[0].orderSnapshot;
+  assert.equal(verifySteelOrderSnapshot(token, 'company', input, secret), true);
+  assert.equal(report.projects[1].items[0].orderSnapshot, undefined);
+  assert.equal((await fixture.POST(request({ ...input, orderSnapshot: token }))).status, 200);
+  assert.equal(fixture.reads(), 1);
 });
 test('Steel needs returns no-store complete reads and reports errors without exposing database details', async () => {
   const response = await setup().GET({}); assert.equal(response.status, 200); assert.match(response.headers.get('Cache-Control'), /no-store/);

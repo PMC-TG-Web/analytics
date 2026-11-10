@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { aggregateSteelNeeds, filterSteelProjects, steelNeedsCsv, steelOrderedDate, type SteelItem, type SteelProject, type SteelReport } from '@/lib/steelNeeds';
 
 const number = new Intl.NumberFormat('en-US', { maximumFractionDigits: 4 });
@@ -14,12 +14,13 @@ function Status({ project }: { project: SteelProject }) {
   return <span className={`inline-block whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${project.started === null ? 'bg-amber-100 text-amber-900' : project.started ? 'bg-emerald-100 text-emerald-800' : 'bg-sky-100 text-sky-800'}`}>{project.started === null ? 'Unlinked' : project.started ? 'Started' : 'Not started'}</span>;
 }
 
-function OrderedCheck({ item, project, disabled, saving, onChange }: { item: SteelItem; project: SteelProject; disabled: boolean; saving: boolean; onChange: (ordered: boolean) => void }) {
+function OrderedCheck({ item, project, disabled, pending, onChange }: { item: SteelItem; project: SteelProject; disabled: boolean; pending?: boolean; onChange: (ordered: boolean) => void }) {
+  const saving = pending !== undefined;
   return <div className="min-w-32 text-left"><label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium"><input
     type="checkbox" className="h-4 w-4 accent-sky-800" aria-label={`Ordered ${item.description} for ${project.projectName}`}
-    checked={!!item.order?.orderedAt} disabled={disabled || !project.projectId} onChange={event => onChange(event.target.checked)} />Ordered</label>
+    checked={pending ?? !!item.order?.orderedAt} disabled={disabled || saving || !project.projectId} onChange={event => onChange(event.target.checked)} />Ordered</label>
     {saving ? <p role="status" className="text-xs text-slate-500">Saving…</p> : item.order?.orderedAt && <p className="mt-1 text-xs text-slate-500">{steelOrderedDate(item.order.orderedAt)}</p>}
-    {item.order?.orderedAt && item.order.quantity !== item.quantity && <p className="mt-1 max-w-44 text-xs text-amber-800">Estimate changed since marked. Review, then uncheck/recheck to confirm.</p>}
+    {!saving && item.order?.orderedAt && item.order.quantity !== item.quantity && <p className="mt-1 max-w-44 text-xs text-amber-800">Estimate changed since marked. Review, then uncheck/recheck to confirm.</p>}
   </div>;
 }
 
@@ -27,7 +28,9 @@ export default function SteelNeedsPage() {
   const [report, setReport] = useState<SteelReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [saving, setSaving] = useState('');
+  const [pending, setPending] = useState<Record<string, boolean>>({});
+  const pendingKeys = useRef(new Set<string>());
+  const saving = Object.keys(pending).length > 0;
   const [saveError, setSaveError] = useState('');
   const [view, setView] = useState<'materials' | 'projects'>('materials');
   const [status, setStatus] = useState('');
@@ -38,6 +41,7 @@ export default function SteelNeedsPage() {
   const [timing, setTiming] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   async function reload() {
+    if (pendingKeys.current.size) return;
     setLoading(true); setError(''); setSaveError('');
     try {
       const response = await fetch('/api/steel-needs', { cache: 'no-store' });
@@ -49,11 +53,13 @@ export default function SteelNeedsPage() {
   }
   useEffect(() => { void reload(); }, []);
   async function markOrdered(project: SteelProject, item: SteelItem, ordered: boolean) {
-    if (saving || !project.projectId) return;
-    setSaving(JSON.stringify([project.key, item.key])); setSaveError('');
+    const key = JSON.stringify([project.key, item.key]);
+    if (pendingKeys.current.has(key) || !project.projectId) return;
+    pendingKeys.current.add(key);
+    setPending(previous => ({ ...previous, [key]: ordered })); setSaveError('');
     try {
       const response = await fetch('/api/steel-needs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-        projectId: project.projectId, itemKey: item.key, quantity: item.quantity, ordered, revision: item.order?.revision || 0,
+        projectId: project.projectId, itemKey: item.key, quantity: item.quantity, ordered, revision: item.order?.revision || 0, orderSnapshot: item.orderSnapshot,
       }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || 'Unable to save the order mark.');
@@ -61,10 +67,13 @@ export default function SteelNeedsPage() {
         ...row, items: row.items.map(material => material.key === item.key ? { ...material, order: body.order } : material),
       } : row) } : previous);
     } catch (err) { setSaveError(err instanceof Error ? err.message : 'Unable to save the order mark. Refresh saved data before retrying.'); }
-    finally { setSaving(''); }
+    finally {
+      pendingKeys.current.delete(key);
+      setPending(previous => { const next = { ...previous }; delete next[key]; return next; });
+    }
   }
-  const orderedCheck = (project: SteelProject, item: SteelItem) => <OrderedCheck item={item} project={project} disabled={loading || !!saving}
-    saving={saving === JSON.stringify([project.key, item.key])} onChange={ordered => void markOrdered(project, item, ordered)} />;
+  const orderedCheck = (project: SteelProject, item: SteelItem) => <OrderedCheck item={item} project={project} disabled={loading}
+    pending={pending[JSON.stringify([project.key, item.key])]} onChange={ordered => void markOrdered(project, item, ordered)} />;
   const projects = filterSteelProjects(report?.projects || [], { status, kind, query, projectId, through, timing });
   const totals = aggregateSteelNeeds(projects);
   const withSteel = projects.filter(project => project.items.length);

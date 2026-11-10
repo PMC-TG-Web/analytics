@@ -7,7 +7,7 @@ export type SteelEstimateLine = {
 };
 export type SteelActivity = { projectId: string; dailyLogs: number; timesheets: number; firstActivity: string | null };
 export type SteelOrder = { revision: number; orderedAt: string | null; quantity: number | null };
-export type SteelItem = { key: string; description: string; kind: SteelKind; unit: string; quantity: number; lineCount: number; order: SteelOrder | null };
+export type SteelItem = { key: string; description: string; kind: SteelKind; unit: string; quantity: number; lineCount: number; order: SteelOrder | null; orderSnapshot?: string };
 export type SteelProject = {
   key: string; projectId: string | null; projectName: string; projectNumber: string; customer: string;
   bidBoardId: string; proposalId: string; started: boolean | null; dailyLogs: number; timesheets: number;

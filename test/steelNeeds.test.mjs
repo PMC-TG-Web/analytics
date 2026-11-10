@@ -33,15 +33,30 @@ test('wire mesh groups by explicit gauge and sheet size, ignoring mesh spacing a
   assert.equal(steelDescription('WWF 10 ga 5x10 feet', 'Wire'), "Wire Mesh 10 ga 5'x10'");
 });
 
-test('mesh spacing cannot become sheet size, missing/conflicting specs stay separate, other wire stays unchanged', () => {
-  const descriptions = ['Wire Mesh 6 ga (6x6)', 'Wire Mesh 6 ga - House Keeping Pds',
-    "Wire Mesh 6x6 W4.0 W4.0 5'x10' Sheet", 'Wire Mesh 6 ga 60"x120" Sheet',
+test('unconfirmed or conflicting specs stay separate and other wire stays unchanged', () => {
+  const descriptions = ['Wire Mesh 8 ga (6x6)', 'Wire Mesh 10 ga - House Keeping Pds',
+    "Wire Mesh 6x6 W2.9 W2.9 5'x10' Sheet", 'Wire Mesh 6 ga 60"x120" Sheet',
     "Wire Mesh 6 ga or 8 ga 5'x10' Sheet", "Wire Mesh 6 ga 5'x10' or 8'x15' Sheet"];
   const rows = buildSteelNeeds('company', [project], descriptions.map((name, i) => ({ ...line, lineItemId: String(i), name })), []);
   assert.equal(rows[0].items.length, descriptions.length);
   assert.equal(rows[0].issues.length, descriptions.length);
   for (const description of descriptions) assert.equal(steelDescription(description, 'Wire'), description);
   assert.equal(steelDescription('Tie Wire 16 ga 3 lb Roll', 'Wire'), 'Tie Wire 16 ga 3 lb Roll');
+});
+
+test('owner defaults combine missing-size 6-ga sheets and W4.0 W4.0 mesh with their confirmed groups', () => {
+  const descriptions = ['Wire Mesh 6 ga', 'Wire Mesh 6 ga - House Keeping Pds', 'Wire Mesh 6 ga (6x6)',
+    "Wire Mesh 6 ga 5'x10' Sheet", "Wire Mesh 6 ga 8'x15' Sheet",
+    "Wire Mesh 6x6 W4.0 W4.0 5'x10' Sheet", "Wire Mesh 4 ga (4.0x4.0 4x4) 5'x10' Sheet"];
+  const rows = buildSteelNeeds('company', [project], descriptions.map((name, i) => ({ ...line, lineItemId: String(i), name, quantity: 10 })), []);
+  const totals = aggregateSteelNeeds(rows);
+  assert.equal(totals.length, 3);
+  assert.equal(totals.find(row => row.description === "Wire Mesh 6 ga 5'x10'").quantity, 40);
+  assert.equal(totals.find(row => row.description === "Wire Mesh 6 ga 8'x15'").quantity, 10);
+  assert.equal(totals.find(row => row.description === "Wire Mesh 4 ga 5'x10'").quantity, 20);
+  assert.deepEqual(rows[0].issues, []);
+  assert.doesNotMatch(steelNeedsCsv(rows), /House Keeping|W4\.0/);
+  assert.equal(steelDescription("Wire Mesh 6 ga W4.0 W4.0 5'x10'", 'Wire'), "Wire Mesh 6 ga W4.0 W4.0 5'x10'");
 });
 
 test('rebar aggregates by size as 20-foot sticks across scopes and lengths in project rows, totals and CSV', () => {

@@ -42,9 +42,16 @@ const isWireMesh = (description: string) => /\b(wire\s+mesh|welded\s+wire|wwf|ww
 export function wireMeshDescription(description: string): string | null {
   if (!isWireMesh(description)) return null;
   const gauges = new Set([...description.matchAll(/\b(\d+(?:\.\d+)?)\s*(?:ga|gauge)\b/gi)].map(match => Number(match[1])));
+  // Owner-confirmed catalog convention; do not infer other gauges from W designations.
+  const wireAreas = [...description.matchAll(/\bW\s*(\d+(?:\.\d+)?)\b/gi)].map(match => Number(match[1]));
+  if (wireAreas.length === 2 && wireAreas.every(value => value === 4)) gauges.add(4);
   const sheets = new Set([...description.matchAll(/\b(\d+(?:\.\d+)?)\s*(?:['’′]|ft\.?|feet|foot)?\s*[x×]\s*(\d+(?:\.\d+)?)\s*(?:['’′]|ft\b\.?|feet\b|foot\b)/gi)]
     .filter(match => Number(match[1]) > 0 && Number(match[2]) > 0)
     .map(match => [Number(match[1]), Number(match[2])].sort((a, b) => a - b).map(value => `${value}'`).join('x')));
+  // Only absent dimensions get the 6-ga default. Preserve unsupported or conflicting sizes for review.
+  const hasDimensionText = /\d\s*(?:['’′"”″]|ft\b|feet\b|foot\b|in\b|inch(?:es)?\b)/i.test(description)
+    || /\d+(?:\.\d+)?\s*[x×]\s*\d+(?:\.\d+)?/i.test(description.replace(/\([^)]*\)/g, '').replace(/\b6\s*[x×]\s*6\b/g, ''));
+  if (gauges.size === 1 && gauges.has(6) && sheets.size === 0 && !hasDimensionText) sheets.add("5'x10'");
   if (gauges.size !== 1 || [...gauges][0] <= 0 || sheets.size !== 1) return null;
   return `Wire Mesh ${[...gauges][0]} ga ${[...sheets][0]}`;
 }

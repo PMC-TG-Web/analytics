@@ -380,6 +380,12 @@ export const APP_PAGES = [
     ]
   },
   {
+    "pathname": "/steel-needs",
+    "sources": [
+      "steel-needs/page.tsx"
+    ]
+  },
+  {
     "pathname": "/test-schedules",
     "sources": [
       "test-schedules/page.tsx"

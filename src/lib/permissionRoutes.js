@@ -3,6 +3,8 @@ import { HELP_GUIDE_SUMMARIES } from './helpGuides/catalog.ts';
 export { apiPagePermissions, independentPermissionForPath, permissionForFeature } from './independentPagePermissions.js';
 
 export const PATH_PERMISSION_RULES = [
+  { prefix: '/steel-needs', permission: 'steel-needs' },
+  { prefix: '/help/steel-needs', permission: 'steel-needs' },
   { prefix: '/help/subcontract-allocation', permission: 'procore-commitments' },
   { prefix: '/procore/commitments-live/allocation', permission: 'procore-commitments' },
   { prefix: '/api/procore/commitments-live/allocation', permission: 'procore-commitments' },
@@ -90,6 +92,7 @@ export const PATH_PERMISSION_RULES = [
 ];
 
 const API_PERMISSION_RULES = [
+  { prefix: '/api/steel-needs', permission: 'steel-needs' },
   { prefix: '/api/crew-management/employees', permission: 'crew-management' },
   { prefix: '/api/estimating-tools/projects', permission: 'estimating-tools' },
   { prefix: '/api/reporting', permission: 'reporting' },

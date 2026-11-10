@@ -31,6 +31,7 @@ const navLinks: NavLink[] = [
   { href: "/procore", label: "Procore", page: "procore" },
   { href: "/kpi", label: "KPI", page: "kpi" },
   { href: "/wip", label: "WIP", page: "wip" },
+  { href: "/steel-needs", label: "Steel needs", page: "steel-needs" },
   { href: "/crew-management", label: "Crew Management", page: "crew-management" },
   { href: "/crew-scorecard", label: "Crew Scorecard", page: "analytics", localOnly: true },
   { href: "/estimating-tools", label: "Estimating", page: "estimating-tools" },

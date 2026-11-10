@@ -2,6 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import FormsCloseoutPanel from "./FormsCloseoutPanel";
+import { projectsWithPurchaseOrderLabor } from "@/lib/productivityLaborCard";
 import {
   calculateWeightedCompletion,
   type WeightedCompletion,
@@ -963,6 +964,8 @@ export default function ProductivityAnalyticsPage() {
       .sort((a, b) => a.projectName.localeCompare(b.projectName));
   }, [activityFilter, filteredLines, laborGroups, lines, projectFilter, reviewFilter, reviewsByProject, search]);
 
+  const projectsWithPoLabor = useMemo(() => projectsWithPurchaseOrderLabor(lines), [lines]);
+
   const laborGroupsByProject = useMemo(() => {
     const byProject = new Map<string, LaborGroup[]>();
     for (const group of laborGroups) {
@@ -1629,7 +1632,9 @@ export default function ProductivityAnalyticsPage() {
                               </div>
                             );
                           })}
-                          <LaborDrilldown projectId={project.projectId} groups={projectLaborGroups} />
+                          {!projectsWithPoLabor.has(project.projectId) && (
+                            <LaborDrilldown projectId={project.projectId} groups={projectLaborGroups} />
+                          )}
                         </div>
                       )}
                     </section>

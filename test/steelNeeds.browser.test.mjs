@@ -11,7 +11,7 @@ const project = { key: 'p1', projectId: 'p1', projectName: 'Warehouse', projectN
 const line = { companyId: 'company', bidBoardProjectId: 'b1', proposalId: 'e1', lineItemId: 'l1', name: "#4 Rebar - 20' Pc", uom: 'EA', quantity: 100, syncedAt: '2026-11-10T12:00:00Z', payload: {} };
 const projects = buildSteelNeeds('company', [project,
   { ...project, key: 'p2', projectId: 'p2', projectName: 'School', source: { ...source, bidBoardId: 'b2' }, plan: null },
-], [line, { ...line, bidBoardProjectId: 'b2', quantity: 50 }, { ...line, lineItemId: 'wire', name: "Wire Mesh 6 ga 5'x10' Sheet", quantity: 20 }], [{ projectId: 'p1', dailyLogs: 2, timesheets: 3, firstActivity: '2026-11-01' }]);
+], [{ ...line, quantity: 60 }, { ...line, lineItemId: 'footer', name: '#4 Rebar 2 Continuous Footer', quantity: 40 }, { ...line, bidBoardProjectId: 'b2', name: '#4 Rebar 10 ft Wall', quantity: 50 }, { ...line, lineItemId: 'wire', name: "Wire Mesh 6 ga 5'x10' Sheet", quantity: 20 }], [{ projectId: 'p1', dailyLogs: 2, timesheets: 3, firstActivity: '2026-11-01' }]);
 
 test('Steel needs browser: grouping, project detail, filters, CSV, mobile and failed reload', { skip: !enabled, timeout: 120000 }, async () => {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });

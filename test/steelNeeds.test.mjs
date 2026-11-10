@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSteelNeeds, aggregateSteelNeeds, filterSteelProjects, steelKind, steelNeedsCsv } from '../src/lib/steelNeeds.ts';
+import { buildSteelNeeds, aggregateSteelNeeds, filterSteelProjects, steelKind, steelDescription, steelNeedsCsv } from '../src/lib/steelNeeds.ts';
 import { resolvePermissionForPath } from '../src/lib/permissionRoutes.js';
 import { apiPagePermissions } from '../src/lib/independentPagePermissions.js';
 import { expandAssignedPermissions } from '../src/lib/permissions.ts';
@@ -9,6 +9,29 @@ export const source = { bidBoardId: 'b1', proposalId: 'e1', estimatedHours: 100,
 export const project = { key: 'p1', projectId: 'p1', projectName: 'Warehouse', projectNumber: '100', customer: 'Customer', projectManager: '', source, issue: null, plan: { revision: 1, source, allocations: [{ month: '2027-01', percent: 50 }, { month: '2026-11', percent: 50 }], notes: '', updatedBy: '', updatedAt: '2026-11-10' } };
 export const line = { companyId: 'company', bidBoardProjectId: 'b1', proposalId: 'e1', lineItemId: 'l1', name: "#4 Rebar - 20' Pc", uom: 'EA', quantity: 100, syncedAt: '2026-11-10T12:00:00Z', payload: { cost_item: { type: 'CUSTOM', description: '#5 Rebar By The Piece' } } };
 const filters = { status: '', kind: '', query: '', projectId: '', through: '', timing: '' };
+
+test('rebar aggregates by size as 20-foot sticks across scopes and lengths in project rows, totals and CSV', () => {
+  const names = ["#4 Rebar - 20' Pc - 18\" OCEW", '#4 Rebar 2 Continuous Footer', '# 4 Rebar 10 ft', 'Rebar #4 Dowels', '#4 Rebar'];
+  const second = { ...project, key: 'p2', projectId: 'p2', source: { ...source, bidBoardId: 'b2' } };
+  const rows = buildSteelNeeds('company', [project, second], [
+    ...names.map((name, index) => ({ ...line, lineItemId: String(index), name, quantity: 10 })),
+    { ...line, bidBoardProjectId: 'b2', name: '#4 Rebar Foundation', quantity: 25 },
+    { ...line, lineItemId: 'size5', name: '#5 Rebar Wall', quantity: 30 },
+    { ...line, lineItemId: 'tube', name: '#4 Rebar Speed Dowel Tube', quantity: 999 },
+  ], [{ projectId: 'p2', dailyLogs: 1, timesheets: 0, firstActivity: '2026-11-01' }]);
+  const first = rows.find(row => row.key === 'p1');
+  assert.equal(first.items.length, 2);
+  assert.equal(first.items.find(item => item.description === "#4 Rebar - 20' Pc").quantity, 50);
+  const total = aggregateSteelNeeds(rows).find(item => item.description === "#4 Rebar - 20' Pc");
+  assert.equal(total.quantity, 75); assert.equal(total.notStartedQuantity, 50); assert.equal(total.startedQuantity, 25);
+  assert.equal(total.projects.length, 2);
+  const csv = steelNeedsCsv(rows);
+  assert.match(csv, /#4 Rebar - 20' Pc/); assert.doesNotMatch(csv, /OCEW|Footer|10 ft|Foundation|Tube/);
+  assert.equal(steelDescription('Wire Mesh 6 ga 5x10', 'Wire'), 'Wire Mesh 6 ga 5x10');
+  assert.equal(steelDescription('#14 Rebar Wall', 'Rebar'), "#14 Rebar - 20' Pc");
+  assert.equal(steelDescription('Rebar unknown size', 'Rebar'), 'Rebar unknown size');
+  assert.equal(steelDescription('#4 and #5 Rebar', 'Rebar'), '#4 and #5 Rebar');
+});
 
 test('full estimated quantities use exact proposal identity and retain material specifications and units', () => {
   const rows = buildSteelNeeds('company', [project], [line,

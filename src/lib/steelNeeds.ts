@@ -18,7 +18,7 @@ export type SteelTotal = SteelItem & { startedQuantity: number; notStartedQuanti
 const record = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const clean = (value: unknown) => String(value ?? '').trim().replace(/\s+/g, ' ');
 
-/** Preserve specifications, punctuation and scope; only casing/whitespace are equivalent. */
+/** Unit aliases do not convert quantities between pieces, length or weight. */
 export function steelUnit(value: unknown): string {
   const unit = clean(value).toLowerCase();
   if (['ea', 'each', 'pc', 'pcs', 'piece', 'pieces'].includes(unit)) return 'EA';
@@ -34,6 +34,15 @@ export function steelKind(description: string, costType = '', unit = ''): SteelK
     || /\b(labor|installation|install|fabrication|rental|fiber|fiberglass|chairs?|supports?|spacers?|tubes?|sleeves?)\b/i.test(description)) return null;
   if (/\b(wire|wwf|wwr|welded wire|reinforcing mesh)\b/i.test(description)) return 'Wire';
   return /\b(rebar|reinforcing bars?|reinforcement bars?)\b/i.test(description) ? 'Rebar' : null;
+}
+
+/** Owner's ordering convention: all rebar is supplied as 20-foot sticks by bar size. */
+export function steelDescription(description: string, kind: SteelKind): string {
+  if (kind !== 'Rebar') return description;
+  const sizes = new Set([...description.matchAll(/#\s*(\d+)\b/g)].map(match => Number(match[1])));
+  // Never invent a bar size for missing or conflicting specifications.
+  if (sizes.size !== 1 || [...sizes][0] <= 0) return description;
+  return `#${[...sizes][0]} Rebar - 20' Pc`;
 }
 
 export function buildSteelNeeds(companyId: string, projects: WipProject[], lines: SteelEstimateLine[], activity: SteelActivity[]): SteelProject[] {
@@ -59,11 +68,12 @@ export function buildSteelNeeds(companyId: string, projects: WipProject[], lines
     if (!project.source.proposalId || !sourceLines.length) issues.push('Estimate line items are not available; steel requirements are unknown.');
     for (const line of blocked ? [] : sourceLines) {
       const payload = record(line.payload), costItem = record(payload.cost_item);
-      // Edited estimate names carry size/length specifications that generic catalog descriptions can omit.
-      const description = clean(line.name || costItem.name || costItem.description);
+      // Classify the original name before trimming so accessories/services remain excluded.
+      const sourceDescription = clean(line.name || costItem.name || costItem.description);
       const unit = steelUnit(line.uom || costItem.unit);
-      const kind = steelKind(description, clean(costItem.cost_type_code || costItem.type), unit);
+      const kind = steelKind(sourceDescription, clean(costItem.cost_type_code || costItem.type), unit);
       if (!kind) continue;
+      const description = steelDescription(sourceDescription, kind);
       const quantity = line.quantity === null || line.quantity === undefined || clean(line.quantity) === '' ? NaN : Number(line.quantity);
       if (!unit || !Number.isFinite(quantity) || quantity < 0) {
         issues.push(`${description}: missing unit or invalid quantity; excluded from totals.`); continue;

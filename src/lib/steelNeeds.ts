@@ -1,4 +1,5 @@
 import { sameWipSource, type WipProject } from './wipPlanning.ts';
+import { steelBundles } from './steelBundles.ts';
 
 export type SteelKind = 'Rebar' | 'Wire';
 export type SteelEstimateLine = {
@@ -173,7 +174,12 @@ export function steelNeedsCsv(projects: SteelProject[]): string {
     return `"${(/^[=+\-@\t\r]/.test(text) ? "'" : '') + text.replaceAll('"', '""')}"`;
   };
   const rows: unknown[][] = [['Description', 'Material', 'Unit', 'Full estimated quantity', 'Project', 'Project number', 'Status', 'WIP planned start month', 'First field entry', 'Procore project ID', 'Bid Board ID', 'Estimate ID', 'Review notes', 'Marked ordered', 'Ordered date (Eastern)', 'Estimate when marked']];
-  for (const project of projects) for (const item of project.items) rows.push([item.description, item.kind, item.unit, item.quantity, project.projectName, project.projectNumber, project.started ? 'Started' : 'Not started', project.plannedStart, project.firstActivity, project.projectId, project.bidBoardId, project.proposalId, project.issues.join(' '), item.order?.orderedAt ? 'Yes' : 'No', item.order?.orderedAt ? steelOrderedDate(item.order.orderedAt) : '', item.order?.quantity ?? '' ]);
+  rows[0].push('Pieces per bundle', 'Full estimate bundle equivalents', 'Whole bundles to order for project (rounded up)', 'Pieces in whole bundles to order', 'Extra pieces from rounding');
+  for (const project of projects) for (const item of project.items) {
+    const full = steelBundles(item, item.quantity), needed = steelBundles(item, steelOrderQuantities(item).toOrderQuantity);
+    rows.push([item.description, item.kind, item.unit, item.quantity, project.projectName, project.projectNumber, project.started ? 'Started' : 'Not started', project.plannedStart, project.firstActivity, project.projectId, project.bidBoardId, project.proposalId, project.issues.join(' '), item.order?.orderedAt ? 'Yes' : 'No', item.order?.orderedAt ? steelOrderedDate(item.order.orderedAt) : '', item.order?.quantity ?? '',
+      full?.piecesPerBundle ?? '', full ? Math.round(full.equivalent * 10000) / 10000 : '', needed?.wholeBundles ?? '', needed?.wholeBundlePieces ?? '', needed?.extraPieces ?? '' ]);
+  }
   return '\uFEFF' + rows.map(row => row.map(quote).join(',')).join('\r\n');
 }
 

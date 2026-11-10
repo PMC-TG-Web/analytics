@@ -3,6 +3,8 @@
 import { steelOrderWorksheet, steelOrderListLabels, type SteelOrderList } from '@/lib/steelOrderWorksheet';
 import type { ReactNode } from 'react';
 import { steelOrderQuantities, type SteelItem, type SteelProject } from '@/lib/steelNeeds';
+import { REBAR_BUNDLE_SIZES, steelBundleSize } from '@/lib/steelBundles';
+import BundleQuantity from './BundleQuantity';
 
 const number = new Intl.NumberFormat('en-US', { maximumFractionDigits: 4 });
 const cell = 'px-4 py-3';
@@ -28,16 +30,18 @@ export default function OrderWorksheet({ projects, list, onListChange, scope, sa
         <ul className="mt-3 space-y-2 text-xs text-slate-600">{item.projects.map(row => {
           const amounts = steelOrderQuantities(row);
           return <li key={row.project.key} className="flex flex-wrap justify-between gap-3 rounded-lg bg-slate-50 p-3"><div><span className="font-semibold">{row.project.projectName}</span> · {row.project.started ? 'Started' : 'Not started'}<br />
-            {list === 'all' ? `${number.format(amounts.orderedQuantity)} ordered · ${number.format(amounts.toOrderQuantity)} needed` : `${number.format(list === 'ordered' ? amounts.orderedQuantity : amounts.toOrderQuantity)} ${row.unit}`}</div>
+            {list === 'all' ? `${number.format(amounts.orderedQuantity)} ordered · ${number.format(amounts.toOrderQuantity)} needed` : `${number.format(list === 'ordered' ? amounts.orderedQuantity : amounts.toOrderQuantity)} ${row.unit}`}
+            <BundleQuantity item={row} quantity={list === 'ordered' ? amounts.orderedQuantity : amounts.toOrderQuantity} roundUp={list !== 'ordered'} /></div>
             {renderOrderedCheck(row.project, row)}
           </li>;
         })}</ul>
-      </details>{item.changedOrders > 0 && <p className="mt-2 max-w-md text-xs text-amber-800">Estimate changed since marked. Review project quantities; ordered totals retain the saved amount.</p>}</td>
+      </details>{steelBundleSize(item) && <p className="mt-1 text-xs text-slate-500">{steelBundleSize(item)} pcs / bundle</p>}{item.changedOrders > 0 && <p className="mt-2 max-w-md text-xs text-amber-800">Estimate changed since marked. Review project quantities; ordered totals retain the saved amount.</p>}</td>
       <td className={cell}>{item.unit}</td>
-      {list === 'all' ? <><td className={`${cell} text-right tabular-nums`}>{number.format(item.quantity)}</td><td className={`${cell} text-right font-semibold tabular-nums text-emerald-800`}>{number.format(item.orderedQuantity)}</td><td className={`${cell} bg-sky-50 text-right font-bold tabular-nums text-sky-950`}>{number.format(item.toOrderQuantity)}</td></> : <td className={`${cell} bg-sky-50 text-right text-lg font-bold tabular-nums text-sky-950`}>{number.format(list === 'ordered' ? item.orderedQuantity : item.toOrderQuantity)}</td>}
+      {list === 'all' ? <><td className={`${cell} text-right tabular-nums`}>{number.format(item.quantity)}<BundleQuantity item={item} quantity={item.quantity} /></td><td className={`${cell} text-right font-semibold tabular-nums text-emerald-800`}>{number.format(item.orderedQuantity)}<BundleQuantity item={item} quantity={item.orderedQuantity} /></td><td className={`${cell} bg-sky-50 text-right font-bold tabular-nums text-sky-950`}>{number.format(item.toOrderQuantity)}<BundleQuantity item={item} quantity={item.toOrderQuantity} roundUp /></td></> : <td className={`${cell} bg-sky-50 text-right text-lg font-bold tabular-nums text-sky-950`}>{number.format(list === 'ordered' ? item.orderedQuantity : item.toOrderQuantity)}<BundleQuantity item={item} quantity={list === 'ordered' ? item.orderedQuantity : item.toOrderQuantity} roundUp={list !== 'ordered'} /></td>}
       <td className={`${cell} text-right tabular-nums`}>{item.projects.length}</td>
     </tr>)}</tbody></table></div>
     {!rows.length && <p className="p-10 text-center text-slate-500">{list === 'ordered' ? 'No materials marked ordered in this scope.' : list === 'needed' ? 'No quantities still need ordering in this scope.' : 'No materials match these filters.'}</p>}
     <p className="border-t border-slate-200 px-5 py-3 text-xs text-slate-500">{saving ? 'Saving checkmarks… Totals update when confirmed.' : `${rows.length} material lines · Saved checkmarks only`} · Quantities stay separate by description and unit. Need to order is calculated per project; extra ordered steel on one job does not cover another.</p>
+    <p className="px-5 pb-4 text-xs text-slate-500">Rebar pieces per bundle: {Object.entries(REBAR_BUNDLE_SIZES).map(([size, pieces]) => `#${size}: ${pieces}`).join(' · ')}. Whole bundles round up after combining the filtered projects. Project details round up each job separately. Checkmarks continue to record estimated pieces.</p>
   </div>;
 }

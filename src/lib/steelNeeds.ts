@@ -6,7 +6,8 @@ export type SteelEstimateLine = {
   name: string | null; uom: string | null; quantity: unknown; payload?: unknown; syncedAt: string;
 };
 export type SteelActivity = { projectId: string; dailyLogs: number; timesheets: number; firstActivity: string | null };
-export type SteelItem = { key: string; description: string; kind: SteelKind; unit: string; quantity: number; lineCount: number };
+export type SteelOrder = { revision: number; orderedAt: string | null; quantity: number | null };
+export type SteelItem = { key: string; description: string; kind: SteelKind; unit: string; quantity: number; lineCount: number; order: SteelOrder | null };
 export type SteelProject = {
   key: string; projectId: string | null; projectName: string; projectNumber: string; customer: string;
   bidBoardId: string; proposalId: string; started: boolean | null; dailyLogs: number; timesheets: number;
@@ -103,7 +104,7 @@ export function buildSteelNeeds(companyId: string, projects: WipProject[], lines
       }
       if (!quantity) continue;
       const key = JSON.stringify([description.toLowerCase(), unit]);
-      const item = items.get(key) || { key, description, kind, unit, quantity: 0, lineCount: 0 };
+      const item = items.get(key) || { key, description, kind, unit, quantity: 0, lineCount: 0, order: null };
       item.quantity = Math.round((item.quantity + quantity) * 10000) / 10000;
       item.lineCount++;
       items.set(key, item);
@@ -156,7 +157,19 @@ export function steelNeedsCsv(projects: SteelProject[]): string {
     const text = String(value ?? '');
     return `"${(/^[=+\-@\t\r]/.test(text) ? "'" : '') + text.replaceAll('"', '""')}"`;
   };
-  const rows: unknown[][] = [['Description', 'Material', 'Unit', 'Full estimated quantity', 'Project', 'Project number', 'Status', 'WIP planned start month', 'First field entry', 'Procore project ID', 'Bid Board ID', 'Estimate ID', 'Review notes']];
-  for (const project of projects) for (const item of project.items) rows.push([item.description, item.kind, item.unit, item.quantity, project.projectName, project.projectNumber, project.started ? 'Started' : 'Not started', project.plannedStart, project.firstActivity, project.projectId, project.bidBoardId, project.proposalId, project.issues.join(' ') ]);
+  const rows: unknown[][] = [['Description', 'Material', 'Unit', 'Full estimated quantity', 'Project', 'Project number', 'Status', 'WIP planned start month', 'First field entry', 'Procore project ID', 'Bid Board ID', 'Estimate ID', 'Review notes', 'Marked ordered', 'Ordered date (Eastern)', 'Estimate when marked']];
+  for (const project of projects) for (const item of project.items) rows.push([item.description, item.kind, item.unit, item.quantity, project.projectName, project.projectNumber, project.started ? 'Started' : 'Not started', project.plannedStart, project.firstActivity, project.projectId, project.bidBoardId, project.proposalId, project.issues.join(' '), item.order?.orderedAt ? 'Yes' : 'No', item.order?.orderedAt ? steelOrderedDate(item.order.orderedAt) : '', item.order?.quantity ?? '' ]);
   return '\uFEFF' + rows.map(row => row.map(quote).join(',')).join('\r\n');
+}
+
+export function steelOrderedDate(timestamp: string): string {
+  return new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: '2-digit', day: '2-digit', year: 'numeric' }).format(new Date(timestamp));
+}
+
+export function attachSteelOrderMarks(projects: SteelProject[], marks: (SteelOrder & { projectId: string; itemKey: string })[]): SteelProject[] {
+  const byItem = new Map(marks.map(mark => [JSON.stringify([mark.projectId, mark.itemKey]), mark]));
+  return projects.map(project => ({ ...project, items: project.items.map(item => {
+    const mark = byItem.get(JSON.stringify([project.projectId, item.key]));
+    return { ...item, order: mark ? { revision: mark.revision, orderedAt: mark.orderedAt, quantity: mark.quantity } : null };
+  }) }));
 }

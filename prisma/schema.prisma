@@ -2614,6 +2614,7 @@ model PmcProject {
   scheduleEntries PmcScheduleEntry[]
   allocations     PmcScheduleAllocation[]
   wipPlan         WipPlan?
+  steelOrderMarks SteelOrderMark[]
   wipImportDraft  WipImportDraft?
   actionItems     PmcActionItem[]
   actionItemSyncState PmcActionItemSyncState?
@@ -2640,6 +2641,23 @@ model WipImportDraft {
   @@id([companyId, projectId])
   project PmcProject @relation(fields: [companyId, projectId], references: [companyId, procoreProjectId], onDelete: Restrict)
   @@map("wip_import_drafts")
+}
+
+/// Shared manual order checkmarks, scoped to a project's normalized material and unit.
+model SteelOrderMark {
+  companyId String @map("company_id")
+  projectId String @map("project_id")
+  materialId String @map("material_id") @db.VarChar(64)
+  itemKey String @map("item_key")
+  revision Int
+  orderedAt DateTime? @map("ordered_at") @db.Timestamptz(6)
+  quantity Decimal? @db.Decimal(18, 4)
+  updatedBy String @map("updated_by")
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  project PmcProject @relation(fields: [companyId, projectId], references: [companyId, procoreProjectId], onDelete: Restrict, map: "steel_order_marks_project_fkey")
+
+  @@id([companyId, projectId, materialId])
+  @@map("steel_order_marks")
 }
 
 model WipPlan {

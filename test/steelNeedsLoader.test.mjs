@@ -15,6 +15,10 @@ test('loader reads every selected-estimate page, scopes company and IDs, and nev
     '@/lib/wipLocalStore': { wipLocalStorePath: () => null },
     '@/lib/steelNeeds': domain,
     '@/lib/prisma': { prisma: {
+      steelOrderMark: { findMany: async query => {
+        assert.equal(query.where.companyId, 'company'); assert.deepEqual(query.where.projectId.in, ['p1']);
+        return [{ projectId: 'p1', itemKey: JSON.stringify(["#4 rebar - 20' pc", 'EA']), revision: 1, orderedAt: new Date('2026-11-10T12:00:00Z'), quantity: 1002 }];
+      } },
       procoreEstimateLineItem: { findMany: async query => {
         assert.equal(query.where.companyId, 'company'); assert.deepEqual(query.where.OR, [{ bidBoardProjectId: 'b1', proposalId: 'e1' }]);
         assert.deepEqual(query.orderBy, { id: 'asc' }); assert.equal(query.take, 500);
@@ -45,6 +49,7 @@ test('loader reads every selected-estimate page, scopes company and IDs, and nev
   const result = await module.exports.loadSteelNeeds();
   assert.equal(pageCalls, 2); assert.equal(activityCalls, 1); assert.equal(result.projects[0].items[0].quantity, 1002);
   assert.equal(result.projects[0].started, true); assert.equal(result.localOnly, false);
+  assert.equal(result.projects[0].items[0].order.orderedAt, '2026-11-10T12:00:00.000Z');
   failActivity = true;
   await assert.rejects(module.exports.loadSteelNeeds(), /Activity unavailable/);
 });

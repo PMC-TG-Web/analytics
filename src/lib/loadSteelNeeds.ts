@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { loadWipPlanning, wipCompanyId } from '@/lib/loadWipPlanning';
 import { wipLocalStorePath } from '@/lib/wipLocalStore';
-import { buildSteelNeeds, type SteelActivity, type SteelEstimateLine, type SteelReport } from '@/lib/steelNeeds';
+import { attachSteelOrderMarks, buildSteelNeeds, type SteelActivity, type SteelEstimateLine, type SteelReport } from '@/lib/steelNeeds';
 
 export async function loadSteelNeeds(): Promise<SteelReport> {
   const companyId = wipCompanyId();
@@ -51,5 +51,9 @@ export async function loadSteelNeeds(): Promise<SteelReport> {
       COUNT(*) FILTER (WHERE source = 'timecard')::int AS timesheets, TO_CHAR(MIN(date), 'YYYY-MM-DD') AS "firstActivity"
     FROM entries WHERE project_id IS NOT NULL GROUP BY project_id
   `;
-  return { projects: buildSteelNeeds(companyId, projects, lines, activity), loadedAt: new Date().toISOString(), localOnly: !!wipLocalStorePath() };
+  const marks = await prisma.steelOrderMark.findMany({ where: { companyId, projectId: { in: projects.flatMap(project => project.projectId ? [project.projectId] : []) } },
+    select: { projectId: true, itemKey: true, revision: true, orderedAt: true, quantity: true } });
+  return { projects: attachSteelOrderMarks(buildSteelNeeds(companyId, projects, lines, activity), marks.map(mark => ({ ...mark,
+    orderedAt: mark.orderedAt?.toISOString() || null, quantity: mark.quantity === null ? null : Number(mark.quantity),
+  }))), loadedAt: new Date().toISOString(), localOnly: !!wipLocalStorePath() };
 }

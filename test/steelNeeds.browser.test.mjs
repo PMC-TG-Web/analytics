@@ -23,11 +23,22 @@ test('Steel needs browser: grouping, project detail, filters, CSV, mobile and fa
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors = []; page.on('pageerror', error => errors.push(error.message));
-  let fail = false;
+  let fail = false, failSave = false;
+  const fixtureProjects = structuredClone(projects);
   await page.context().addCookies([{ name: 'dev_user_email', value: 'todd@pmcdecor.com', url: base, sameSite: 'Lax' }]);
   // Refresh the signed permission cookie after adding a new page in a running dev session.
   assert.equal((await page.request.get(`${base}/api/permissions/me`)).status(), 200);
-  await page.route('**/api/steel-needs', route => route.fulfill(fail ? { status: 503, json: { error: 'Unable to load Steel needs.' } } : { json: { projects, loadedAt: '2026-11-10T12:00:00Z', localOnly: false } }));
+  await page.route('**/api/steel-needs', route => {
+    if (route.request().method() === 'POST') {
+      if (failSave) return route.fulfill({ status: 503, json: { error: 'Unable to save the order mark. Refresh saved data before retrying.' } });
+      const input = route.request().postDataJSON();
+      const item = fixtureProjects.find(project => project.projectId === input.projectId)?.items.find(item => item.key === input.itemKey);
+      assert.ok(item); assert.equal(input.quantity, item.quantity); assert.equal(input.revision, item.order?.revision || 0);
+      item.order = { revision: input.revision + 1, orderedAt: input.ordered ? '2026-11-11T02:00:00Z' : null, quantity: input.ordered ? item.quantity : null };
+      return route.fulfill({ json: { order: item.order } });
+    }
+    return route.fulfill(fail ? { status: 503, json: { error: 'Unable to load Steel needs.' } } : { json: { projects: fixtureProjects, loadedAt: '2026-11-10T12:00:00Z', localOnly: false } });
+  });
   try {
     await page.goto(`${base}/steel-needs`, { waitUntil: 'networkidle' });
     const table = page.getByRole('table', { name: 'Steel totals by description', exact: true });
@@ -42,6 +53,15 @@ test('Steel needs browser: grouping, project detail, filters, CSV, mobile and fa
     await table.getByRole('button', { name: /#4 Rebar/ }).click();
     const detail = page.getByRole('table', { name: `Projects for ${line.name}`, exact: true });
     assert.match(await detail.innerText(), /Warehouse/); assert.match(await detail.innerText(), /School/);
+    const warehouseMark = page.getByRole('checkbox', { name: `Ordered ${line.name} for Warehouse`, exact: true });
+    await warehouseMark.click();
+    await detail.getByText('11/10/2026', { exact: true }).waitFor();
+    assert.equal(await warehouseMark.isChecked(), true);
+    assert.equal(await page.getByRole('checkbox', { name: `Ordered ${line.name} for School`, exact: true }).isChecked(), false);
+    await page.reload({ waitUntil: 'networkidle' });
+    await table.getByRole('button', { name: /#4 Rebar/ }).click();
+    await detail.getByText('11/10/2026', { exact: true }).waitFor();
+    assert.equal(await warehouseMark.isChecked(), true);
     await page.getByLabel('Project status', { exact: true }).selectOption('not-started');
     assert.equal(await table.getByRole('button', { name: /Wire Mesh/ }).count(), 0);
     await table.getByText('50', { exact: true }).first().waitFor();
@@ -55,6 +75,15 @@ test('Steel needs browser: grouping, project detail, filters, CSV, mobile and fa
     await page.getByRole('button', { name: 'By project', exact: true }).click();
     await page.locator('summary').filter({ hasText: 'Warehouse' }).click();
     await page.getByRole('table', { name: 'Steel for Warehouse', exact: true }).waitFor();
+    assert.equal(await warehouseMark.isChecked(), true);
+    await warehouseMark.click();
+    await page.getByRole('table', { name: 'Steel for Warehouse', exact: true }).getByText('11/10/2026', { exact: true }).waitFor({ state: 'detached' });
+    assert.equal(await warehouseMark.isChecked(), false);
+    failSave = true;
+    await warehouseMark.click();
+    await page.getByRole('alert').filter({ hasText: 'Unable to save the order mark.' }).waitFor();
+    assert.equal(await warehouseMark.isChecked(), false);
+    failSave = false;
     await page.getByText('2 daily-log entries · 3 timesheet entries', { exact: false }).waitFor();
     await page.getByLabel('Search description or project', { exact: true }).fill('School');
     assert.equal(await page.locator('summary').filter({ hasText: 'Warehouse' }).count(), 0);

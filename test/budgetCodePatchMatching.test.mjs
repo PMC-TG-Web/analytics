@@ -7,6 +7,7 @@ import {
   procoreFlatCostType,
   uniqueByIdentity,
 } from '../src/lib/budgetCodePatchMatching.ts';
+import { PROCORE_PERMANENT_COST_TYPE_BY_CODE } from '../src/lib/procorePermanentCostTypeLookup.ts';
 
 test('identical WBS records from multiple Procore endpoints are deduplicated', () => {
   const records = uniqueByIdentity([
@@ -21,15 +22,23 @@ test('identical WBS records from multiple Procore endpoints are deduplicated', (
   ]);
 });
 
-test('Overhead & Profit.Other always maps to the O budget code', () => {
-  const row = fixedBudgetCodeMappingForDescription('Overhead & Profit.Other');
-
-  assert.equal(row?.['Cost Code'], '90-100-10-10');
-  assert.equal(row?.['Cost code type'], 'O');
+test('Overhead & Profit always maps to O even when its source cost type is wrong', () => {
+  for (const description of ['Overhead & Profit.Other', 'Overhead & Profit.Materials',
+    'Overhead & Profit.M', 'Overhead & Profit.Labor', 'Overhead & Profit',
+    '  OVERHEAD  &  PROFIT.Materials  ']) {
+    const row = fixedBudgetCodeMappingForDescription(description);
+    assert.equal(row?.['Cost Code'], '90-100-10-10', description);
+    assert.equal(row?.['Cost code type'], 'O', description);
+    assert.equal(row?.Description, 'Overhead & Profit.Other', description);
+  }
+  assert.equal(PROCORE_PERMANENT_COST_TYPE_BY_CODE['90-100-10-10'], 'O');
 });
 
-test('fixed budget mapping does not apply to Materials', () => {
-  assert.equal(fixedBudgetCodeMappingForDescription('Overhead & Profit.Materials'), null);
+test('the overhead rule does not change unrelated materials or partial name matches', () => {
+  for (const description of ['Foundation Rebar Material.Materials', 'Overhead Insurance.Other',
+    'Other Overhead & Profit.Materials', 'Overhead & Profit Reserve.Materials', '', null]) {
+    assert.equal(fixedBudgetCodeMappingForDescription(description), null);
+  }
 });
 
 test('workbook subcontractor type S remains S in Procore flat codes', () => {

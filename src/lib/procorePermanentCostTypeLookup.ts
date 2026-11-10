@@ -1,6 +1,6 @@
 export const PROCORE_PERMANENT_COST_TYPE_BY_CODE: Record<string, string> = {
   "01-300-10-80": "M",
-  "90-100-10-10": "M",
+  "90-100-10-10": "O",
   "01-200-10-10": "M",
   "01-300-10-35": "E",
   "01-300-10-10": "L",

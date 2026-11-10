@@ -22,7 +22,8 @@ export function uniqueByIdentity<T>(rows: T[], identity: (row: T) => unknown): T
 }
 
 export function fixedBudgetCodeMappingForDescription(description: unknown): BudgetCodeWorkbookRow | null {
-  if (normalize(description) !== "overhead & profit.other") return null;
+  // The current suffix may be the incorrect cost type this tool is correcting.
+  if (!/^overhead & profit(?:\.[a-z]+(?: [a-z]+)*)?$/.test(normalize(description))) return null;
   return {
     Name: "Overhead & Profit",
     "Cost Code": "90-100-10-10",

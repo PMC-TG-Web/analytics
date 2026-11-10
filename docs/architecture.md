@@ -163,6 +163,8 @@ Production diagnostics/test routes are blocked unless explicitly enabled. Middle
 
 ### Central client
 
+Overhead & Profit uses `90-100-10-10.O` (Other), including imported rounding adjustments. The fixed budget-code mapping recognizes an incorrect Materials suffix instead of preserving it, and the permanent cost-type lookup uses `O`. This classification does not authorize a project-wide rewrite or discard adjustment amounts. Existing duplicate budget rows require an explicitly scoped consolidation that preserves the original budget and contract totals. Validate with `node --test test/budgetCodePatchMatching.test.mjs test/helpGuides.test.mjs`.
+
 Procore request-gate initialization runs before the reservation transaction. Reservation and completion use explicit 15-second transaction deadlines (five-second acquisition wait), preserving row locks, lease ownership, app isolation and quota accounting while tolerating Prisma gateway latency beyond its default five seconds. These transactions contain database work only; Procore requests and email delivery remain outside them. Timecard notifications keep their existing durable retry and email idempotency behavior. Validate with `node --test test/procoreRequestGate.test.mjs test/procoreRequestBudget.test.mjs test/timecardNotification.test.mjs`; the opt-in `PROCORE_CAPACITY_DATABASE_TEST=1 node --test test/procoreRequestGate.database.test.mjs` uses temporary tables and rolls back all writes.
 
 `src/lib/procore.ts` owns the base URLs, redirect resolution, OAuth exchanges, client-credentials token cache, outbound request timeout, the `Procore-Company-Id` header, and 429 retry behavior.

@@ -45,8 +45,17 @@ test('Steel needs browser: grouping, project detail, filters, CSV, mobile and fa
   });
   try {
     await page.goto(`${base}/steel-needs`, { waitUntil: 'networkidle' });
+    const worksheet = page.getByRole('table', { name: 'Steel order worksheet', exact: true });
+    const worksheetRebar = worksheet.getByRole('row').filter({ has: page.locator('summary').filter({ hasText: line.name }) });
+    await worksheet.waitFor();
+    assert.deepEqual(await worksheetRebar.getByRole('cell').allTextContents().then(cells => cells.slice(1)), ['EA', '150', '0', '150', '2']);
+    await page.getByLabel('Order list', { exact: true }).selectOption('ordered');
+    await page.getByText('No materials marked ordered in this scope.', { exact: true }).waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Export order worksheet' }).isDisabled(), true);
+    await page.getByLabel('Order list', { exact: true }).selectOption('all');
+    await page.getByRole('button', { name: 'By description', exact: true }).click();
     const table = page.getByRole('table', { name: 'Steel totals by description', exact: true });
-    await table.getByText('150', { exact: true }).waitFor();
+    await table.getByText('150', { exact: true }).first().waitFor();
     const smallWire = table.getByRole('row').filter({ has: page.getByRole('button', { name: /Wire Mesh 6 ga 5'x10'$/ }) });
     assert.equal(await smallWire.count(), 1);
     assert.equal(await smallWire.getByRole('cell').nth(4).innerText(), '20');
@@ -65,6 +74,9 @@ test('Steel needs browser: grouping, project detail, filters, CSV, mobile and fa
     assert.equal(await warehouseMark.isChecked(), true);
     assert.equal(await warehouseMark.isDisabled(), true);
     await detail.getByText('Saving…', { exact: true }).waitFor();
+    const descriptionRebar = table.getByRole('row').filter({ has: page.getByRole('button', { name: /#4 Rebar/ }) });
+    assert.match(await descriptionRebar.getByRole('cell').nth(6).innerText(), /^0/);
+    assert.equal(await descriptionRebar.getByRole('cell').nth(7).innerText(), '150');
     assert.equal(await schoolMark.isEnabled(), true);
     assert.equal(await page.getByRole('button', { name: 'Refresh saved data' }).isDisabled(), true);
     assert.equal(await page.getByRole('button', { name: 'Export order worksheet' }).isDisabled(), true);
@@ -79,7 +91,20 @@ test('Steel needs browser: grouping, project detail, filters, CSV, mobile and fa
     await detail.getByRole('row').filter({ has: warehouseMark }).getByText('11/10/2026', { exact: true }).waitFor();
     assert.equal(await warehouseMark.isChecked(), true);
     assert.equal(await page.getByRole('checkbox', { name: `Ordered ${line.name} for School`, exact: true }).isChecked(), false);
+    await page.getByRole('button', { name: 'Order worksheet', exact: true }).click();
+    assert.deepEqual(await worksheetRebar.getByRole('cell').allTextContents().then(cells => cells.slice(1)), ['EA', '150', '100', '50', '2']);
+    await page.getByLabel('Order list', { exact: true }).selectOption('ordered');
+    assert.deepEqual(await worksheetRebar.getByRole('cell').allTextContents().then(cells => cells.slice(1)), ['EA', '100', '1']);
+    const [orderedDownload] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export order worksheet' }).click()]);
+    const orderedCsv = await readFile(await orderedDownload.path(), 'utf8');
+    assert.equal(orderedCsv.split('\r\n').length, 2);
+    assert.match(orderedCsv, /"EA","100"/); assert.match(orderedCsv, /Warehouse/); assert.doesNotMatch(orderedCsv, /School/);
+    await page.getByLabel('Order list', { exact: true }).selectOption('needed');
+    assert.deepEqual(await worksheetRebar.getByRole('cell').allTextContents().then(cells => cells.slice(1)), ['EA', '50', '1']);
+    await worksheetRebar.locator('summary').click();
+    assert.match(await worksheetRebar.innerText(), /School/); assert.doesNotMatch(await worksheetRebar.innerText(), /Warehouse/);
     await page.reload({ waitUntil: 'networkidle' });
+    await page.getByRole('button', { name: 'By description', exact: true }).click();
     await table.getByRole('button', { name: /#4 Rebar/ }).click();
     await detail.getByText('11/10/2026', { exact: true }).waitFor();
     assert.equal(await warehouseMark.isChecked(), true);
@@ -114,8 +139,15 @@ test('Steel needs browser: grouping, project detail, filters, CSV, mobile and fa
     await page.getByLabel('Search description or project', { exact: true }).fill('School');
     assert.equal(await page.locator('summary').filter({ hasText: 'Warehouse' }).count(), 0);
     await page.getByRole('button', { name: 'Clear filters', exact: true }).click();
-    await page.getByRole('button', { name: 'By description', exact: true }).click();
+    await page.getByRole('button', { name: 'Order worksheet', exact: true }).click();
+    assert.deepEqual(await worksheetRebar.getByRole('cell').allTextContents().then(cells => cells.slice(1)), ['EA', '150', '0', '150', '2']);
+    await worksheetRebar.locator('summary').click();
+    await warehouseMark.click();
+    await worksheetRebar.getByText('11/10/2026', { exact: true }).waitFor();
+    assert.deepEqual(await worksheetRebar.getByRole('cell').allTextContents().then(cells => cells.slice(1)), ['EA', '150', '100', '50', '2']);
+    await worksheetRebar.locator('summary').click();
     await mkdir('outputs/steel-needs', { recursive: true });
+    await page.evaluate(() => { window.scrollTo(0, 0); });
     await page.screenshot({ path: 'outputs/steel-needs/desktop-fixture.png', fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'no page-level overflow');
@@ -125,6 +157,7 @@ test('Steel needs browser: grouping, project detail, filters, CSV, mobile and fa
     await page.getByRole('alert').filter({ hasText: 'Unable to load Steel needs.' }).waitFor();
     assert.equal(await page.getByRole('button', { name: 'Export order worksheet' }).isDisabled(), true);
     assert.equal(await table.count(), 0);
+    assert.equal(await worksheet.count(), 0);
     assert.deepEqual(errors, []);
-  } finally { await browser.close(); }
+  } finally { releaseSave?.(); await browser.close(); }
 });

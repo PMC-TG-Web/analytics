@@ -15,7 +15,7 @@ export type SteelProject = {
   issues: string[]; estimateSyncedAt: string | null;
 };
 export type SteelReport = { projects: SteelProject[]; loadedAt: string; localOnly: boolean };
-export type SteelTotal = SteelItem & { startedQuantity: number; notStartedQuantity: number; projects: (SteelItem & { project: SteelProject })[] };
+export type SteelTotal = SteelItem & { startedQuantity: number; notStartedQuantity: number; orderedQuantity: number; toOrderQuantity: number; changedOrders: number; projects: (SteelItem & { project: SteelProject })[] };
 const record = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const clean = (value: unknown) => String(value ?? '').trim().replace(/\s+/g, ' ');
 
@@ -143,13 +143,28 @@ export function filterSteelProjects(projects: SteelProject[], filters: SteelFilt
 export function aggregateSteelNeeds(projects: SteelProject[]): SteelTotal[] {
   const totals = new Map<string, SteelTotal>();
   for (const project of projects) for (const item of project.items) {
-    const total = totals.get(item.key) || { ...item, quantity: 0, lineCount: 0, startedQuantity: 0, notStartedQuantity: 0, projects: [] };
+    const total = totals.get(item.key) || { ...item, quantity: 0, lineCount: 0, startedQuantity: 0, notStartedQuantity: 0, orderedQuantity: 0, toOrderQuantity: 0, changedOrders: 0, projects: [] };
     total.quantity += item.quantity; total.lineCount += item.lineCount;
+    const amounts = steelOrderQuantities(item);
+    total.orderedQuantity += amounts.orderedQuantity;
+    total.toOrderQuantity += amounts.toOrderQuantity;
+    if (amounts.changed) total.changedOrders++;
     if (project.started) total.startedQuantity += item.quantity;
     else total.notStartedQuantity += item.quantity;
     total.projects.push({ ...item, project }); totals.set(item.key, total);
   }
-  return [...totals.values()].sort((a, b) => a.kind.localeCompare(b.kind) || a.description.localeCompare(b.description) || a.unit.localeCompare(b.unit));
+  return [...totals.values()].map(total => ({ ...total,
+    orderedQuantity: Math.round(total.orderedQuantity * 10000) / 10000,
+    toOrderQuantity: Math.round(total.toOrderQuantity * 10000) / 10000,
+  })).sort((a, b) => a.kind.localeCompare(b.kind) || a.description.localeCompare(b.description) || a.unit.localeCompare(b.unit));
+}
+
+/** A saved check represents its recorded estimate quantity. Surplus on one job never covers another job. */
+export function steelOrderQuantities(item: SteelItem) {
+  const saved = item.order?.orderedAt ? item.order.quantity : null;
+  const orderedQuantity = typeof saved === 'number' && Number.isFinite(saved) && saved > 0 ? saved : 0;
+  return { orderedQuantity, toOrderQuantity: Math.max(0, Math.round((item.quantity - orderedQuantity) * 10000) / 10000),
+    changed: !!item.order?.orderedAt && saved !== item.quantity };
 }
 
 export function steelNeedsCsv(projects: SteelProject[]): string {

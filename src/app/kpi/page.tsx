@@ -18,6 +18,7 @@ import {
   KPI_CARD_YEARS,
 } from "@/lib/kpiCardMonths";
 import { isKpiPercentageRow, sumKpiCardValues, weightedKpiPercentage } from "@/lib/kpiCardTotals";
+import { KPI_LEADTIME_HOURS_PER_MONTH, kpiMonthKey, leadtimeYearValues, wipHoursFromMonth } from "@/lib/kpiLeadtime";
 const Line = dynamic(() => import('react-chartjs-2').then(mod => mod.Line), { ssr: false });
 import {
   Chart as ChartJS,
@@ -204,31 +205,6 @@ function isValidMonthKey(month: string) {
   return /^\d{4}-(0[1-9]|1[0-2])$/.test(month);
 }
 
-function normalizeAllocations(allocations: any): Array<{ month: string; percent: number; hours?: number }> {
-  if (!allocations) return [];
-  if (Array.isArray(allocations)) {
-    const byMonth = new Map<string, { month: string; percent: number; hours?: number }>();
-
-    allocations.forEach((entry: any) => {
-      const month = String(entry?.month || "");
-      if (!month) return;
-
-      byMonth.set(month, {
-        month,
-        percent: Number(entry?.percent) || 0,
-        hours: typeof entry?.hours === "number" ? entry.hours : undefined,
-      });
-    });
-
-    return Array.from(byMonth.values());
-  }
-
-  return Object.entries(allocations).map(([month, percent]) => ({
-    month,
-    percent: Number(percent) || 0,
-  }));
-}
-
 function getScheduleAllocationRatio(
   schedule: Pick<Schedule, "totalHours">,
   allocation: { percent?: number; hours?: number }
@@ -349,14 +325,6 @@ function normalizeCustomerValue(value: unknown): string {
   return normalized;
 }
 
-function resolveLeadtimeProjectCustomer(project: Pick<LeadtimeBudgetProject, "customer" | "jobKey">): string {
-  const directCustomer = normalizeCustomerValue(project.customer);
-  if (directCustomer) return directCustomer;
-
-  const parsed = parseJobKeyParts((project.jobKey ?? "").toString());
-  return normalizeCustomerValue(parsed.customer);
-}
-
 function resolveLeadtimeScheduleCustomer(schedule: Pick<Schedule, "customer" | "jobKey">): string {
   const directCustomer = normalizeCustomerValue(schedule.customer);
   if (directCustomer) return directCustomer;
@@ -368,20 +336,6 @@ function resolveLeadtimeScheduleCustomer(schedule: Pick<Schedule, "customer" | "
 function isWipScheduleSource(value: unknown): boolean {
   const normalized = String(value || "").trim().toLowerCase();
   return normalized === "gantt" || normalized === "wip-page" || normalized === "wip page" || normalized === "wip_page";
-}
-
-function parseDateFromUnknown(value: unknown): Date | null {
-  if (!value) return null;
-  if (value instanceof Date) return value;
-  if (typeof value === "object" && value !== null && "toDate" in value && typeof (value as any).toDate === "function") {
-    const date = (value as any).toDate();
-    return date instanceof Date && !isNaN(date.getTime()) ? date : null;
-  }
-  if (typeof value === "string") {
-    const date = new Date(value);
-    return isNaN(date.getTime()) ? null : date;
-  }
-  return null;
 }
 
 const defaultCardLoadData: Record<string, { kpi: string; values: string[] }[]> = {
@@ -1221,247 +1175,32 @@ function KPIPageContent({
     return hoursBySchedule;
   }, [activeScheduleEntries, schedules]);
 
-  const leadtimeScheduleJobs = useMemo(() => {
-    const qualifyingStatuses = ["In Progress", "IN_PROGRESS"];
-    const priorityStatuses = ["In Progress", "IN_PROGRESS"];
+  // Leadtimes: the current month comes from the same saved WIP hours as the
+  // Scheduled Hours row; other months show the values recorded on Manage.
+  type LiveKpiValue = number | "loading" | "unavailable";
+  const currentKpiMonth = kpiMonthKey(new Date());
+  const isLiveLeadtimeMonth = (monthIndex: number) => `${selectedManagedYear}-${String(monthIndex + 1).padStart(2, "0")}` === currentKpiMonth;
+  const liveLeadtimeHours: LiveKpiValue = wipScheduledHours.error ? "unavailable"
+    : wipScheduledHours.report ? wipHoursFromMonth(wipScheduledHours.report.months, currentKpiMonth) : "loading";
+  const unscheduledWipProjects = wipScheduledSales.report?.unscheduledProjects;
+  const liveUnscheduledHours: LiveKpiValue = wipScheduledSales.error ? "unavailable"
+    : !wipScheduledSales.report ? "loading"
+    : unscheduledWipProjects ? unscheduledWipProjects.reduce((sum, project) => sum + (project.hours ?? 0), 0) : "unavailable";
+  const unscheduledMissingHours = unscheduledWipProjects?.filter((project) => project.hours === null).length ?? 0;
 
-    const activeProjects = projectsForHours.filter((project) => {
-      if (project.projectArchived) return false;
-      const customer = (project.customer ?? "").toString().toLowerCase();
-      if (customer.includes("sop inc")) return false;
-      const projectName = (project.projectName ?? "").toString().toLowerCase();
-      if (projectName === "pmc operations") return false;
-      if (projectName === "pmc shop time") return false;
-      if (projectName === "pmc test project") return false;
-      if (projectName.includes("sandbox")) return false;
-      if (projectName.includes("raymond king")) return false;
-      if (projectName === "alexander drive addition latest") return false;
-      const projectNumber = (project.projectNumber ?? "").toString().toLowerCase();
-      if (projectNumber === "701 poplar church rd") return false;
-      return true;
-    });
-
-    const projectIdentifierMap = new Map<string, LeadtimeBudgetProject[]>();
-    activeProjects.forEach((project) => {
-      const identifier = (project.projectNumber || project.projectName || "").toString().trim();
-      if (!identifier) return;
-      if (!projectIdentifierMap.has(identifier)) {
-        projectIdentifierMap.set(identifier, []);
-      }
-      projectIdentifierMap.get(identifier)!.push(project);
-    });
-
-    const dedupedByCustomer: LeadtimeBudgetProject[] = [];
-    projectIdentifierMap.forEach((projectList) => {
-      const customerMap = new Map<string, LeadtimeBudgetProject[]>();
-      projectList.forEach((project) => {
-        const customer = resolveLeadtimeProjectCustomer(project);
-        if (!customerMap.has(customer)) {
-          customerMap.set(customer, []);
-        }
-        customerMap.get(customer)!.push(project);
-      });
-
-      if (customerMap.size > 1) {
-        let selectedProjects: LeadtimeBudgetProject[] = [];
-        let foundPriorityCustomer = false;
-        const customerEntries = Array.from(customerMap.entries()).sort(([a], [b]) => {
-          if (a && !b) return -1;
-          if (!a && b) return 1;
-          return 0;
-        });
-
-        customerEntries.forEach(([, customerProjects]) => {
-          const hasPriorityStatus = customerProjects.some((project) => priorityStatuses.includes(project.status || ""));
-          if (hasPriorityStatus && !foundPriorityCustomer) {
-            selectedProjects = customerProjects;
-            foundPriorityCustomer = true;
-          }
-        });
-
-        if (!foundPriorityCustomer) {
-          let latestNonEmptyCustomer = "";
-          let latestNonEmptyDate: Date | null = null;
-          let latestAnyCustomer = "";
-          let latestAnyDate: Date | null = null;
-
-          customerEntries.forEach(([customer, customerProjects]) => {
-            const mostRecentProject = customerProjects.reduce((latest, current) => {
-              const currentDate = parseDateFromUnknown(current.dateCreated);
-              const latestDate = parseDateFromUnknown(latest.dateCreated);
-              if (!currentDate) return latest;
-              if (!latestDate) return current;
-              return currentDate.getTime() > latestDate.getTime() ? current : latest;
-            }, customerProjects[0]);
-
-            const projectDate = parseDateFromUnknown(mostRecentProject.dateCreated);
-            if (projectDate && (!latestAnyDate || projectDate.getTime() > latestAnyDate.getTime())) {
-              latestAnyDate = projectDate;
-              latestAnyCustomer = customer;
-            }
-            if (customer && projectDate && (!latestNonEmptyDate || projectDate.getTime() > latestNonEmptyDate.getTime())) {
-              latestNonEmptyDate = projectDate;
-              latestNonEmptyCustomer = customer;
-            }
-          });
-
-          const preferredCustomer = latestNonEmptyCustomer || latestAnyCustomer;
-          selectedProjects = customerMap.get(preferredCustomer) || [];
-
-          if (!selectedProjects.length) {
-            const firstNonEmpty = customerEntries.find(([customer]) => Boolean(customer));
-            if (firstNonEmpty) selectedProjects = firstNonEmpty[1];
-          }
-        }
-
-        dedupedByCustomer.push(...selectedProjects);
-      } else {
-        projectList.forEach((project) => dedupedByCustomer.push(project));
-      }
-    });
-
-    const filteredByStatus = dedupedByCustomer.filter((project) => {
-      if (!qualifyingStatuses.includes(project.status || "")) return false;
-      if (project.pmcgroup) return false;
-      return true;
-    });
-
-    const keyMap = new Map<string, LeadtimeBudgetProject[]>();
-    filteredByStatus.forEach((project) => {
-      const resolvedCustomer = resolveLeadtimeProjectCustomer(project);
-      const key = `${resolvedCustomer}~${project.projectNumber ?? ""}~${project.projectName ?? ""}`;
-      if (!keyMap.has(key)) {
-        keyMap.set(key, []);
-      }
-      keyMap.get(key)!.push(project);
-    });
-
-    const schedulesByExactKey = new Map<string, Schedule>();
-    const schedulesByProjectNumName = new Map<string, Schedule>();
-    const schedulesByProjectNumber = new Map<string, Schedule[]>();
-
-    schedules.forEach((schedule: Schedule) => {
-      schedulesByExactKey.set(schedule.jobKey, schedule);
-      const parts = parseJobKeyParts(schedule.jobKey);
-      const numNameKey = `${parts.projectNumber}~${parts.projectName}`;
-      if (parts.projectNumber || parts.projectName) {
-        schedulesByProjectNumName.set(numNameKey, schedule);
-      }
-      if (parts.projectNumber) {
-        const matchingSchedules = schedulesByProjectNumber.get(parts.projectNumber) || [];
-        matchingSchedules.push(schedule);
-        schedulesByProjectNumber.set(parts.projectNumber, matchingSchedules);
-      }
-    });
-
-    const results: Schedule[] = [];
-    keyMap.forEach((projectGroup, key) => {
-      const representative = projectGroup[0];
-      const totalHours = projectGroup.reduce((sum, project) => sum + (project.hours ?? 0), 0);
-
-      const keyParts = parseJobKeyParts(key);
-      let matchedSchedule = schedulesByExactKey.get(key);
-      if (!matchedSchedule) {
-        matchedSchedule = schedulesByProjectNumName.get(`${keyParts.projectNumber}~${keyParts.projectName}`);
-      }
-      if (!matchedSchedule && keyParts.projectNumber) {
-        const byNumber = schedulesByProjectNumber.get(keyParts.projectNumber) || [];
-        if (byNumber.length === 1) {
-          matchedSchedule = byNumber[0];
-        }
-      }
-
-      const mergedCustomer =
-        resolveLeadtimeProjectCustomer(representative) ||
-        (matchedSchedule ? resolveLeadtimeScheduleCustomer(matchedSchedule) : "") ||
-        normalizeCustomerValue(keyParts.customer);
-
-      results.push({
-        id: matchedSchedule?.id || key,
-        jobKey: key,
-        customer: mergedCustomer || "Unknown",
-        projectNumber: representative.projectNumber ?? "",
-        projectName: representative.projectName ?? "Unnamed",
-        totalHours,
-        status: "In Progress",
-        allocations: normalizeAllocations(matchedSchedule?.allocations || []),
-      });
-    });
-
-    return results;
-  }, [projectsForHours, schedules]);
-
-  const leadtimeHoursByMonth = useMemo(() => {
-    const monthlyHours: Record<string, number> = {};
-
-    leadtimeScheduleJobs.forEach((schedule) => {
-      normalizeAllocations(schedule.allocations).forEach((allocation) => {
-        if (!isValidMonthKey(allocation.month)) return;
-
-        const allocatedHours = typeof allocation.hours === "number"
-          ? allocation.hours
-          : schedule.totalHours * (allocation.percent / 100);
-
-        monthlyHours[allocation.month] = (monthlyHours[allocation.month] || 0) + allocatedHours;
-      });
-    });
-
-    return monthlyHours;
-  }, [leadtimeScheduleJobs]);
-
-  const leadtimeMonths = useMemo(() => Object.keys(leadtimeHoursByMonth).sort(), [leadtimeHoursByMonth]);
-
-  const leadtimeHoursByKey = useMemo(() => {
-    const now = new Date();
-    const currentYearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    const totalCurrentAndRemainingHours = leadtimeMonths
-      .filter((month) => month >= currentYearMonth)
-      .reduce((sum, month) => sum + (leadtimeHoursByMonth[month] || 0), 0);
-    const byMonth: Record<string, number> = {};
-
-    leadtimeMonths.forEach((month, index) => {
-      void index;
-      const leadtimeHours = month < currentYearMonth
-        ? leadtimeMonths
-            .filter((futureMonth) => futureMonth > month)
-            .reduce((sum, futureMonth) => sum + (leadtimeHoursByMonth[futureMonth] || 0), 0)
-        : totalCurrentAndRemainingHours;
-      byMonth[month] = leadtimeHours;
-    });
-
-    return byMonth;
-  }, [leadtimeHoursByMonth, leadtimeMonths]);
-
-  const leadtimeYearMonthMap = useMemo(() => {
-    const map: Record<string, Record<number, number>> = {};
-    leadtimeMonths.forEach((monthKey) => {
-      const [year, month] = monthKey.split("-");
-      if (!map[year]) {
-        map[year] = {};
-      }
-      map[year][Number(month)] = leadtimeHoursByKey[monthKey];
-    });
-    return map;
-  }, [leadtimeMonths, leadtimeHoursByKey]);
-
-  const leadtimeYears = useMemo(() => Object.keys(leadtimeYearMonthMap).sort(), [leadtimeYearMonthMap]);
-
-  const visibleLeadtimeYears = useMemo(
-    () => yearFilter ? leadtimeYears.filter((year) => year === yearFilter) : leadtimeYears,
-    [leadtimeYears, yearFilter]
-  );
-
-  const formatLeadtimeValue = (value: number | undefined) => {
+  const formatLeadtimeValue = (value: LiveKpiValue | undefined) => {
+    if (value === "loading") return "…";
+    if (value === "unavailable") return "Unavailable";
     if (value === undefined || !Number.isFinite(value)) return "—";
     return value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
   };
 
-  const formatLeadtimeMonthsValue = (value: number | undefined) => {
-    if (value === undefined || !Number.isFinite(value)) return "—";
-    return (value / 3938).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  const formatLeadtimeMonthsValue = (value: LiveKpiValue | undefined) => {
+    if (typeof value !== "number" || !Number.isFinite(value)) return formatLeadtimeValue(value);
+    return (value / KPI_LEADTIME_HOURS_PER_MONTH).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
   };
 
-  const leadtimeFallbackHoursByMonth = useMemo(() => {
+  const leadtimeRecordedHoursByMonth = useMemo(() => {
     const rows = cardLoadData[normalizeCardName("Leadtimes by Month")] || [];
     const leadtimeHoursRow =
       rows.find((row: any) => (row?.kpi || "").toString().toLowerCase().includes("leadtime")) ||
@@ -1476,6 +1215,9 @@ function KPIPageContent({
 
     return map;
   }, [cardLoadData, monthNames, selectedManagedYear]);
+
+  const leadtimeMonthValues = leadtimeYearValues(selectedManagedYear, currentKpiMonth, monthNames.map((_, idx) => leadtimeRecordedHoursByMonth[idx + 1]), liveLeadtimeHours);
+  const latestLeadtimeValue = [...leadtimeMonthValues].reverse().find((value) => value !== undefined);
 
   const additionalLeadtimeRows = useMemo(() => {
     const rows = cardLoadData[normalizeCardName("Leadtimes by Month")] || [];
@@ -1904,22 +1646,6 @@ function KPIPageContent({
         return <KpiScheduledSalesRow key={rowIndex} months={monthNames.map((_, index) => ({ year: selectedManagedYear, month: index + 1 }))} data={wipScheduledSales} onDetails={openScheduledSalesDetails} />;
       }
 
-      if (normalizeCardName(cardName) === normalizeCardName("Leadtimes by Month")) {
-        const selectedYears = yearFilter ? [yearFilter] : visibleLeadtimeYears;
-        const isMonthsRow = rowLabel.includes("month");
-
-        rowValues = monthNames.map((_, idx) => {
-          const month = idx + 1;
-          const hoursValue = selectedYears.reduce((sum, year) => sum + (leadtimeYearMonthMap[year]?.[month] || 0), 0);
-
-          if (!Number.isFinite(hoursValue) || hoursValue <= 0) return "";
-          if (isMonthsRow) {
-            return (hoursValue / 3938).toFixed(2);
-          }
-          return hoursValue.toString();
-        });
-      }
-      
       const isPercentage = isKpiPercentageRow(row.kpi, row.values);
 
       let total: number | null;
@@ -2966,6 +2692,7 @@ function KPIPageContent({
         {/* Leadtimes Table */}
         <div style={{ background: "#ffffff", borderRadius: 8, padding: 12, border: "1px solid #ddd", marginBottom: 4 }}>
           <h3 style={{ color: "#15616D", marginBottom: 8, fontSize: 14, fontWeight: 700 }}>Leadtimes by Month</h3>
+          <p style={{ color: "#6b7280", margin: "0 0 8px", fontSize: 11 }}>The current month is calculated from WIP: Leadtime Hours is the saved Scheduled Hours from this month forward, and Unscheduled Hours is the Not scheduled total. Earlier months show the values recorded on Manage.</p>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", minWidth: baseKpiTableMinWidth, borderCollapse: "collapse", tableLayout: "fixed" }}>
               <thead>
@@ -2980,90 +2707,46 @@ function KPIPageContent({
                 </tr>
               </thead>
               <tbody>
-                {visibleLeadtimeYears.length > 0 ? visibleLeadtimeYears.flatMap((year, yearIndex) => {
-                  const hourRowColor = (yearIndex * 2) % 2 === 0 ? "#15616D" : "#E06C00";
-                  const monthRowColor = (yearIndex * 2 + 1) % 2 === 0 ? "#15616D" : "#E06C00";
-                  const monthValues = monthNames.map((_, idx) => idx + 1 <= ytdMonthCutoff ? leadtimeYearMonthMap[year]?.[idx + 1] : undefined);
-                  const latestValue = [...monthValues].reverse().find((value) => value !== undefined);
-
-                  return [
-                    <tr key={`leadtime-hours-${year}`} style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
-                      <td style={{ padding: "6px 6px", color: hourRowColor, fontWeight: 700, fontSize: 13 }}>
-                        {yearFilter ? "Leadtime Hours" : `Leadtime Hours ${year}`}
+                <tr style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
+                  <td style={{ padding: "6px 6px", color: "#15616D", fontWeight: 700, fontSize: 13 }}>Leadtime Hours</td>
+                  {leadtimeMonthValues.map((value, idx) => {
+                    const formatted = formatLeadtimeValue(value);
+                    return (
+                      <td key={idx} title={isLiveLeadtimeMonth(idx) ? "Saved WIP Scheduled Hours from this month forward" : undefined} style={{ padding: "6px 2px", textAlign: "center", color: formatted !== "—" ? "#15616D" : "#999", fontWeight: formatted !== "—" ? 700 : 400, fontSize: 12 }}>
+                        {formatted}
                       </td>
-                      {monthValues.map((value, idx) => {
-                        const formatted = formatLeadtimeValue(value);
-                        return (
-                          <td key={idx} style={{ padding: "6px 2px", textAlign: "center", color: formatted !== "—" ? hourRowColor : "#999", fontWeight: formatted !== "—" ? 700 : 400, fontSize: 12 }}>
-                            {formatted}
-                          </td>
-                        );
-                      })}
-                      <td style={{ padding: "6px 6px", textAlign: "center", color: latestValue !== undefined ? hourRowColor : "#999", fontWeight: latestValue !== undefined ? 700 : 400, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                        {formatLeadtimeValue(latestValue)}
+                    );
+                  })}
+                  <td style={{ padding: "6px 6px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                    {formatLeadtimeValue(latestLeadtimeValue)}
+                  </td>
+                </tr>
+                <tr style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
+                  <td style={{ padding: "6px 6px", color: "#E06C00", fontWeight: 700, fontSize: 13 }}>Leadtime Months</td>
+                  {leadtimeMonthValues.map((value, idx) => {
+                    const formatted = formatLeadtimeMonthsValue(value);
+                    return (
+                      <td key={idx} title={isLiveLeadtimeMonth(idx) ? "Saved WIP Scheduled Hours from this month forward" : undefined} style={{ padding: "6px 2px", textAlign: "center", color: formatted !== "—" ? "#E06C00" : "#999", fontWeight: formatted !== "—" ? 700 : 400, fontSize: 12 }}>
+                        {formatted}
                       </td>
-                    </tr>,
-                    <tr key={`leadtime-months-${year}`} style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
-                      <td style={{ padding: "6px 6px", color: monthRowColor, fontWeight: 700, fontSize: 13 }}>
-                        {yearFilter ? "Leadtime Months" : `Leadtime Months ${year}`}
-                      </td>
-                      {monthValues.map((value, idx) => {
-                        const formatted = formatLeadtimeMonthsValue(value);
-                        return (
-                          <td key={idx} style={{ padding: "6px 2px", textAlign: "center", color: formatted !== "—" ? monthRowColor : "#999", fontWeight: formatted !== "—" ? 700 : 400, fontSize: 12 }}>
-                            {formatted}
-                          </td>
-                        );
-                      })}
-                      <td style={{ padding: "6px 6px", textAlign: "center", color: latestValue !== undefined ? monthRowColor : "#999", fontWeight: latestValue !== undefined ? 700 : 400, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                        {formatLeadtimeMonthsValue(latestValue)}
-                      </td>
-                    </tr>
-                  ];
-                }) : (
-                  <>
-                    <tr style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
-                      <td style={{ padding: "6px 6px", color: "#15616D", fontWeight: 700, fontSize: 13 }}>Leadtime Hours</td>
-                      {monthNames.map((_, idx) => {
-                        const value = leadtimeFallbackHoursByMonth[idx + 1];
-                        const formatted = formatLeadtimeValue(value);
-                        return (
-                          <td key={idx} style={{ padding: "6px 2px", textAlign: "center", color: formatted !== "—" ? "#15616D" : "#999", fontWeight: formatted !== "—" ? 700 : 400, fontSize: 12 }}>
-                            {formatted}
-                          </td>
-                        );
-                      })}
-                      <td style={{ padding: "6px 6px", textAlign: "center", color: "#15616D", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                        {formatLeadtimeValue([...monthNames].map((_, idx) => leadtimeFallbackHoursByMonth[idx + 1]).reverse().find((value) => value !== undefined))}
-                      </td>
-                    </tr>
-                    <tr style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
-                      <td style={{ padding: "6px 6px", color: "#E06C00", fontWeight: 700, fontSize: 13 }}>Leadtime Months</td>
-                      {monthNames.map((_, idx) => {
-                        const value = leadtimeFallbackHoursByMonth[idx + 1];
-                        const formatted = formatLeadtimeMonthsValue(value);
-                        return (
-                          <td key={idx} style={{ padding: "6px 2px", textAlign: "center", color: formatted !== "—" ? "#E06C00" : "#999", fontWeight: formatted !== "—" ? 700 : 400, fontSize: 12 }}>
-                            {formatted}
-                          </td>
-                        );
-                      })}
-                      <td style={{ padding: "6px 6px", textAlign: "center", color: "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                        {formatLeadtimeMonthsValue([...monthNames].map((_, idx) => leadtimeFallbackHoursByMonth[idx + 1]).reverse().find((value) => value !== undefined))}
-                      </td>
-                    </tr>
-                  </>
-                )}
+                    );
+                  })}
+                  <td style={{ padding: "6px 6px", textAlign: "center", color: "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
+                    {formatLeadtimeMonthsValue(latestLeadtimeValue)}
+                  </td>
+                </tr>
                 {additionalLeadtimeRows.map((row: any, rowIndex: number) => {
                   const rowColor = rowIndex % 2 === 0 ? "#15616D" : "#E06C00";
-                  const rowValues = monthNames.map((_, idx) => getKpiCardValue(row?.values, selectedManagedYear, idx + 1).trim());
+                  const recordedValues = monthNames.map((_, idx) => getKpiCardValue(row?.values, selectedManagedYear, idx + 1).trim());
+                  const isUnscheduledRow = normalizeCardName(String(row?.kpi || "")) === "unscheduled hours";
+                  const rowValues = isUnscheduledRow ? leadtimeYearValues(selectedManagedYear, currentKpiMonth, recordedValues, formatLeadtimeValue(liveUnscheduledHours)) : recordedValues;
                   const latestValue = [...rowValues].reverse().find((value) => value.length > 0) || "";
 
                   return (
                     <tr key={`leadtime-extra-${rowIndex}-${String(row?.kpi || "")}`} style={{ borderBottom: "1px solid #eee", backgroundColor: "#ffffff" }}>
                       <td style={{ padding: "6px 6px", color: rowColor, fontWeight: 700, fontSize: 13 }}>{String(row?.kpi || "Additional")}</td>
                       {rowValues.map((value, idx) => (
-                        <td key={idx} style={{ padding: "6px 2px", textAlign: "center", color: value ? rowColor : "#999", fontWeight: value ? 700 : 400, fontSize: 12 }}>
+                        <td key={idx} title={isUnscheduledRow && isLiveLeadtimeMonth(idx) ? (unscheduledMissingHours ? `Known hours from the WIP Not scheduled list · ${unscheduledMissingHours} missing` : "Total unscheduled hours from the WIP Not scheduled list") : undefined} style={{ padding: "6px 2px", textAlign: "center", color: value ? rowColor : "#999", fontWeight: value ? 700 : 400, fontSize: 12 }}>
                           {value || "—"}
                         </td>
                       ))}

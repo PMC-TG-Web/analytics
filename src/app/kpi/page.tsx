@@ -17,6 +17,7 @@ import {
   getKpiCardYearValues,
   KPI_CARD_YEARS,
 } from "@/lib/kpiCardMonths";
+import { isKpiPercentageRow, sumKpiCardValues, weightedKpiPercentage } from "@/lib/kpiCardTotals";
 const Line = dynamic(() => import('react-chartjs-2').then(mod => mod.Line), { ssr: false });
 import {
   Chart as ChartJS,
@@ -1919,77 +1920,26 @@ function KPIPageContent({
         });
       }
       
-      // Check if this is a percentage column (contains % values)
-      const isPercentage = rowValues.some((val: any) => String(val).includes("%"));
-      
-      let total: number;
-      let ytdTotal: number;
-      if (isPercentage && (cardName.toLowerCase().includes("gross profit") || cardName.toLowerCase().includes("profit"))) {
-        // For GP/Profit percentages, calculate weighted average using Revenue as weights
-        const revenueRow = cardLoadData[normalizeCardName(cardName)]?.find((r: any) => r.kpi === "Revenue" || r.kpi.includes("Revenue"));
-        const revenueValues = getKpiCardYearValues(revenueRow?.values, selectedManagedYear);
-        
-        if (revenueRow) {
-          let numerator = 0;
-          let denominator = 0;
-          
-          rowValues.forEach((val: any, idx: number) => {
-            const percentStr = String(val).replace("%", "").trim();
-            const percent = parseFloat(percentStr);
-            const revenueStr = String(revenueValues[idx]).replace(/[$,]/g, "").trim();
-            const revenue = parseFloat(revenueStr);
-            
-            if (!isNaN(percent) && !isNaN(revenue) && revenue > 0) {
-              numerator += (percent / 100) * revenue;
-              denominator += revenue;
-            }
-          });
-          
-          total = denominator > 0 ? (numerator / denominator) * 100 : 0;
+      const isPercentage = isKpiPercentageRow(row.kpi, row.values);
 
-          let ytdNumerator = 0;
-          let ytdDenominator = 0;
-          rowValues.slice(0, ytdMonthCutoff).forEach((val: any, idx: number) => {
-            const percentStr = String(val).replace("%", "").trim();
-            const percent = parseFloat(percentStr);
-            const revenueStr = String(revenueValues[idx]).replace(/[$,]/g, "").trim();
-            const revenue = parseFloat(revenueStr);
-
-            if (!isNaN(percent) && !isNaN(revenue) && revenue > 0) {
-              ytdNumerator += (percent / 100) * revenue;
-              ytdDenominator += revenue;
-            }
-          });
-          ytdTotal = ytdDenominator > 0 ? (ytdNumerator / ytdDenominator) * 100 : 0;
-        } else {
-          // Fallback: simple average if no revenue row found
-          const percentages = rowValues
-            .map((val: any) => parseFloat(String(val).replace("%", "").trim()))
-            .filter((n: number) => !isNaN(n));
-          total = percentages.length > 0 ? percentages.reduce((a: number, b: number) => a + b, 0) / percentages.length : 0;
-
-          const ytdPercentages = rowValues
-            .slice(0, ytdMonthCutoff)
-            .map((val: any) => parseFloat(String(val).replace("%", "").trim()))
-            .filter((n: number) => !isNaN(n));
-          ytdTotal = ytdPercentages.length > 0 ? ytdPercentages.reduce((a: number, b: number) => a + b, 0) / ytdPercentages.length : 0;
-        }
+      let total: number | null;
+      let ytdTotal: number | null;
+      if (isPercentage) {
+        // Percentages total only when this card supplies Revenue weights; summed or averaged monthly percentages are omitted.
+        const revenueRow = cardName.toLowerCase().includes("profit")
+          ? cardLoadData[normalizeCardName(cardName)]?.find((r: any) => r.kpi === "Revenue" || r.kpi.includes("Revenue"))
+          : undefined;
+        const revenueValues = revenueRow ? getKpiCardYearValues(revenueRow.values, selectedManagedYear) : null;
+        total = weightedKpiPercentage(rowValues, revenueValues);
+        ytdTotal = weightedKpiPercentage(rowValues.slice(0, ytdMonthCutoff), revenueValues);
       } else {
-        // For non-percentage values, sum as usual
-        const total_val = rowValues.reduce((sum: number, val: any) => {
-          const numVal = parseFloat(String(val).replace(/[^0-9.-]/g, ''));
-          return sum + (isNaN(numVal) ? 0 : numVal);
-        }, 0);
-        total = total_val;
-
-        ytdTotal = rowValues.slice(0, ytdMonthCutoff).reduce((sum: number, val: any) => {
-          const numVal = parseFloat(String(val).replace(/[^0-9.-]/g, ''));
-          return sum + (isNaN(numVal) ? 0 : numVal);
-        }, 0);
+        total = sumKpiCardValues(rowValues);
+        ytdTotal = sumKpiCardValues(rowValues.slice(0, ytdMonthCutoff));
       }
 
-      const totalFormatted = formatCardValue(cardName, row.kpi, isPercentage ? `${total.toFixed(2)}%` : total.toString());
-      const ytdFormatted = formatCardValue(cardName, row.kpi, isPercentage ? `${ytdTotal.toFixed(2)}%` : ytdTotal.toString());
+      const formatTotal = (value: number | null) => value === null ? "" : formatCardValue(cardName, row.kpi, isPercentage ? `${value.toFixed(2)}%` : value.toString());
+      const totalFormatted = formatTotal(total);
+      const ytdFormatted = formatTotal(ytdTotal);
       
       return (
       <tr key={`${cardName}-${row.kpi}`} style={{ borderBottom: "1px solid #eee", backgroundColor: isGoalRow ? "#f9f9f9" : "#ffffff" }}>
@@ -2828,7 +2778,7 @@ function KPIPageContent({
                             </td>
                           ))}
                           <td style={{ padding: "4px 6px", textAlign: "center", color: rowColor, fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
-                            {renderTotalWithYtd(
+                            {!isKpiPercentageRow(managedRow.kpi, managedRow.values) && renderTotalWithYtd(
                               shouldFormatAsCurrency
                                 ? `$${total.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
                                 : total.toLocaleString(undefined, { maximumFractionDigits: 0 }),

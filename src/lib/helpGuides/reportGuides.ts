@@ -56,7 +56,7 @@ export const reportGuides = [
     checks: ['Check the selected dates, project, month, code, and source entries before using the totals. Invoice allocation uses only the hours within the selected dates, even for a partial month. Invalid or reversed dates show an error; select an ordered range of up to 24 calendar months. Warnings identify excluded entries or missing coding.', 'An empty result means no matching saved entries for those filters. Verify the range and project, then check the original timesheet or productivity record if hours are missing.'],
   }),
   defineGuide('kpi', {
-    updated: '2026-11-03',
+    updated: '2026-11-11',
     purpose: 'Review monthly business performance against goals. Selling work, earning revenue, using labor, and producing profit are separate measures; read the row labels before comparing them.',
     steps: [
       { title: 'Choose the year', body: 'Read each table heading. Sales by Month resolves All Years to the current year rather than combining every year.' },
@@ -79,6 +79,7 @@ export const reportGuides = [
       ['Win Rate', 'Won distinct projects divided by eligible distinct projects. Won includes Accepted, In Progress, and Complete here. Estimating and excluded records are omitted; To Do, Lost, and Delayed remain in the denominator.'],
       ['Win Rate months', 'Cumulative January through that month by Created Date, using current statuses. Reporting starts January 2026. This is not a historical month-end status snapshot.'],
       ['Total percentage', 'Total wins divided by total eligible projects, not an average of monthly percentages. Future months are blank.'],
+      ['Blank percentage totals', 'Saved percentage rows, such as Gross Profit, Profit, and percent-of-goal rows, leave Total blank. Monthly percentages cannot be added or averaged into a yearly rate. For the year-to-date result, read the latest month in the matching YTD row.'],
       ['Actual versus goal', 'The result versus its target. Read units carefully: dollars, hours, percentages, and lead times are not interchangeable.'],
     ],
     example: 'If 12 of 20 eligible distinct projects are won, Win Rate is 60%. That does not mean 60% of estimated dollars were sold. Accepted counts in this KPI even though Financial WIP excludes Accepted.',

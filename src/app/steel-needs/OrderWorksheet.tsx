@@ -41,7 +41,7 @@ export default function OrderWorksheet({ projects, list, onListChange, scope, sa
       <td className={`${cell} text-right tabular-nums`}>{item.projects.length}</td>
     </tr>)}</tbody></table></div>
     {!rows.length && <p className="p-10 text-center text-slate-500">{list === 'ordered' ? 'No materials marked ordered in this scope.' : list === 'needed' ? 'No quantities still need ordering in this scope.' : 'No materials match these filters.'}</p>}
-    <p className="border-t border-slate-200 px-5 py-3 text-xs text-slate-500">{saving ? 'Saving checkmarks… Totals update when confirmed.' : `${rows.length} material lines · Saved checkmarks only`} · Quantities stay separate by description and unit. Need to order is calculated per project; extra ordered steel on one job does not cover another.</p>
-    <p className="px-5 pb-4 text-xs text-slate-500">Rebar pieces per bundle: {Object.entries(REBAR_BUNDLE_SIZES).map(([size, pieces]) => `#${size}: ${pieces}`).join(' · ')}. Whole bundles round up after combining the filtered projects. Project details round up each job separately. Checkmarks continue to record estimated pieces.</p>
+    <p className="border-t border-slate-200 px-5 py-3 text-xs text-slate-500">{saving ? 'Saving ordered quantities… Totals update when confirmed.' : `${rows.length} material lines · Saved ordered quantities only`} · Quantities stay separate by description and unit. Need to order is calculated per project; extra ordered steel on one job does not cover another.</p>
+    <p className="px-5 pb-4 text-xs text-slate-500">Rebar pieces per bundle: {Object.entries(REBAR_BUNDLE_SIZES).map(([size, pieces]) => `#${size}: ${pieces}`).join(' · ')}. Whole bundles round up after combining the filtered projects. Project details round up each job separately. Ordered pieces are saved as cumulative totals; bundle counts are ordering suggestions.</p>
   </div>;
 }

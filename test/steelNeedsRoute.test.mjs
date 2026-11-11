@@ -27,7 +27,7 @@ function setup({ actor = 'user@example.com', allowed = true, fail = false, proje
       assert.equal(company, 'company'); assert.equal(email, actor); writes++;
       if (conflict) throw new SteelOrderConflict('Refresh saved data.');
       if (fail) throw Error('private database details');
-      return { revision: input.revision + 1, orderedAt: input.ordered ? '2026-11-10T12:00:00Z' : null, quantity: input.ordered ? input.quantity : null };
+      return { revision: input.revision + 1, orderedAt: input.ordered ? '2026-11-10T12:00:00Z' : null, quantity: input.ordered ? input.orderedQuantity ?? input.quantity : null, estimateQuantity: input.ordered ? input.quantity : null };
     } },
   };
   const module = { exports: {} };
@@ -81,6 +81,19 @@ test('GET signs only linked material snapshots that POST accepts without source 
   assert.equal(report.projects[1].items[0].orderSnapshot, undefined);
   assert.equal((await fixture.POST(request({ ...input, orderSnapshot: token }))).status, 200);
   assert.equal(fixture.reads(), 1);
+});
+
+test('partial order saves validate the signed estimate, not the entered piece count, without loading the report', async () => {
+  const partial = { ...input, itemKey: '["rebar","EA"]', quantity: 450, orderedQuantity: 150 };
+  partial.orderSnapshot = createSteelOrderSnapshot('company', partial, secret);
+  const fixture = setup();
+  const response = await fixture.POST(request(partial));
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { order: { revision: 1, orderedAt: '2026-11-10T12:00:00Z', quantity: 150, estimateQuantity: 450 } });
+  assert.equal(fixture.reads(), 0);
+  assert.equal((await fixture.POST(request({ ...partial, quantity: 600 }))).status, 409);
+  assert.equal((await fixture.POST(request({ ...partial, orderedQuantity: 1.5 }))).status, 400);
+  assert.equal((await fixture.POST(request({ ...partial, orderedQuantity: 0, ordered: false }))).status, 200);
 });
 test('Steel needs returns no-store complete reads and reports errors without exposing database details', async () => {
   const response = await setup().GET({}); assert.equal(response.status, 200); assert.match(response.headers.get('Cache-Control'), /no-store/);

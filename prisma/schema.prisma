@@ -2652,6 +2652,7 @@ model SteelOrderMark {
   revision Int
   orderedAt DateTime? @map("ordered_at") @db.Timestamptz(6)
   quantity Decimal? @db.Decimal(18, 4)
+  estimateQuantity Decimal? @map("estimate_quantity") @db.Decimal(18, 4)
   updatedBy String @map("updated_by")
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
   project PmcProject @relation(fields: [companyId, projectId], references: [companyId, procoreProjectId], onDelete: Restrict, map: "steel_order_marks_project_fkey")

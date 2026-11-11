@@ -52,8 +52,8 @@ export async function loadSteelNeeds(): Promise<SteelReport> {
     FROM entries WHERE project_id IS NOT NULL GROUP BY project_id
   `;
   const marks = await prisma.steelOrderMark.findMany({ where: { companyId, projectId: { in: projects.flatMap(project => project.projectId ? [project.projectId] : []) } },
-    select: { projectId: true, itemKey: true, revision: true, orderedAt: true, quantity: true } });
+    select: { projectId: true, itemKey: true, revision: true, orderedAt: true, quantity: true, estimateQuantity: true } });
   return { projects: attachSteelOrderMarks(buildSteelNeeds(companyId, projects, lines, activity), marks.map(mark => ({ ...mark,
-    orderedAt: mark.orderedAt?.toISOString() || null, quantity: mark.quantity === null ? null : Number(mark.quantity),
+    orderedAt: mark.orderedAt?.toISOString() || null, quantity: mark.quantity === null ? null : Number(mark.quantity), estimateQuantity: mark.estimateQuantity == null ? null : Number(mark.estimateQuantity),
   }))), loadedAt: new Date().toISOString(), localOnly: !!wipLocalStorePath() };
 }

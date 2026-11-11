@@ -7,7 +7,7 @@ export type SteelEstimateLine = {
   name: string | null; uom: string | null; quantity: unknown; payload?: unknown; syncedAt: string;
 };
 export type SteelActivity = { projectId: string; dailyLogs: number; timesheets: number; firstActivity: string | null };
-export type SteelOrder = { revision: number; orderedAt: string | null; quantity: number | null };
+export type SteelOrder = { revision: number; orderedAt: string | null; quantity: number | null; estimateQuantity?: number | null };
 export type SteelItem = { key: string; description: string; kind: SteelKind; unit: string; quantity: number; lineCount: number; order: SteelOrder | null; orderSnapshot?: string };
 export type SteelProject = {
   key: string; projectId: string | null; projectName: string; projectNumber: string; customer: string;
@@ -160,12 +160,12 @@ export function aggregateSteelNeeds(projects: SteelProject[]): SteelTotal[] {
   })).sort((a, b) => a.kind.localeCompare(b.kind) || a.description.localeCompare(b.description) || a.unit.localeCompare(b.unit));
 }
 
-/** A saved check represents its recorded estimate quantity. Surplus on one job never covers another job. */
+/** Saved cumulative orders reduce this project's need only. The separate estimate basis detects source changes. */
 export function steelOrderQuantities(item: SteelItem) {
   const saved = item.order?.orderedAt ? item.order.quantity : null;
   const orderedQuantity = typeof saved === 'number' && Number.isFinite(saved) && saved > 0 ? saved : 0;
   return { orderedQuantity, toOrderQuantity: Math.max(0, Math.round((item.quantity - orderedQuantity) * 10000) / 10000),
-    changed: !!item.order?.orderedAt && saved !== item.quantity };
+    changed: !!item.order?.orderedAt && (item.order.estimateQuantity ?? saved) !== item.quantity };
 }
 
 export function steelNeedsCsv(projects: SteelProject[]): string {
@@ -173,11 +173,12 @@ export function steelNeedsCsv(projects: SteelProject[]): string {
     const text = String(value ?? '');
     return `"${(/^[=+\-@\t\r]/.test(text) ? "'" : '') + text.replaceAll('"', '""')}"`;
   };
-  const rows: unknown[][] = [['Description', 'Material', 'Unit', 'Full estimated quantity', 'Project', 'Project number', 'Status', 'WIP planned start month', 'First field entry', 'Procore project ID', 'Bid Board ID', 'Estimate ID', 'Review notes', 'Marked ordered', 'Ordered date (Eastern)', 'Estimate when marked']];
-  rows[0].push('Pieces per bundle', 'Full estimate bundle equivalents', 'Whole bundles to order for project (rounded up)', 'Pieces in whole bundles to order', 'Extra pieces from rounding');
+  const rows: unknown[][] = [['Description', 'Material', 'Unit', 'Full estimated quantity', 'Project', 'Project number', 'Status', 'WIP planned start month', 'First field entry', 'Procore project ID', 'Bid Board ID', 'Estimate ID', 'Review notes', 'Has order', 'Last order update (Eastern)', 'Ordered quantity']];
+  rows[0].push('Estimate at order update', 'Order status', 'Need to order', 'Pieces per bundle', 'Full estimate bundle equivalents', 'Whole bundles to order for project (rounded up)', 'Pieces in whole bundles to order', 'Extra pieces from rounding');
   for (const project of projects) for (const item of project.items) {
     const full = steelBundles(item, item.quantity), needed = steelBundles(item, steelOrderQuantities(item).toOrderQuantity);
     rows.push([item.description, item.kind, item.unit, item.quantity, project.projectName, project.projectNumber, project.started ? 'Started' : 'Not started', project.plannedStart, project.firstActivity, project.projectId, project.bidBoardId, project.proposalId, project.issues.join(' '), item.order?.orderedAt ? 'Yes' : 'No', item.order?.orderedAt ? steelOrderedDate(item.order.orderedAt) : '', item.order?.quantity ?? '',
+      item.order?.estimateQuantity ?? item.order?.quantity ?? '', steelOrderStatus(item), steelOrderQuantities(item).toOrderQuantity,
       full?.piecesPerBundle ?? '', full ? Math.round(full.equivalent * 10000) / 10000 : '', needed?.wholeBundles ?? '', needed?.wholeBundlePieces ?? '', needed?.extraPieces ?? '' ]);
   }
   return '\uFEFF' + rows.map(row => row.map(quote).join(',')).join('\r\n');
@@ -191,6 +192,11 @@ export function attachSteelOrderMarks(projects: SteelProject[], marks: (SteelOrd
   const byItem = new Map(marks.map(mark => [JSON.stringify([mark.projectId, mark.itemKey]), mark]));
   return projects.map(project => ({ ...project, items: project.items.map(item => {
     const mark = byItem.get(JSON.stringify([project.projectId, item.key]));
-    return { ...item, order: mark ? { revision: mark.revision, orderedAt: mark.orderedAt, quantity: mark.quantity } : null };
+    return { ...item, order: mark ? { revision: mark.revision, orderedAt: mark.orderedAt, quantity: mark.quantity, estimateQuantity: mark.estimateQuantity ?? mark.quantity } : null };
   }) }));
+}
+
+export function steelOrderStatus(item: SteelItem): 'Not ordered' | 'Partially ordered' | 'Fully ordered' {
+  const amounts = steelOrderQuantities(item);
+  return amounts.orderedQuantity <= 0 ? 'Not ordered' : amounts.toOrderQuantity > 0 ? 'Partially ordered' : 'Fully ordered';
 }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { calculateEstimateRevisions, estimateRevisionDate } from '../src/lib/kpiEstimateRevisions.ts';
+import { calculateEstimateRevisions, estimateRevisionDate, isNumberedRevisionName } from '../src/lib/kpiEstimateRevisions.ts';
 
 const original = { proposalId: 'old', name: 'Original', isBaselineCandidate: true, primary: false, order: 1, updatedAt: '2026-01-03T12:00:00Z', hours: 1000, sales: 100000 };
 const primary = { proposalId: 'new', name: 'New Primary', primary: true, order: 2, updatedAt: '2026-10-05T12:00:00Z', hours: 1300, sales: 125000 };
@@ -172,6 +172,47 @@ test('later same-month edits without an identifiable original cannot count the f
   assert.equal(result.events[0].hours, null);
   assert.equal(result.events.some(event => event.basis === 'same-month-primary'), false);
   assert.match(result.issues.join(' '), /unique first estimate/);
+});
+
+test('a #2 or higher in the name marks a later version, so the only unnumbered estimate is the original', () => {
+  const unnamed = { ...original, isBaselineCandidate: false, name: 'Estimate - Pour And Place Only', updatedAt: '2026-11-11T19:51:13Z' };
+  const result = run([{ ...primary, name: 'Estimate #2' }, unnamed], '2026-01-02');
+  assert.deepEqual(result.events.map(e => [e.date, e.kind, e.hours, e.sales, e.basis]), [
+    ['2026-01-02', 'initial', 1000, 100000, 'unnumbered-estimate'], ['2026-10-05', 'rebid', 300, 25000, 'unnumbered-estimate'],
+  ]);
+  assert.equal(result.events[1].previous.proposalId, 'old');
+  assert.deepEqual(result.issues, []);
+  const three = run([{ ...primary, name: 'Estimate # 3' }, unnamed, { ...primary, proposalId: 'middle', primary: false, name: '#2 Estimate 6/16/26' }]);
+  assert.equal(three.events[1].previous.proposalId, 'old');
+  const unnumberedPrimary = run([{ ...unnamed, primary: true }, { ...primary, primary: false, name: 'Estimate #2' }]);
+  assert.deepEqual(unnumberedPrimary.events.map(e => [e.kind, e.hours]), [['initial', 1000]]);
+});
+
+test('numbering cannot pick an original when none or several estimates are unnumbered, and #1 is not a later version', () => {
+  const plain = { ...original, isBaselineCandidate: false };
+  for (const versions of [
+    [{ ...plain, name: '#2 Estimate' }, { ...primary, name: 'Estimate #3' }],
+    [plain, { ...plain, proposalId: 'other', name: 'Option B' }, { ...primary, name: 'Estimate #2' }],
+    [{ ...plain, name: 'Estimate #1' }, { ...primary, name: 'Estimate #01' }],
+  ]) {
+    const result = run(versions);
+    assert.equal(result.events[0].hours, null);
+    assert.match(result.issues.join(' '), /unique first estimate/);
+  }
+  assert.equal(isNumberedRevisionName('Estimate #12'), true);
+  assert.equal(isNumberedRevisionName('Estimate 2'), false);
+  assert.equal(isNumberedRevisionName(null), false);
+});
+
+test('a confirmed, named or first-created original takes precedence over name numbering', () => {
+  const numbered = { ...original, isBaselineCandidate: false, name: '#2 Estimate 6/16/26' };
+  const revised = { ...primary, name: 'Revised Estimate 11/10/26' };
+  const confirmed = calculateEstimateRevisions('2026-01-02', [numbered, revised], numbered.proposalId);
+  assert.equal(confirmed.events[1].basis, 'confirmed-original');
+  assert.equal(confirmed.events[1].previous.proposalId, 'old');
+  assert.equal(run([{ ...original, name: 'Original Estimate' }, { ...primary, name: 'Estimate #2' }, { ...revised, proposalId: 'third', primary: false }]).events[1].basis, 'original-estimate');
+  const dated = run([{ ...numbered, sourceCreatedAt: '2026-01-02T12:00:00Z' }, { ...revised, sourceCreatedAt: '2026-10-04T12:00:00Z' }]);
+  assert.equal(dated.events[1].basis, 'first-created-estimate');
 });
 
 test('missing prior hours does not turn into zero while independently valid dollars can calculate', () => {

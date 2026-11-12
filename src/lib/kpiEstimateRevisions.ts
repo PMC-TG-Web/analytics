@@ -14,7 +14,7 @@ export type EstimateRevisionVersion = {
 export type EstimateRevisionEvent = {
   date: string;
   kind: 'initial' | 'rebid';
-  basis?: 'same-month-primary' | 'original-estimate' | 'first-created-estimate' | 'confirmed-original';
+  basis?: 'same-month-primary' | 'original-estimate' | 'first-created-estimate' | 'confirmed-original' | 'unnumbered-estimate';
   hours: number | null;
   sales: number | null;
   previous: EstimateRevisionVersion | null;
@@ -22,6 +22,11 @@ export type EstimateRevisionEvent = {
 };
 const round = (value: number, digits: number) => Number(value.toFixed(digits));
 const valid = (value: number | null) => value !== null && Number.isFinite(value) && value >= 0;
+
+/** Owner naming rule: a "#2", "#3", … in an estimate's name marks a later version, never the original. */
+export function isNumberedRevisionName(name: string | null | undefined): boolean {
+  return [...String(name ?? '').matchAll(/#\s*(\d+)/g)].some(match => Number(match[1]) >= 2);
+}
 
 export function estimateRevisionDate(timestamp: string | null): string | null {
   if (!timestamp || !Number.isFinite(Date.parse(timestamp))) return null;
@@ -31,6 +36,7 @@ export function estimateRevisionDate(timestamp: string | null): string | null {
 /** The original stays in the project's Created Date month. Versions updated
  * within that initial month count the unique primary once. Later revisions
  * always compare with the named original, or the first source-created estimate.
+ * Without either, the single estimate whose name has no #2/#3/… is the original.
  * Display order, proposal IDs and local ingestion times cannot establish creation.
  */
 export function calculateEstimateRevisions(createdDate: string, versions: EstimateRevisionVersion[], confirmedOriginalId: string | null = null) {
@@ -64,7 +70,7 @@ export function calculateEstimateRevisions(createdDate: string, versions: Estima
   }
   const originals = estimates.filter(version => version.isBaselineCandidate);
   let previous: EstimateRevisionVersion;
-  let basis: 'original-estimate' | 'first-created-estimate' | 'confirmed-original';
+  let basis: 'original-estimate' | 'first-created-estimate' | 'confirmed-original' | 'unnumbered-estimate';
   if (confirmed.length === 1) {
     previous = confirmed[0];
     basis = 'confirmed-original';
@@ -77,10 +83,16 @@ export function calculateEstimateRevisions(createdDate: string, versions: Estima
     const byCreation = estimates.map(version => ({ version, time: Date.parse(version.sourceCreatedAt ?? '') }))
       .sort((a, b) => a.time - b.time);
     if (byCreation.some(row => !Number.isFinite(row.time)) || byCreation[0].time === byCreation[1].time) {
-      return { events: unavailable(), issues: [...issues, 'No original estimate is identified, and source creation dates do not identify a unique first estimate.'], primary };
+      const unnumbered = estimates.filter(version => !isNumberedRevisionName(version.name));
+      if (unnumbered.length !== 1) {
+        return { events: unavailable(), issues: [...issues, 'No original estimate is identified, and source creation dates do not identify a unique first estimate.'], primary };
+      }
+      previous = unnumbered[0];
+      basis = 'unnumbered-estimate';
+    } else {
+      previous = byCreation[0].version;
+      basis = 'first-created-estimate';
     }
-    previous = byCreation[0].version;
-    basis = 'first-created-estimate';
   }
   if (previous.proposalId === primary.proposalId) {
     return { events: [{ date: createdDate, kind: 'initial' as const, basis, ...current, previous: null, revised: primary }], issues, primary };

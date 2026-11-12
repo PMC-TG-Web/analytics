@@ -19,6 +19,7 @@ import {
 } from "@/lib/kpiCardMonths";
 import { isKpiPercentageRow, sumKpiCardValues, weightedKpiPercentage } from "@/lib/kpiCardTotals";
 import { KPI_LEADTIME_HOURS_PER_MONTH, kpiMonthKey, leadtimeYearValues, wipHoursFromMonth } from "@/lib/kpiLeadtime";
+import { formatSignedPercent, previousKpiMonth, salesPercentOfGoal } from "@/lib/kpiSalesGoal";
 const Line = dynamic(() => import('react-chartjs-2').then(mod => mod.Line), { ssr: false });
 import {
   Chart as ChartJS,
@@ -1646,6 +1647,20 @@ function KPIPageContent({
         return <KpiScheduledSalesRow key={rowIndex} months={monthNames.map((_, index) => ({ year: selectedManagedYear, month: index + 1 }))} data={wipScheduledSales} onDetails={openScheduledSalesDetails} />;
       }
 
+      // Sales % of Goal: the last completed month is calculated year to date from the
+      // displayed Actual Sales row and the saved Goal row; other months stay as recorded.
+      const isSalesPercentOfGoalRow = normalizeCardName(cardName) === normalizeCardName("Sales By Month") && /sales\s*%\s*of\s*goal/.test(rowLabel);
+      const salesGoalMonth = previousKpiMonth(currentKpiMonth);
+      if (isSalesPercentOfGoalRow) {
+        const goalRow = cardLoadData[normalizeCardName(cardName)]?.find((r: { kpi?: string }) => normalizeCardName(String(r?.kpi || "")) === "goal");
+        const percent = actualSales.report
+          ? salesPercentOfGoal(actualSales.report.months, getKpiCardYearValues(goalRow?.values, salesGoalMonth.slice(0, 4)), salesGoalMonth)
+          : null;
+        const live = actualSales.error ? "Unavailable" : !actualSales.report ? "…" : percent === null ? "Unavailable" : formatSignedPercent(percent);
+        rowValues = leadtimeYearValues(selectedManagedYear, salesGoalMonth, rowValues, live);
+      }
+      const isLiveSalesGoalMonth = (monthIndex: number) => isSalesPercentOfGoalRow && `${selectedManagedYear}-${String(monthIndex + 1).padStart(2, "0")}` === salesGoalMonth;
+
       const isPercentage = isKpiPercentageRow(row.kpi, row.values);
 
       let total: number | null;
@@ -1674,7 +1689,7 @@ function KPIPageContent({
           const value = rowValues[idx] ?? "";
           const formatted = formatCardValue(cardName, row.kpi, value);
           return (
-            <td key={idx} style={{ padding: "6px 2px", textAlign: "center", color: formatted !== "—" ? rowColor : "#999", fontWeight: formatted !== "—" ? 700 : 400, fontSize: 12 }}>
+            <td key={idx} title={isLiveSalesGoalMonth(idx) ? "Calculated: year-to-date Actual Sales ÷ year-to-date Goal − 1, January through this month" : undefined} style={{ padding: "6px 2px", textAlign: "center", color: formatted !== "—" ? rowColor : "#999", fontWeight: formatted !== "—" ? 700 : 400, fontSize: 12 }}>
               {formatted}
             </td>
           );

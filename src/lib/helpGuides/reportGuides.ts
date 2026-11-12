@@ -56,7 +56,7 @@ export const reportGuides = [
     checks: ['Check the selected dates, project, month, code, and source entries before using the totals. Invoice allocation uses only the hours within the selected dates, even for a partial month. Invalid or reversed dates show an error; select an ordered range of up to 24 calendar months. Warnings identify excluded entries or missing coding.', 'An empty result means no matching saved entries for those filters. Verify the range and project, then check the original timesheet or productivity record if hours are missing.'],
   }),
   defineGuide('kpi', {
-    updated: '2026-11-11',
+    updated: '2026-11-12',
     purpose: 'Review monthly business performance against goals. Selling work, earning revenue, using labor, and producing profit are separate measures; read the row labels before comparing them.',
     steps: [
       { title: 'Choose the year', body: 'Read each table heading. Sales by Month resolves All Years to the current year rather than combining every year.' },
@@ -80,6 +80,7 @@ export const reportGuides = [
       ['Win Rate months', 'Cumulative January through that month by Created Date, using current statuses. Reporting starts January 2026. This is not a historical month-end status snapshot.'],
       ['Total percentage', 'Total wins divided by total eligible projects, not an average of monthly percentages. Future months are blank.'],
       ['Blank percentage totals', 'Saved percentage rows, such as Gross Profit, Profit, and percent-of-goal rows, leave Total blank. Monthly percentages cannot be added or averaged into a yearly rate. For the year-to-date result, read the latest month in the matching YTD row.'],
+      ['Sales % of Goal ($)', 'In the last completed month, this is calculated year to date: Actual Sales from January through that month divided by the Goal for the same months, minus 100%. +42% means sales are 42% ahead of the year-to-date goal; a negative value is behind. It uses the Actual Sales row shown on this page (by Contract Date) and the saved Goal row, so it changes when a Contract Date, sales value, or goal changes. The calculation moves forward one month automatically; in January it appears in December of the prior year. Other months show only values recorded on Manage, which may have used earlier manually entered sales. Unavailable means Actual Sales could not load or a monthly Goal is missing. Total stays blank.'],
       ['Leadtimes by Month', 'In the current month, Leadtime Hours is the saved WIP Scheduled Hours for this month and every later month, across years, using the same saved allocations and historical imports as the Scheduled Hours row. Leadtime Months divides those hours by 3,938. Unscheduled Hours is the Total unscheduled hours from the Not scheduled list and is not included in Leadtime Hours. The calculation moves to the new month automatically. Earlier months show only the values recorded on Manage; they are not rebuilt from today’s WIP plans, so an unrecorded month is blank. Latest shows the most recent month with a value.'],
       ['Actual versus goal', 'The result versus its target. Read units carefully: dollars, hours, percentages, and lead times are not interchangeable.'],
     ],

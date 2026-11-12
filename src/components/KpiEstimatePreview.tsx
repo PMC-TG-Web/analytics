@@ -80,7 +80,7 @@ function EstimateCalculationContents({ year, data, selection, setSelection, loca
               const missing = metric === 'sales' ? value.missingSales : metric === 'hours' ? value.missingHours : 0;
               return <td key={index} style={cell} title={missing ? `${missing} project(s) missing ${metric}; displayed amount is a partial total.` : undefined}>
                 <button type="button" style={button} onClick={() => setSelection({ year: targetYear, month: keys[index] ?? null })}>
-                  {missing ? 'Known ' : ''}{format(value[metric], metric === 'sales')}{missing ? '*' : ''}
+                  {format(value[metric], metric === 'sales')}{missing ? '*' : ''}
                 </button>
               </td>;
             })}
@@ -88,7 +88,7 @@ function EstimateCalculationContents({ year, data, selection, setSelection, loca
         })}</tbody>
       </table>
     </div>
-    <p style={{ margin: '6px 0' }}>* Known amounts are partial totals where a project has unavailable or conflicting data. Click an amount to inspect the original estimates and rebid changes. Project counts are distinct within each month and year.</p>
+    <p style={{ margin: '6px 0' }}>* Amounts marked with an asterisk are partial totals where a project has unavailable or conflicting data. Click an amount to inspect the original estimates and rebid changes. Project counts are distinct within each month and year.</p>
     {selected && <section aria-label="Estimate preview project breakdown" style={{ marginTop: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><strong>Estimate contributions · {selected.month ?? (selected.year || 'All years')}</strong><button type="button" style={button} onClick={() => setSelection(null)}>Close breakdown</button></div>
       <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse' }}>

@@ -55,7 +55,7 @@ test('local estimate preview shows full hours and dollars, flags gaps, inspects 
     await page.getByText('New calculation starts October 2026.', { exact: true }).waitFor();
     assert.equal(await table.getByRole('row', { name: /^2026 Bids Submitted \$/ }).locator('td').first().innerText(), '—');
     assert.equal(await hoursRow.locator('td').nth(9).innerText(), '100');
-    assert.equal(await hoursRow.locator('td').last().innerText(), 'Known 100*');
+    assert.equal(await hoursRow.locator('td').last().innerText(), '100*');
     assert.equal(await table.getByRole('row', { name: /^2026 Distinct projects/ }).locator('td').last().innerText(), '2');
     await hoursRow.locator('td').nth(10).getByRole('button').click();
     const details = page.getByRole('region', { name: 'Estimate preview project breakdown' });
@@ -91,10 +91,10 @@ test('local estimate preview shows full hours and dollars, flags gaps, inspects 
     await page.getByLabel('Year').selectOption('2026');
     hours = 1200;
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
-    await page.waitForFunction(() => document.querySelector('tbody tr:nth-child(2) td:last-child')?.textContent === 'Known 200*');
+    await page.waitForFunction(() => document.querySelector('tbody tr:nth-child(2) td:last-child')?.textContent === '200*');
     sameMonth = true;
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
-    await page.waitForFunction(() => document.querySelector('tbody tr:nth-child(2) td:last-child')?.textContent === 'Known 1,200*');
+    await page.waitForFunction(() => document.querySelector('tbody tr:nth-child(2) td:last-child')?.textContent === '1,200*');
     await hoursRow.locator('td').nth(9).getByRole('button').click();
     await details.getByText(/Primary estimate, counted once/).waitFor();
     await details.getByText(/full primary counted once in its Created Date month, October 2026/).waitFor();

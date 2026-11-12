@@ -2055,7 +2055,6 @@ function KPIPageContent({
                         <td style={{ padding: "4px 6px", textAlign: "center", color: (yearIndex * 2 + 1) % 2 === 0 ? "#15616D" : "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
                           {bidSubmittedMonthValues.some(row => row.amount.calculated) ? <div>
                             <KpiEstimateAmount amount={totalEstimateAmounts(bidSubmittedMonthValues.map(row => row.amount))} dollars onDetails={() => openEstimateDetails(year, null)} />
-                            <div style={{ fontSize: 10 }}>YTD <KpiEstimateAmount amount={totalEstimateAmounts(bidSubmittedMonthValues.filter(row => row.month <= ytdMonthCutoff).map(row => row.amount))} dollars onDetails={() => openEstimateDetails(year, null)} /></div>
                           </div> : bidSubmittedTotal > 0 && !hasManualBidSubmitted ? (
                             <button
                               type="button"
@@ -2150,7 +2149,6 @@ function KPIPageContent({
                         <td style={{ padding: "4px 6px", textAlign: "center", color: "#E06C00", fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
                           {bidSubmittedValues.some(row => row.amount.calculated) ? <div>
                             <KpiEstimateAmount amount={totalEstimateAmounts(bidSubmittedValues.map(row => row.amount))} dollars onDetails={() => openEstimateDetails('', null)} />
-                            <div style={{ fontSize: 10 }}>YTD <KpiEstimateAmount amount={totalEstimateAmounts(bidSubmittedValues.filter(row => row.month <= ytdMonthCutoff).map(row => row.amount))} dollars onDetails={() => openEstimateDetails('', null)} /></div>
                           </div> : bidSubmittedTotal > 0 && !hasManualBidSubmitted ? (
                             <button
                               type="button"
@@ -2273,7 +2271,6 @@ function KPIPageContent({
                         <td style={{ padding: "4px 6px", textAlign: "center", color: bidsColor, fontWeight: 700, fontSize: 12, borderLeft: "2px solid #ddd" }}>
                           {bidsMonthValues.some(row => row.amount.calculated) ? <div>
                             <KpiEstimateAmount amount={totalEstimateAmounts(bidsMonthValues.map(row => row.amount))} dollars onDetails={() => openEstimateDetails(year, null)} />
-                            <div style={{ fontSize: 10 }}>YTD <KpiEstimateAmount amount={totalEstimateAmounts(bidsMonthValues.filter(row => row.month <= ytdMonthCutoff).map(row => row.amount))} dollars onDetails={() => openEstimateDetails(year, null)} /></div>
                           </div> : bidsTotal > 0 && !hasManualBidsSubmitted ? (
                             <button
                               type="button"
@@ -2472,7 +2469,6 @@ function KPIPageContent({
                                 .reduce((sum, { hours }) => sum + hours, 0);
                               return actHoursMonthValues.some(row => row.amount.calculated) ? <div>
                                 <KpiEstimateAmount amount={totalEstimateAmounts(actHoursMonthValues.map(row => row.amount))} onDetails={() => openEstimateDetails(yearFilter, null)} />
-                                <div style={{ fontSize: 10 }}>YTD <KpiEstimateAmount amount={totalEstimateAmounts(actHoursMonthValues.filter(row => row.month <= ytdMonthCutoff).map(row => row.amount))} onDetails={() => openEstimateDetails(yearFilter, null)} /></div>
                               </div> : total > 0 && !hasManualActHours ? (
                                 <button
                                   type="button"

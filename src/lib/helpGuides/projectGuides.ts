@@ -590,7 +590,7 @@ export const projectGuides = [
     ],
   }),
   defineGuide('commitment-maker', {
-    updated: '2026-11-12',
+    updated: '2026-11-13',
     purpose: 'Create purchase orders in Procore without typing each line by hand. The page reads a project’s estimate, or the lines of an approved change order, shows you exactly what it will create, checks every line against the project’s budget codes, and then creates the purchase orders in Procore as Approved. Unlike most pages here, the final button changes Procore, so read the preview carefully. Open the page with the **Commitment Maker** button on the Commitments page.',
     steps: [
       {
@@ -611,6 +611,7 @@ export const projectGuides = [
         body: [
           'Click **Preview and Validate**. Nothing is created or changed in Procore at this step.',
           'For a primary estimate, **Refresh from Procore** rereads the estimate first. Use it when the estimate was edited in Procore.',
+          'If you changed a budget code in Procore Estimating, send the updated estimate to the project budget again before previewing. Changing the estimate alone does not update the project budget, and **Refresh from Procore** does not send the estimate to the budget.',
         ],
       },
       {
@@ -666,7 +667,7 @@ export const projectGuides = [
     example: 'An approved change order for extra curb belongs on existing PO 12. You choose **Approved Change Order**, the change order, **Existing Purchase Order** and PO 12, then click **Preview and Validate**. The preview shows one row marked **Append lines** with three lines totaling $4,200. You tick the review box and click **Add PCO Lines to Existing PO**. Choosing **New Purchase Order** instead would have created a separate purchase order.',
     checks: [
       'A message appears where the estimate name should be, such as “No primary estimate is marked in Procore.” Mark the right estimate as Primary in Procore Bid Board, then click **Refresh from Procore**.',
-      'A line “requires exactly one” budget code, or “is not in this project’s WBS”. Add or correct that budget code on the project in Procore, then preview again.',
+      'A line “requires exactly one” budget code, “did not resolve to one required code”, or “is not in this project’s budget/WBS”. Check the project’s **Budget** in Procore, even if the code already looks correct in Estimating. If you changed the estimate’s budget code, send the updated estimate to the budget again. Confirm the required code is in the project budget, then click **Preview and Validate**. For example, changing Somero from .C to .LS in the estimate does not update a project budget that still has .C.',
       '“The base estimate was already imported”. A project’s estimate can be turned into purchase orders once. For added scope, use **Approved Change Order**.',
       '“This change order was already added to PO” and a number. A change order can be used once. If it went to the wrong purchase order, click **Delete from PO**, confirm, and add it again.',
       'You changed the project, source, file, sheet or grouping. The preview is cleared. Click **Preview and Validate** again before creating.',

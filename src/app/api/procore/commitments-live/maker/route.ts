@@ -97,6 +97,7 @@ type CommitmentTarget = "new_purchase_order" | "existing_purchase_order";
 const MAX_WORKBOOK_BYTES = 15 * 1024 * 1024;
 const MAX_GROUPS = 100;
 const MAX_LINE_ITEMS = 5_000;
+const PROJECT_BUDGET_CODE_HELP = "Check the project's Budget in Procore. If you changed the budget code in Estimating, send the updated estimate to the budget again; changing the estimate alone does not update the project budget. Confirm the required code is in the project budget, then preview again.";
 
 class ProcoreMutationOutcomeUnknownError extends Error {
   constructor(message: string) {
@@ -1154,12 +1155,12 @@ async function buildPlan(params: {
       const match = resolveWbs(line, wbsIndex);
       if (!match) {
         if (commitmentMakerRequiresMaterialCode(line.uom)) {
-          validationErrors.push(`Group "${group.name}": "${line.description}" uses CY and requires exactly one ${line.costCode}.M Budget Code in this project. Add or correct that code in Procore, then preview again.`);
+          validationErrors.push(`Group "${group.name}": "${line.description}" uses CY and requires exactly one ${line.costCode}.M Budget Code in this project's budget/WBS. ${PROJECT_BUDGET_CODE_HELP}`);
           plannedLines.push({ ...line, wbsCodeId: null, wbsFlatCode: null });
           continue;
         }
         if (normalizeCommitmentMakerCostType(line.costType) === "LS") {
-          validationErrors.push(`Group "${group.name}": "${line.description}" requires exactly one ${line.costCode}.LS Budget Code in this project. Add or correct that code in Procore, then preview again.`);
+          validationErrors.push(`Group "${group.name}": "${line.description}" requires exactly one ${line.costCode}.LS Budget Code in this project's budget/WBS. ${PROJECT_BUDGET_CODE_HELP}`);
           plannedLines.push({ ...line, wbsCodeId: null, wbsFlatCode: null });
           continue;
         }
@@ -1167,13 +1168,13 @@ async function buildPlan(params: {
         const candidateCodes = [...new Set(candidates.map((candidate) => candidate.flatCode).filter(Boolean))];
         if (candidateCodes.length > 0) {
           validationErrors.push(
-            `Group "${group.name}": ${line.costCode} did not resolve to one required Procore Budget Code (${candidateCodes.join(", ")}).`
+            `Group "${group.name}": ${line.costCode} did not resolve to one required code in this project's budget/WBS (${candidateCodes.join(", ")}). ${PROJECT_BUDGET_CODE_HELP}`
           );
           plannedLines.push({ ...line, wbsCodeId: null, wbsFlatCode: null });
           continue;
         }
         validationErrors.push(
-          `Group "${group.name}": ${line.costCode} is not in this project's WBS, so its required Procore Budget Code cannot be assigned.`
+          `Group "${group.name}": ${line.costCode} is not in this project's budget/WBS, so its required Procore Budget Code cannot be assigned. ${PROJECT_BUDGET_CODE_HELP}`
         );
         plannedLines.push({ ...line, wbsCodeId: null, wbsFlatCode: null });
         continue;

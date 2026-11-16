@@ -16,7 +16,14 @@ export type SteelProject = {
   bidBoardId: string; proposalId: string; started: boolean | null; dailyLogs: number; timesheets: number;
   firstActivity: string | null; plannedStart: string | null; planChanged: boolean; items: SteelItem[];
   issues: string[]; estimateSyncedAt: string | null;
+  /** Bid Board status (always In Progress for listed jobs) and the Procore project's status, which shows jobs past construction. */
+  bidBoardStatus: string; projectStatus: string;
 };
+/** Listed jobs are normally under construction; any other Procore project status (such as Post-Construction) is worth pointing out. */
+export function steelJobOffConstruction(project: Pick<SteelProject, 'projectStatus'>): boolean {
+  const status = clean(project.projectStatus).toLowerCase();
+  return !!status && status !== 'course of construction';
+}
 export type SteelReport = { projects: SteelProject[]; loadedAt: string; localOnly: boolean };
 export type SteelTotal = SteelItem & { startedQuantity: number; notStartedQuantity: number; orderedQuantity: number; toOrderQuantity: number; changedOrders: number; projects: (SteelItem & { project: SteelProject })[] };
 const record = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -124,6 +131,7 @@ export function buildSteelNeeds(companyId: string, projects: WipProject[], lines
       dailyLogs: entries?.dailyLogs || 0, timesheets: entries?.timesheets || 0, firstActivity: entries?.firstActivity || null,
       plannedStart, planChanged, items: [...items.values()].sort((a, b) => a.description.localeCompare(b.description) || a.unit.localeCompare(b.unit)),
       issues, estimateSyncedAt: sourceLines.map(line => line.syncedAt).sort()[0] || null,
+      bidBoardStatus: clean(project.bidBoardStatus), projectStatus: clean(project.projectStatus),
     };
   }).sort((a, b) => (a.plannedStart || '9999').localeCompare(b.plannedStart || '9999') || a.projectName.localeCompare(b.projectName));
 }
@@ -170,6 +178,37 @@ export function steelOrderQuantities(item: Pick<SteelItem, 'quantity' | 'order'>
     changed: !!item.order?.orderedAt && (item.order.estimateQuantity ?? saved) !== item.quantity };
 }
 
+export type SteelJobTotal = {
+  kind: SteelKind; unit: string; needed: number; ordered: number; left: number;
+  /** Pieces converted to bundles, for rebar with a known bundle size only. partial marks a line that also holds sizes without one. */
+  bundles: { needed: number; ordered: number; left: number; partial: boolean } | null;
+};
+/**
+ * One job's header totals, one line per material type and unit so pieces, length and weight are never added together.
+ * Left is summed from each material's own remaining need, so extra ordered on one size cannot cover another.
+ * Bundles are plain conversions (pieces / pieces per bundle) added across bar sizes; nothing is rounded up.
+ */
+export function steelJobTotals(project: Pick<SteelProject, 'items'>): SteelJobTotal[] {
+  const totals = new Map<string, SteelJobTotal & { sized: number; unsized: number; packs: { needed: number; ordered: number; left: number } }>();
+  for (const item of project.items) {
+    const key = JSON.stringify([item.kind, item.unit]), amounts = steelOrderQuantities(item);
+    const total = totals.get(key) || { kind: item.kind, unit: item.unit, needed: 0, ordered: 0, left: 0, bundles: null, sized: 0, unsized: 0, packs: { needed: 0, ordered: 0, left: 0 } };
+    total.needed += item.quantity; total.ordered += amounts.orderedQuantity; total.left += amounts.toOrderQuantity;
+    const needed = steelBundles(item, item.quantity);
+    if (needed) {
+      total.sized++;
+      total.packs.needed += needed.equivalent;
+      total.packs.ordered += steelBundles(item, amounts.orderedQuantity)?.equivalent || 0;
+      total.packs.left += steelBundles(item, amounts.toOrderQuantity)?.equivalent || 0;
+    } else total.unsized++;
+    totals.set(key, total);
+  }
+  const round = (value: number) => Math.round(value * 10000) / 10000;
+  return [...totals.values()].map(({ sized, unsized, packs, ...total }) => ({ ...total, needed: round(total.needed), ordered: round(total.ordered), left: round(total.left),
+    bundles: sized ? { needed: round(packs.needed), ordered: round(packs.ordered), left: round(packs.left), partial: unsized > 0 } : null,
+  })).sort((a, b) => a.kind.localeCompare(b.kind) || a.unit.localeCompare(b.unit));
+}
+
 type SteelOrderLogRow = { id: string; kind: string; quantity: unknown; createdAt: Date | string; createdBy: string; voidedAt?: Date | string | null; voidedBy?: string | null };
 export function steelOrderLogEntry(row: SteelOrderLogRow): SteelOrderLogEntry {
   const iso = (value: Date | string) => typeof value === 'string' ? value : value.toISOString();
@@ -201,11 +240,11 @@ export function steelNeedsCsv(projects: SteelProject[]): string {
     const text = String(value ?? '');
     return `"${(/^[=+\-@\t\r]/.test(text) ? "'" : '') + text.replaceAll('"', '""')}"`;
   };
-  const rows: unknown[][] = [['Description', 'Material', 'Unit', 'Needed (full estimate)', 'Project', 'Project number', 'Status', 'WIP planned start month', 'First field entry', 'Procore project ID', 'Bid Board ID', 'Estimate ID', 'Review notes', 'Has order', 'Last order update (Eastern)', 'Ordered quantity']];
+  const rows: unknown[][] = [['Description', 'Material', 'Unit', 'Needed (full estimate)', 'Project', 'Project number', 'Status', 'Bid Board status', 'Procore project status', 'WIP planned start month', 'First field entry', 'Procore project ID', 'Bid Board ID', 'Estimate ID', 'Review notes', 'Has order', 'Last order update (Eastern)', 'Ordered quantity']];
   rows[0].push('Estimate at order update', 'Order status', 'Left to order', 'Order log (Eastern)', 'Pieces per bundle', 'Full estimate bundle equivalents', 'Whole bundles to order for project (rounded up)', 'Pieces in whole bundles to order', 'Extra pieces from rounding');
   for (const project of projects) for (const item of project.items) {
     const full = steelBundles(item, item.quantity), needed = steelBundles(item, steelOrderQuantities(item).toOrderQuantity);
-    rows.push([item.description, item.kind, item.unit, item.quantity, project.projectName, project.projectNumber, project.started ? 'Started' : 'Not started', project.plannedStart, project.firstActivity, project.projectId, project.bidBoardId, project.proposalId, project.issues.join(' '), item.order?.orderedAt ? 'Yes' : 'No', item.order?.orderedAt ? steelOrderedDate(item.order.orderedAt) : '', item.order?.quantity ?? '',
+    rows.push([item.description, item.kind, item.unit, item.quantity, project.projectName, project.projectNumber, project.started ? 'Started' : 'Not started', project.bidBoardStatus ?? '', project.projectStatus ?? '', project.plannedStart, project.firstActivity, project.projectId, project.bidBoardId, project.proposalId, project.issues.join(' '), item.order?.orderedAt ? 'Yes' : 'No', item.order?.orderedAt ? steelOrderedDate(item.order.orderedAt) : '', item.order?.quantity ?? '',
       item.order?.estimateQuantity ?? item.order?.quantity ?? '', steelOrderStatus(item), steelOrderQuantities(item).toOrderQuantity, steelOrderLogText(item),
       full?.piecesPerBundle ?? '', full ? Math.round(full.equivalent * 10000) / 10000 : '', needed?.wholeBundles ?? '', needed?.wholeBundlePieces ?? '', needed?.extraPieces ?? '' ]);
   }

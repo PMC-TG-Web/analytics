@@ -9,10 +9,10 @@ const enabled = process.env.STEEL_NEEDS_BROWSER_TEST === '1';
 const base = process.env.STEEL_NEEDS_BROWSER_BASE || 'http://localhost:3000';
 const actor = 'todd@pmcdecor.com', stamp = '2026-11-11T02:00:00Z';
 const source = { bidBoardId: 'b1', proposalId: 'e1', estimatedHours: 100, projectManagementHours: 0, allocatableHours: 100 };
-const project = { key: 'p1', projectId: 'p1', projectName: 'Warehouse', projectNumber: '100', customer: 'Customer', projectManager: '', source, issue: null, plan: { revision: 1, source, allocations: [{ month: '2026-11', percent: 100 }], notes: '', updatedBy: '', updatedAt: '2026-11-10' } };
+const project = { key: 'p1', projectId: 'p1', projectName: 'Warehouse', projectNumber: '100', customer: 'Customer', projectManager: '', source, issue: null, bidBoardStatus: 'In Progress', projectStatus: 'Course of Construction', plan: { revision: 1, source, allocations: [{ month: '2026-11', percent: 100 }], notes: '', updatedBy: '', updatedAt: '2026-11-10' } };
 const line = { companyId: 'company', bidBoardProjectId: 'b1', proposalId: 'e1', lineItemId: 'l1', name: "#4 Rebar - 20' Pc", uom: 'EA', quantity: 100, syncedAt: '2026-11-10T12:00:00Z', payload: {} };
 const projects = buildSteelNeeds('company', [project,
-  { ...project, key: 'p2', projectId: 'p2', projectName: 'School', source: { ...source, bidBoardId: 'b2' }, plan: null },
+  { ...project, key: 'p2', projectId: 'p2', projectName: 'School', projectStatus: 'Post-Construction', source: { ...source, bidBoardId: 'b2' }, plan: null },
 ], [{ ...line, quantity: 60 }, { ...line, lineItemId: 'footer', name: '#4 Rebar 2 Continuous Footer', quantity: 40 }, { ...line, bidBoardProjectId: 'b2', name: '#4 Rebar 10 ft Wall', quantity: 50 },
   { ...line, lineItemId: 'wire', name: "Wire Mesh 6 ga (2.9x2.9 6x6) 5'x10' Sheet", quantity: 12 },
   { ...line, lineItemId: 'wire-sog', name: 'Wire Mesh 6 ga - House Keeping Pds', quantity: 8 },
@@ -72,7 +72,7 @@ test('Steel needs browser: by-job orders, order log, undo, corrections, buying l
   });
   const material = (name, job) => {
     const label = `${name} for ${job}`, group = page.getByRole('group', { name: label, exact: true });
-    return { group, stats: () => group.locator('dd').allInnerTexts(),
+    return { group, stats: () => group.locator('dd').evaluateAll(cells => cells.map(cell => cell.firstChild.textContent)),
       quantity: page.getByRole('spinbutton', { name: `Order quantity for ${label}`, exact: true }),
       add: page.getByRole('button', { name: `Add order for ${label}`, exact: true }),
       rest: page.getByRole('button', { name: `Order the rest of ${label}`, exact: true }),
@@ -81,8 +81,10 @@ test('Steel needs browser: by-job orders, order log, undo, corrections, buying l
       setTotal: page.getByRole('button', { name: `Set total ordered for ${label}`, exact: true }) };
   };
   const job = name => page.getByRole('region', { name: `Steel for ${name}`, exact: true });
+  // Header totals: one line per material type and unit, with a bundle line for rebar.
+  const totals = name => job(name).locator(`dl[aria-label="Totals for ${name}"] > div`).evaluateAll(rows => rows.map(row => [...row.children].map(cell => cell.textContent)));
   const refresh = page.getByRole('button', { name: 'Refresh saved data' });
-  const exportList = page.getByRole('button', { name: 'Export buying list' });
+  const exportOrders = page.getByRole('button', { name: /^Export orders/ }), exportArea = page.getByRole('region', { name: 'Export orders', exact: true });
   try {
     await page.goto(`${base}/steel-needs`, { waitUntil: 'networkidle' });
     const rebar = material(line.name, 'Warehouse'), school = material(line.name, 'School');
@@ -95,15 +97,25 @@ test('Steel needs browser: by-job orders, order log, undo, corrections, buying l
     assert.equal(await rebar.group.isVisible(), false); assert.equal(await school.group.isVisible(), false);
     assert.equal(await collapseAll.isDisabled(), true);
     await page.getByText('2 jobs · click a job to open it', { exact: true }).waitFor();
+    // A collapsed job still shows what it needs, what is ordered and what is left, with bundles for rebar. Units are never mixed.
+    assert.deepEqual(await totals('Warehouse'), [['Rebar EA', 'Needed 100', 'Ordered 0', 'Left 100'], ['Bundles', '0.67', '0', '0.67'], ['Wire EA', 'Needed 42', 'Ordered 5', 'Left 37']]);
+    assert.deepEqual(await totals('School'), [['Rebar EA', 'Needed 50', 'Ordered 0', 'Left 50'], ['Bundles', '0.33', '0', '0.33']]);
     await job('Warehouse').getByText('4 of 4 left to order', { exact: true }).waitFor();
     const started = job('Warehouse').getByText('Started', { exact: true }), notStarted = job('School').getByText('No start month', { exact: true });
     await started.waitFor(); await notStarted.waitFor();
     assert.match(await started.getAttribute('class'), /text-emerald-700/, 'started work is green');
     assert.match(await notStarted.getAttribute('class'), /text-red-700/, 'work not started is red');
     assert.doesNotMatch(await job('Warehouse').innerText(), /Starts /, 'a started job no longer shows its planned start month');
+    // Each job shows its Bid Board status and its Procore project status; a job past construction stands out.
+    await job('Warehouse').getByText('Bid Board: In Progress', { exact: true }).waitFor();
+    const building = job('Warehouse').getByText('Procore: Course of Construction', { exact: true }), finished = job('School').getByText('Procore: Post-Construction', { exact: true });
+    await building.waitFor(); await finished.waitFor();
+    assert.match(await finished.getAttribute('class'), /bg-violet-100/, 'a job past construction is highlighted');
+    assert.doesNotMatch(await building.getAttribute('class') || '', /bg-violet-100/);
     await mkdir('outputs/steel-needs', { recursive: true });
     await page.screenshot({ path: 'outputs/steel-needs/order-log-collapsed.png', fullPage: true });
-    await warehouseToggle.click();
+    // Anywhere on a job's line opens it, not only its name.
+    await started.click();
     assert.equal(await rebar.group.isVisible(), true); assert.equal(await school.group.isVisible(), false);
     await page.getByText('2 jobs · 1 open', { exact: true }).waitFor();
     await expandAll.click();
@@ -121,7 +133,7 @@ test('Steel needs browser: by-job orders, order log, undo, corrections, buying l
     await rebar.group.getByText('Saving…', { exact: true }).waitFor();
     assert.equal(await rebar.quantity.isDisabled(), true);
     assert.deepEqual(await rebar.stats(), ['100', '0', '100'], 'only confirmed saves change totals');
-    assert.equal(await refresh.isDisabled(), true); assert.equal(await exportList.isDisabled(), true);
+    assert.equal(await refresh.isDisabled(), true);
     await school.rest.click();
     await settle(school.stats, ['50', '50', '0']);
     await job('School').getByText('All steel ordered', { exact: true }).waitFor();
@@ -134,6 +146,12 @@ test('Steel needs browser: by-job orders, order log, undo, corrections, buying l
     await rebar.quantity.fill('40');
     await rebar.add.click();
     await settle(rebar.stats, ['100', '70', '30']);
+    // The job header follows confirmed orders, and the material line shows its own bundle figures.
+    await settle(() => totals('Warehouse'), [['Rebar EA', 'Needed 100', 'Ordered 70', 'Left 30'], ['Bundles', '0.67', '0.47', '0.2'], ['Wire EA', 'Needed 42', 'Ordered 5', 'Left 37']]);
+    // Bundles are a plain conversion of pieces: no whole-bundle rounding and no extra pieces.
+    await rebar.group.getByText('0.47 bundles', { exact: true }).waitFor();
+    await rebar.group.getByText('0.2 bundles', { exact: true }).waitFor();
+    assert.doesNotMatch(await page.getByRole('main').innerText(), /whole bundle|extra|equiv/);
     await rebar.group.getByText('Order log · 2 orders · last change 11/10/2026', { exact: true }).click();
     assert.deepEqual(await rebar.log.getByRole('listitem').evaluateAll(rows => rows.map(row => row.firstElementChild.textContent)),
       [`11/10/2026 · Ordered 30 pieces · ${actor}`, `11/10/2026 · Ordered 40 pieces · ${actor}`]);
@@ -207,14 +225,15 @@ test('Steel needs browser: by-job orders, order log, undo, corrections, buying l
     await settle(school.stats, ['50', '0', '50']);
     await school.group.getByText('Order log · no orders now', { exact: true }).waitFor();
 
-    // Buying list: one line per material, added up across jobs, with whole bundles on what is left.
+    // Buying list: one line per material, added up across jobs, with what is left converted to bundles.
     await page.getByRole('button', { name: 'Buying list', exact: true }).click();
     const buying = page.getByRole('table', { name: 'Steel buying list', exact: true });
     const buyingRebar = buying.getByRole('row').filter({ has: page.locator('summary').filter({ hasText: line.name }) });
     const buyingValues = () => buyingRebar.getByRole('cell').evaluateAll(cells => cells.slice(1).map(cell => cell.firstChild?.textContent));
     assert.deepEqual(await buyingValues(), ['150', '100', '50', '2']);
     await buyingRebar.getByText('EA · 150 pcs / bundle', { exact: true }).waitFor();
-    await buyingRebar.getByRole('cell').nth(3).getByText('150 pcs · 100 extra', { exact: true }).waitFor();
+    await buyingRebar.getByRole('cell').nth(3).getByText('0.33 bundles', { exact: true }).waitFor();
+    assert.doesNotMatch(await buying.innerText(), /whole bundle|extra|equiv/);
     assert.equal(await page.getByRole('spinbutton', { name: /^Order quantity/ }).count(), 0, 'orders are recorded only under By job');
     await hide.check();
     await buyingRebar.locator('summary').click();
@@ -222,17 +241,32 @@ test('Steel needs browser: by-job orders, order log, undo, corrections, buying l
     assert.match(await buyingJobs.innerText(), /School/); assert.doesNotMatch(await buyingJobs.innerText(), /Warehouse/);
     await buyingJobs.getByText('Needed 50 · Ordered 0 · Left to order 50', { exact: true }).waitFor();
     await page.screenshot({ path: 'outputs/steel-needs/order-log-buying-list.png', fullPage: true });
-    const [listDownload] = await Promise.all([page.waitForEvent('download'), exportList.click()]);
-    assert.equal(listDownload.suggestedFilename(), 'steel-buying-list-needed.csv');
-    const listCsv = await readFile(await listDownload.path(), 'utf8');
-    const rebarLine = listCsv.split('\r\n').find(row => row.startsWith(`"${line.name}"`));
-    assert.match(listCsv, /"Left to order"/); assert.match(listCsv, /Left to order only/);
-    assert.match(rebarLine, /"EA","50","100 · School"/); assert.doesNotMatch(rebarLine, /Warehouse/);
-    const [detailDownload] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export job detail' }).click()]);
-    const detailCsv = await readFile(await detailDownload.path(), 'utf8');
-    assert.match(detailCsv, /"Order log \(Eastern\)"/);
-    assert.match(detailCsv, /"Fully ordered","0","11\/10\/2026 \+40; 11\/10\/2026 \+5 \(correction\); 11\/10\/2026 \+55"/);
-    assert.match(detailCsv, /"Partially ordered","10","Before order log \+5"/);
+
+    // The export holds only what was ordered in a date range. It opens on today, where the sample has no orders.
+    const from = page.getByLabel('Orders from', { exact: true }), through = page.getByLabel('Orders through', { exact: true }), search = page.getByLabel('Search material or job', { exact: true });
+    assert.match(await from.inputValue(), /^\d{4}-\d{2}-\d{2}$/); assert.equal(await through.inputValue(), await from.inputValue());
+    assert.equal(await exportOrders.isDisabled(), true);
+    await exportArea.getByText('No orders recorded in these dates.', { exact: true }).waitFor();
+    assert.equal(await page.getByRole('button', { name: /Export (buying list|job detail)/ }).count(), 0, 'the everything exports are gone');
+    await from.fill('2026-11-10'); await through.fill('2026-11-10');
+    await exportArea.getByText('3 orders from 1 job.', { exact: true }).waitFor();
+    // Hide fully ordered is on, yet the fully ordered rebar is exported: it is exactly what was ordered.
+    const [download] = await Promise.all([page.waitForEvent('download'), exportOrders.click()]);
+    assert.equal(download.suggestedFilename(), 'steel-orders-2026-11-10.csv');
+    const exported = (await readFile(await download.path(), 'utf8')).replace('\uFEFF', '').split('\r\n');
+    assert.equal(exported.length, 3, 'one total and one job row: no wire, no School, nothing that is only needed');
+    assert.ok(exported[1].startsWith(`"Total","${line.name}","EA","100","0.67","150","","All jobs (1)","11/10/2026","${actor}","Includes a total correction","11/10/2026"`), exported[1]);
+    assert.ok(exported[2].startsWith(`"Job","${line.name}","EA","100","0.67","150","100","Warehouse","11/10/2026"`), exported[2]);
+    await through.fill('2026-11-09');
+    await exportArea.getByText('The first date is after the second.', { exact: true }).waitFor();
+    assert.equal(await exportOrders.isDisabled(), true);
+    await through.fill('2026-11-10');
+    await search.fill('School');
+    await exportArea.getByText('No orders recorded in these dates for the filtered jobs.', { exact: true }).waitFor();
+    await search.fill('');
+    await exportArea.getByText('3 orders from 1 job.', { exact: true }).waitFor();
+    await exportArea.getByRole('button', { name: 'Today', exact: true }).click();
+    assert.equal(await exportOrders.isDisabled(), true);
     await hide.uncheck();
 
     // Saved orders and the log survive a reload. Jobs are collapsed again; choosing one job opens it.
@@ -258,15 +292,35 @@ test('Steel needs browser: by-job orders, order log, undo, corrections, buying l
     await page.getByText('More filters (1 on)', { exact: true }).waitFor();
     await page.getByLabel('Starting by', { exact: true }).fill('2026-11');
     await page.getByText('No jobs with steel match these filters.', { exact: false }).waitFor();
-    assert.equal(await exportList.isDisabled(), true);
     await page.getByRole('button', { name: 'Clear filters', exact: true }).click();
     assert.equal(await job('Warehouse').count(), 1);
 
+    // Phone: no sideways scrolling, fields large enough that iOS does not zoom, a number keypad, thumb-sized buttons, and filters folded behind one button.
     await page.setViewportSize({ width: 390, height: 844 });
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'no page-level overflow by job');
     assert.ok(await rebar.group.evaluate(element => element.scrollWidth <= element.clientWidth), 'a job line fits a phone without sideways scrolling');
+    const fontSize = locator => locator.evaluate(element => parseFloat(getComputedStyle(element).fontSize));
+    const height = async locator => (await locator.boundingBox()).height;
+    const filtersToggle = page.getByRole('button', { name: 'Filters', exact: true });
+    await rebar.group.locator('summary').click();
+    for (const typed of [rebar.quantity, rebar.total, search, from]) assert.ok(await fontSize(typed) >= 16, 'fields are at least 16px on a phone');
+    assert.equal(await rebar.quantity.getAttribute('inputmode'), 'numeric');
+    for (const tapped of [rebar.add, earlier.rest, filtersToggle, page.getByRole('button', { name: 'Buying list', exact: true }), refresh, exportOrders]) assert.ok(await height(tapped) >= 40, 'buttons are thumb-sized on a phone');
+    assert.equal(await filtersToggle.getAttribute('aria-expanded'), 'true', 'opened earlier at desktop width');
+    await filtersToggle.click();
+    assert.equal(await page.getByLabel('Job', { exact: true }).isVisible(), false); assert.equal(await page.getByLabel('Field work', { exact: true }).count(), 0);
+    assert.equal(await search.isVisible(), true);
+    await filtersToggle.click();
+    assert.equal(await page.getByLabel('Job', { exact: true }).isVisible(), true); assert.equal(await page.getByLabel('Field work', { exact: true }).isVisible(), true);
+    await filtersToggle.click();
     await page.evaluate(() => { window.scrollTo(0, 0); });
     await page.screenshot({ path: 'outputs/steel-needs/order-log-mobile-by-job.png', fullPage: true });
+    await collapseAll.click();
+    await page.evaluate(() => { window.scrollTo(0, 0); });
+    await page.screenshot({ path: 'outputs/steel-needs/order-log-mobile-collapsed.png', fullPage: true });
+    // Tapping anywhere on a job's line opens it.
+    await job('School').getByText('No start month', { exact: true }).click();
+    assert.equal(await school.group.isVisible(), true); assert.equal(await rebar.group.isVisible(), false);
     await page.getByRole('button', { name: 'Buying list', exact: true }).click();
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'no page-level overflow on the buying list');
     assert.ok(await buying.evaluate(element => element.parentElement.scrollWidth <= element.parentElement.clientWidth), 'the buying list fits a phone without sideways scrolling');
@@ -276,7 +330,7 @@ test('Steel needs browser: by-job orders, order log, undo, corrections, buying l
     fail = true;
     await refresh.click();
     await page.getByRole('alert').filter({ hasText: 'Unable to load Steel needs.' }).waitFor();
-    assert.equal(await exportList.isDisabled(), true);
+    assert.equal(await exportOrders.isDisabled(), true);
     assert.equal(await buying.count(), 0);
     assert.equal(await page.getByRole('region', { name: /^Steel for / }).count(), 0);
     assert.deepEqual(errors, []);

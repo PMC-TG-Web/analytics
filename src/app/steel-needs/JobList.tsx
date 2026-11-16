@@ -1,13 +1,15 @@
 'use client';
 
-import { useId, type ReactNode } from 'react';
-import { steelOrderQuantities, type SteelItem, type SteelProject } from '@/lib/steelNeeds';
+import { Fragment, useId, type ReactNode } from 'react';
+import { steelJobOffConstruction, steelJobTotals, steelOrderQuantities, type SteelItem, type SteelProject } from '@/lib/steelNeeds';
 import { steelBundleSize } from '@/lib/steelBundles';
+import BundleQuantity from './BundleQuantity';
 import { number } from './format';
 import StartStatus from './StartStatus';
 
-function Stat({ label, value, tone = '' }: { label: string; value: number; tone?: string }) {
-  return <div><dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</dt><dd className={`text-lg tabular-nums ${tone}`}>{number.format(value)}</dd></div>;
+const bundleNumber = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
+function Stat({ label, value, tone = '', children }: { label: string; value: number; tone?: string; children?: ReactNode }) {
+  return <div><dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</dt><dd className={`text-lg tabular-nums ${tone}`}>{number.format(value)}{children}</dd></div>;
 }
 
 /** Jobs in planned-start order. Every material line reads the same way: needed, ordered, left to order. */
@@ -19,9 +21,10 @@ export default function JobList({ projects, hideOrdered, currentMonth, expanded,
   const jobs = projects.map(project => ({ project, items: project.items.filter(item => !hideOrdered || steelOrderQuantities(item).toOrderQuantity > 0) })).filter(job => job.items.length);
   if (!jobs.length) return <p className="p-10 text-center text-slate-500">{hideOrdered ? 'Nothing is left to order for these jobs.' : 'No jobs with steel match these filters. Check Planning / source review below.'}</p>;
   const keys = jobs.map(job => job.project.key), opened = keys.filter(key => expanded.has(key)).length;
-  const link = 'font-semibold text-sky-900 underline disabled:text-slate-400 disabled:no-underline';
+  const link = 'py-2 font-semibold text-sky-900 underline disabled:text-slate-400 disabled:no-underline sm:py-0';
+  const caption = 'block text-[11px] text-slate-500 sm:inline sm:text-xs';
   return <div className="divide-y divide-slate-200">
-    <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2 text-xs text-slate-500 sm:px-5">
+    <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-1 text-xs text-slate-500 sm:px-5 sm:py-2">
       <span>{jobs.length} {jobs.length === 1 ? 'job' : 'jobs'}{opened > 0 ? ` · ${opened} open` : ' · click a job to open it'}</span>
       <span className="flex gap-4"><button type="button" className={link} disabled={opened === keys.length} onClick={() => onExpand(keys, true)}>Expand all</button>
         <button type="button" className={link} disabled={opened === 0} onClick={() => onExpand(keys, false)}>Collapse all</button></span>
@@ -30,12 +33,36 @@ export default function JobList({ projects, hideOrdered, currentMonth, expanded,
     const left = project.items.filter(item => steelOrderQuantities(item).toOrderQuantity > 0).length;
     const notes = project.issues.filter(issue => issue !== 'No saved WIP start month.');
     const open = expanded.has(project.key), bodyId = `${baseId}-job-${index}`;
-    return <section key={project.key} aria-label={`Steel for ${project.projectName}`} className={open ? 'p-4 sm:p-5' : 'px-4 py-3 sm:px-5'}>
-      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
-        <div><h3 className="text-base font-bold"><button type="button" aria-expanded={open} aria-controls={bodyId} onClick={() => onExpand([project.key], !open)}
+    return <section key={project.key} aria-label={`Steel for ${project.projectName}`} className={open ? 'p-3 sm:p-5' : 'px-3 py-3 sm:px-5'}>
+      {/* The whole line opens the job, a larger target than the name alone. Fixed-width totals and status columns keep the numbers lined up from one job to the next. */}
+      <div onClick={() => onExpand([project.key], !open)} className="grid cursor-pointer items-start gap-x-8 gap-y-2 lg:grid-cols-[minmax(0,1fr)_auto_16rem]">
+        <div><h3 className="text-base font-bold"><button type="button" aria-expanded={open} aria-controls={bodyId} onClick={event => { event.stopPropagation(); onExpand([project.key], !open); }}
           className="flex items-baseline gap-2 text-left hover:text-sky-900"><span aria-hidden="true" className="w-3 text-slate-500">{open ? '▾' : '▸'}</span>{project.projectName}</button></h3>
-          <p className="pl-5 text-xs text-slate-500">{[project.projectNumber, project.customer].filter(Boolean).join(' · ')}</p></div>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+          <p className="pl-5 text-xs text-slate-500">{[project.projectNumber, project.customer].filter(Boolean).join(' · ')}</p>
+          {(project.bidBoardStatus || project.projectStatus) && <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 pl-5 text-xs text-slate-500">
+            {project.bidBoardStatus && <span>Bid Board: <span className="font-semibold text-slate-700">{project.bidBoardStatus}</span></span>}
+            {project.projectStatus && (steelJobOffConstruction(project)
+              ? <span className="rounded-full bg-violet-100 px-2 py-0.5 font-semibold text-violet-900">Procore: {project.projectStatus}</span>
+              : <span>Procore: <span className="font-semibold text-slate-700">{project.projectStatus}</span></span>)}
+          </p>}</div>
+        <dl aria-label={`Totals for ${project.projectName}`} className="order-3 space-y-1 pl-5 text-xs tabular-nums lg:order-2 lg:pl-0">{steelJobTotals(project).map(total => {
+          const row = 'grid grid-cols-[4.5rem_repeat(3,minmax(0,1fr))] gap-x-3 sm:grid-cols-[4.5rem_repeat(3,7rem)]', more = total.bundles?.partial ? '+' : '';
+          return <Fragment key={`${total.kind} ${total.unit}`}>
+            <div className={row}>
+              <dt className="font-semibold text-slate-700">{total.kind} {total.unit}</dt>
+              <dd><span className={caption}>Needed</span> {number.format(total.needed)}</dd>
+              <dd className="text-emerald-800"><span className={caption}>Ordered</span> {number.format(total.ordered)}</dd>
+              <dd className={total.left > 0 ? 'font-bold text-sky-950' : 'text-slate-400'}><span className={`${caption} font-normal`}>Left</span> {number.format(total.left)}</dd>
+            </div>
+            {total.bundles && <div className={`${row} text-slate-500`} title={total.bundles.partial ? 'Bundles count only bar sizes with a standard bundle size.' : undefined}>
+              <dt>Bundles</dt>
+              <dd>{bundleNumber.format(total.bundles.needed)}{more}</dd>
+              <dd>{bundleNumber.format(total.bundles.ordered)}{more}</dd>
+              <dd className={total.bundles.left > 0 ? 'font-semibold text-sky-950' : ''}>{bundleNumber.format(total.bundles.left)}{more}</dd>
+            </div>}
+          </Fragment>;
+        })}</dl>
+        <div className="order-2 flex flex-wrap items-center gap-x-4 gap-y-1 pl-5 text-sm lg:order-3 lg:justify-end lg:pl-0">
           <StartStatus project={project} />
           <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${left ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-800'}`}>{left ? `${left} of ${project.items.length} left to order` : 'All steel ordered'}</span>
         </div>
@@ -52,9 +79,9 @@ export default function JobList({ projects, hideOrdered, currentMonth, expanded,
           <div><p className="font-semibold">{item.description}</p><p className="text-xs text-slate-500">{item.unit}{bundle ? ` · ${bundle} pcs / bundle` : ''}</p></div>
           <div>
             <dl className="grid grid-cols-3 gap-3">
-              <Stat label="Needed" value={item.quantity} />
-              <Stat label="Ordered" value={amounts.orderedQuantity} tone="text-emerald-800" />
-              <Stat label="Left to order" value={amounts.toOrderQuantity} tone={amounts.toOrderQuantity > 0 ? 'font-bold text-sky-950' : 'text-slate-400'} />
+              <Stat label="Needed" value={item.quantity}><BundleQuantity item={item} quantity={item.quantity} /></Stat>
+              <Stat label="Ordered" value={amounts.orderedQuantity} tone="text-emerald-800">{amounts.orderedQuantity > 0 && <BundleQuantity item={item} quantity={amounts.orderedQuantity} />}</Stat>
+              <Stat label="Left to order" value={amounts.toOrderQuantity} tone={amounts.toOrderQuantity > 0 ? 'font-bold text-sky-950' : 'text-slate-400'}>{amounts.toOrderQuantity > 0 && <BundleQuantity item={item} quantity={amounts.toOrderQuantity} />}</Stat>
             </dl>
             <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200" role="img" aria-label={`${percent}% ordered`}><div className="h-full rounded-full bg-emerald-600" style={{ width: `${percent}%` }} /></div>
           </div>

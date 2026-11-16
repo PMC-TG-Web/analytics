@@ -20,6 +20,8 @@ test('WIP starts at In Progress and uses the full selected estimate minus PM', (
   assert.equal(rows.length, 1);
   assert.equal(rows[0].source.allocatableHours, 1000);
   assert.equal(rows[0].projectManager, 'PM One');
+  assert.equal(rows[0].bidBoardStatus, 'In Progress'); assert.equal(rows[0].projectStatus, '');
+  assert.equal(buildWipProjects([estimate()], [{ ...canonical[0], status: 'Post-Construction' }])[0].projectStatus, 'Post-Construction');
   assert.equal(wipPlanStatus(rows[0]), 'Needs allocation');
   assert.equal(classifyLaborGroup({ name: 'Labor', costCode: '01-300-10-20.L' }), 'PM');
 });

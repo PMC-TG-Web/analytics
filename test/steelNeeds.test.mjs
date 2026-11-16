@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSteelNeeds, aggregateSteelNeeds, filterSteelProjects, steelKind, steelDescription, steelNeedsCsv } from '../src/lib/steelNeeds.ts';
+import { buildSteelNeeds, aggregateSteelNeeds, filterSteelProjects, steelJobOffConstruction, steelKind, steelDescription, steelNeedsCsv } from '../src/lib/steelNeeds.ts';
 import { resolvePermissionForPath } from '../src/lib/permissionRoutes.js';
 import { apiPagePermissions } from '../src/lib/independentPagePermissions.js';
 import { expandAssignedPermissions } from '../src/lib/permissions.ts';
@@ -9,6 +9,23 @@ export const source = { bidBoardId: 'b1', proposalId: 'e1', estimatedHours: 100,
 export const project = { key: 'p1', projectId: 'p1', projectName: 'Warehouse', projectNumber: '100', customer: 'Customer', projectManager: '', source, issue: null, plan: { revision: 1, source, allocations: [{ month: '2027-01', percent: 50 }, { month: '2026-11', percent: 50 }], notes: '', updatedBy: '', updatedAt: '2026-11-10' } };
 export const line = { companyId: 'company', bidBoardProjectId: 'b1', proposalId: 'e1', lineItemId: 'l1', name: "#4 Rebar - 20' Pc", uom: 'EA', quantity: 100, syncedAt: '2026-11-10T12:00:00Z', payload: { cost_item: { type: 'CUSTOM', description: '#5 Rebar By The Piece' } } };
 const filters = { status: '', kind: '', query: '', projectId: '', through: '', timing: '' };
+
+test('each job carries its Bid Board and Procore project status, flags jobs past construction, and exports both', () => {
+  const job = (key, statuses) => ({ ...project, key, projectId: key, source: { ...source, bidBoardId: `b-${key}` }, ...statuses });
+  const rows = buildSteelNeeds('company', [
+    job('done', { bidBoardStatus: 'In Progress', projectStatus: 'Post-Construction' }),
+    job('building', { bidBoardStatus: 'In Progress', projectStatus: ' Course of  Construction ' }),
+    job('unknown', {}),
+  ], [{ ...line, bidBoardProjectId: 'b-done' }], []);
+  const byKey = Object.fromEntries(rows.map(row => [row.key, row]));
+  assert.deepEqual([byKey.done.bidBoardStatus, byKey.done.projectStatus], ['In Progress', 'Post-Construction']);
+  assert.equal(byKey.building.projectStatus, 'Course of Construction');
+  assert.deepEqual([byKey.unknown.bidBoardStatus, byKey.unknown.projectStatus], ['', '']);
+  assert.equal(steelJobOffConstruction(byKey.done), true);
+  assert.equal(steelJobOffConstruction(byKey.building), false);
+  assert.equal(steelJobOffConstruction(byKey.unknown), false, 'a missing status is not flagged');
+  assert.match(steelNeedsCsv(rows), /"Not started","In Progress","Post-Construction"/);
+});
 
 test('wire mesh groups by explicit gauge and sheet size, ignoring mesh spacing and scope text', () => {
   const second = { ...project, key: 'p2', projectId: 'p2', source: { ...source, bidBoardId: 'b2' } };

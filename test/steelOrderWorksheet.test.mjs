@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { aggregateSteelNeeds, filterSteelProjects, steelOrderQuantities } from '../src/lib/steelNeeds.ts';
+import { aggregateSteelNeeds, filterSteelProjects, steelJobTotals, steelOrderQuantities } from '../src/lib/steelNeeds.ts';
 import { steelOrderWorksheet, steelOrderWorksheetCsv } from '../src/lib/steelOrderWorksheet.ts';
 
 const item = { key: 'rebar-ea', description: "#4 Rebar - 20' Pc", kind: 'Rebar', unit: 'EA', quantity: 100, order: null, lineCount: 1 };
@@ -27,6 +27,24 @@ test('a cleared check restores full need; unchanged estimates reconcile and inva
   assert.equal(steelOrderQuantities({ ...item, quantity: 1.1, order: order(0.3) }).toOrderQuantity, 0.8);
   assert.deepEqual(steelOrderWorksheet([project('1', 100, order(100))], 'needed'), []);
   assert.deepEqual(steelOrderWorksheet([project('1', 100, null)], 'ordered'), []);
+});
+
+test('job header totals keep material types and units apart, never let a surplus cover another size, and convert rebar to bundles without rounding', () => {
+  const job = project('1', 100, order(130));
+  job.items.push({ ...item, key: 'rebar-5', description: "#5 Rebar - 20' Pc", quantity: 40, order: order(10) },
+    { ...item, key: 'rebar-lf', unit: 'LF', quantity: 20 },
+    { ...item, key: 'wire', kind: 'Wire', description: "Wire Mesh 6 ga 5'x10'", quantity: 12 });
+  assert.deepEqual(steelJobTotals(job), [
+    // #4: 100 needed, 130 ordered, 0 left. #5: 40 needed, 10 ordered, 30 left, which is 30 / 96 = 0.3125 bundles.
+    { kind: 'Rebar', unit: 'EA', needed: 140, ordered: 140, left: 30, bundles: { needed: 1.0833, ordered: 0.9708, left: 0.3125, partial: false } },
+    { kind: 'Rebar', unit: 'LF', needed: 20, ordered: 0, left: 20, bundles: null },
+    { kind: 'Wire', unit: 'EA', needed: 12, ordered: 0, left: 12, bundles: null },
+  ]);
+  job.items.push({ ...item, key: 'dowels', description: 'Rebar dowels', quantity: 5 });
+  const [rebar] = steelJobTotals(job);
+  assert.equal(rebar.needed, 145); assert.equal(rebar.left, 35);
+  assert.deepEqual(rebar.bundles, { needed: 1.0833, ordered: 0.9708, left: 0.3125, partial: true }, 'sizes without a bundle size are left out and flagged');
+  assert.deepEqual(steelJobTotals({ items: [] }), []);
 });
 
 test('worksheet and exports honor project/activity filters, keep units separate, and export aggregated lines with contributing jobs', () => {

@@ -21,7 +21,7 @@ export async function loadWipPlanning(force = false) {
   const local = localPath ? await readWipLocalStore(localPath, companyId) : null;
   const [estimates, canonical, plans, drafts] = await Promise.all([
     loadEstimatingDashboardProjects({ force }),
-    prisma.pmcProject.findMany({ where: { companyId }, select: { procoreProjectId: true, bidBoardId: true, projectManager: true } }),
+    prisma.pmcProject.findMany({ where: { companyId }, select: { procoreProjectId: true, bidBoardId: true, projectManager: true, status: true } }),
     local ? Promise.resolve([]) : prisma.wipPlan.findMany({ where: { companyId } }),
     local ? Promise.resolve([]) : prisma.wipImportDraft.findMany({ where: { companyId } }),
   ]);

@@ -24,6 +24,9 @@ export type WipProject = {
   source: WipSource;
   issue: string | null;
   plan: WipPlan | null;
+  /** The Bid Board status that qualified the job, and the linked Procore project's own status. Display only. */
+  bidBoardStatus?: string;
+  projectStatus?: string;
 };
 type EstimateProject = {
   bidBoardId: string;
@@ -39,7 +42,7 @@ type EstimateProject = {
   pmcGroup: Record<string, number>;
   customFields: Record<string, unknown>;
 };
-type CanonicalProject = { procoreProjectId: string; bidBoardId: string | null; projectManager: string | null };
+type CanonicalProject = { procoreProjectId: string; bidBoardId: string | null; projectManager: string | null; status?: string | null };
 
 export function isWipInProgress(status: string | undefined): boolean {
   return String(status || '').toLowerCase().replace(/[\s_-]+/g, '') === 'inprogress';
@@ -77,6 +80,8 @@ export function buildWipProjects(estimates: EstimateProject[], canonical: Canoni
       source: { bidBoardId: project.bidBoardId, proposalId: project.selectedProposalId || '', estimatedHours, projectManagementHours, allocatableHours },
       issue,
       plan: null,
+      bidBoardStatus: project.status || '',
+      projectStatus: canonicalProject?.status || '',
     };
   }).sort((left, right) => left.projectName.localeCompare(right.projectName));
 }

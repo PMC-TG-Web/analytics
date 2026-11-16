@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { loadWipPlanning, wipCompanyId } from '@/lib/loadWipPlanning';
 import { wipLocalStorePath } from '@/lib/wipLocalStore';
-import { attachSteelOrderMarks, buildSteelNeeds, type SteelActivity, type SteelEstimateLine, type SteelReport } from '@/lib/steelNeeds';
+import { attachSteelOrderMarks, buildSteelNeeds, steelOrderLogEntry, type SteelActivity, type SteelEstimateLine, type SteelReport } from '@/lib/steelNeeds';
 
 export async function loadSteelNeeds(): Promise<SteelReport> {
   const companyId = wipCompanyId();
@@ -51,9 +51,12 @@ export async function loadSteelNeeds(): Promise<SteelReport> {
       COUNT(*) FILTER (WHERE source = 'timecard')::int AS timesheets, TO_CHAR(MIN(date), 'YYYY-MM-DD') AS "firstActivity"
     FROM entries WHERE project_id IS NOT NULL GROUP BY project_id
   `;
-  const marks = await prisma.steelOrderMark.findMany({ where: { companyId, projectId: { in: projects.flatMap(project => project.projectId ? [project.projectId] : []) } },
+  const projectIds = projects.flatMap(project => project.projectId ? [project.projectId] : []);
+  const marks = await prisma.steelOrderMark.findMany({ where: { companyId, projectId: { in: projectIds } },
     select: { projectId: true, itemKey: true, revision: true, orderedAt: true, quantity: true, estimateQuantity: true } });
+  const entries = await prisma.steelOrderEntry.findMany({ where: { companyId, projectId: { in: projectIds } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    select: { id: true, projectId: true, itemKey: true, kind: true, quantity: true, createdAt: true, createdBy: true, voidedAt: true, voidedBy: true } });
   return { projects: attachSteelOrderMarks(buildSteelNeeds(companyId, projects, lines, activity), marks.map(mark => ({ ...mark,
     orderedAt: mark.orderedAt?.toISOString() || null, quantity: mark.quantity === null ? null : Number(mark.quantity), estimateQuantity: mark.estimateQuantity == null ? null : Number(mark.estimateQuantity),
-  }))), loadedAt: new Date().toISOString(), localOnly: !!wipLocalStorePath() };
+  })), entries.map(entry => ({ ...steelOrderLogEntry(entry), projectId: entry.projectId, itemKey: entry.itemKey }))), loadedAt: new Date().toISOString(), localOnly: !!wipLocalStorePath() };
 }

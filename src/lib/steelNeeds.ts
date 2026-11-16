@@ -8,7 +8,9 @@ export type SteelEstimateLine = {
 };
 export type SteelActivity = { projectId: string; dailyLogs: number; timesheets: number; firstActivity: string | null };
 export type SteelOrder = { revision: number; orderedAt: string | null; quantity: number | null; estimateQuantity?: number | null };
-export type SteelItem = { key: string; description: string; kind: SteelKind; unit: string; quantity: number; lineCount: number; order: SteelOrder | null; orderSnapshot?: string };
+/** One recorded change to a job material's ordered total. Undone lines stay in the log but no longer count. */
+export type SteelOrderLogEntry = { id: string; kind: 'order' | 'correction'; quantity: number; createdAt: string; createdBy: string; voidedAt: string | null; voidedBy: string | null };
+export type SteelItem = { key: string; description: string; kind: SteelKind; unit: string; quantity: number; lineCount: number; order: SteelOrder | null; log?: SteelOrderLogEntry[]; orderSnapshot?: string };
 export type SteelProject = {
   key: string; projectId: string | null; projectName: string; projectNumber: string; customer: string;
   bidBoardId: string; proposalId: string; started: boolean | null; dailyLogs: number; timesheets: number;
@@ -161,11 +163,37 @@ export function aggregateSteelNeeds(projects: SteelProject[]): SteelTotal[] {
 }
 
 /** Saved cumulative orders reduce this project's need only. The separate estimate basis detects source changes. */
-export function steelOrderQuantities(item: SteelItem) {
+export function steelOrderQuantities(item: Pick<SteelItem, 'quantity' | 'order'>) {
   const saved = item.order?.orderedAt ? item.order.quantity : null;
   const orderedQuantity = typeof saved === 'number' && Number.isFinite(saved) && saved > 0 ? saved : 0;
   return { orderedQuantity, toOrderQuantity: Math.max(0, Math.round((item.quantity - orderedQuantity) * 10000) / 10000),
     changed: !!item.order?.orderedAt && (item.order.estimateQuantity ?? saved) !== item.quantity };
+}
+
+type SteelOrderLogRow = { id: string; kind: string; quantity: unknown; createdAt: Date | string; createdBy: string; voidedAt?: Date | string | null; voidedBy?: string | null };
+export function steelOrderLogEntry(row: SteelOrderLogRow): SteelOrderLogEntry {
+  const iso = (value: Date | string) => typeof value === 'string' ? value : value.toISOString();
+  return { id: row.id, kind: row.kind === 'correction' ? 'correction' : 'order', quantity: Number(row.quantity), createdAt: iso(row.createdAt),
+    createdBy: row.createdBy, voidedAt: row.voidedAt ? iso(row.voidedAt) : null, voidedBy: row.voidedBy || null };
+}
+
+/**
+ * The saved running total stays authoritative. Any part of it that no active log line explains
+ * (totals saved before the log existed) is reported separately instead of being backfilled.
+ */
+export function steelOrderLog(item: Pick<SteelItem, 'quantity' | 'order' | 'log'>) {
+  const entries = item.log || [];
+  const logged = entries.reduce((sum, entry) => entry.voidedAt ? sum : sum + entry.quantity, 0);
+  return { entries, orders: entries.filter(entry => !entry.voidedAt && entry.kind === 'order').length,
+    unlogged: Math.round((steelOrderQuantities(item).orderedQuantity - logged) * 10000) / 10000 };
+}
+
+/** Compact Eastern-dated history for exports, oldest first; undone lines are omitted. */
+export function steelOrderLogText(item: Pick<SteelItem, 'quantity' | 'order' | 'log'>): string {
+  const { entries, unlogged } = steelOrderLog(item);
+  const signed = (value: number) => `${value > 0 ? '+' : ''}${value}`;
+  return [...(unlogged ? [`Before order log ${signed(unlogged)}`] : []), ...entries.filter(entry => !entry.voidedAt)
+    .map(entry => `${steelOrderedDate(entry.createdAt)} ${signed(entry.quantity)}${entry.kind === 'correction' ? ' (correction)' : ''}`)].join('; ');
 }
 
 export function steelNeedsCsv(projects: SteelProject[]): string {
@@ -173,12 +201,12 @@ export function steelNeedsCsv(projects: SteelProject[]): string {
     const text = String(value ?? '');
     return `"${(/^[=+\-@\t\r]/.test(text) ? "'" : '') + text.replaceAll('"', '""')}"`;
   };
-  const rows: unknown[][] = [['Description', 'Material', 'Unit', 'Full estimated quantity', 'Project', 'Project number', 'Status', 'WIP planned start month', 'First field entry', 'Procore project ID', 'Bid Board ID', 'Estimate ID', 'Review notes', 'Has order', 'Last order update (Eastern)', 'Ordered quantity']];
-  rows[0].push('Estimate at order update', 'Order status', 'Need to order', 'Pieces per bundle', 'Full estimate bundle equivalents', 'Whole bundles to order for project (rounded up)', 'Pieces in whole bundles to order', 'Extra pieces from rounding');
+  const rows: unknown[][] = [['Description', 'Material', 'Unit', 'Needed (full estimate)', 'Project', 'Project number', 'Status', 'WIP planned start month', 'First field entry', 'Procore project ID', 'Bid Board ID', 'Estimate ID', 'Review notes', 'Has order', 'Last order update (Eastern)', 'Ordered quantity']];
+  rows[0].push('Estimate at order update', 'Order status', 'Left to order', 'Order log (Eastern)', 'Pieces per bundle', 'Full estimate bundle equivalents', 'Whole bundles to order for project (rounded up)', 'Pieces in whole bundles to order', 'Extra pieces from rounding');
   for (const project of projects) for (const item of project.items) {
     const full = steelBundles(item, item.quantity), needed = steelBundles(item, steelOrderQuantities(item).toOrderQuantity);
     rows.push([item.description, item.kind, item.unit, item.quantity, project.projectName, project.projectNumber, project.started ? 'Started' : 'Not started', project.plannedStart, project.firstActivity, project.projectId, project.bidBoardId, project.proposalId, project.issues.join(' '), item.order?.orderedAt ? 'Yes' : 'No', item.order?.orderedAt ? steelOrderedDate(item.order.orderedAt) : '', item.order?.quantity ?? '',
-      item.order?.estimateQuantity ?? item.order?.quantity ?? '', steelOrderStatus(item), steelOrderQuantities(item).toOrderQuantity,
+      item.order?.estimateQuantity ?? item.order?.quantity ?? '', steelOrderStatus(item), steelOrderQuantities(item).toOrderQuantity, steelOrderLogText(item),
       full?.piecesPerBundle ?? '', full ? Math.round(full.equivalent * 10000) / 10000 : '', needed?.wholeBundles ?? '', needed?.wholeBundlePieces ?? '', needed?.extraPieces ?? '' ]);
   }
   return '\uFEFF' + rows.map(row => row.map(quote).join(',')).join('\r\n');
@@ -188,11 +216,18 @@ export function steelOrderedDate(timestamp: string): string {
   return new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: '2-digit', day: '2-digit', year: 'numeric' }).format(new Date(timestamp));
 }
 
-export function attachSteelOrderMarks(projects: SteelProject[], marks: (SteelOrder & { projectId: string; itemKey: string })[]): SteelProject[] {
+export function attachSteelOrderMarks(projects: SteelProject[], marks: (SteelOrder & { projectId: string; itemKey: string })[],
+  entries: (SteelOrderLogEntry & { projectId: string; itemKey: string })[] = []): SteelProject[] {
   const byItem = new Map(marks.map(mark => [JSON.stringify([mark.projectId, mark.itemKey]), mark]));
+  const logs = new Map<string, SteelOrderLogEntry[]>();
+  for (const { projectId, itemKey, ...entry } of entries) {
+    const key = JSON.stringify([projectId, itemKey]);
+    logs.set(key, [...(logs.get(key) || []), entry]);
+  }
   return projects.map(project => ({ ...project, items: project.items.map(item => {
     const mark = byItem.get(JSON.stringify([project.projectId, item.key]));
-    return { ...item, order: mark ? { revision: mark.revision, orderedAt: mark.orderedAt, quantity: mark.quantity, estimateQuantity: mark.estimateQuantity ?? mark.quantity } : null };
+    return { ...item, order: mark ? { revision: mark.revision, orderedAt: mark.orderedAt, quantity: mark.quantity, estimateQuantity: mark.estimateQuantity ?? mark.quantity } : null,
+      log: logs.get(JSON.stringify([project.projectId, item.key])) || [] };
   }) }));
 }
 

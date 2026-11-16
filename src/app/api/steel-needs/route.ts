@@ -5,7 +5,7 @@ import { hasDatabasePageAccess } from '@/lib/permissions';
 import { loadSteelNeeds } from '@/lib/loadSteelNeeds';
 import { wipCompanyId } from '@/lib/loadWipPlanning';
 import { validateCsrfRequest } from '@/lib/csrfProtection';
-import { parseSteelOrderInput, saveSteelOrderMark, SteelOrderConflict } from '@/lib/steelOrderMarks';
+import { parseSteelOrderInput, saveSteelOrder, SteelOrderConflict } from '@/lib/steelOrderMarks';
 import { createSteelOrderSnapshot, verifySteelOrderSnapshot } from '@/lib/steelOrderSnapshot';
 
 export const dynamic = 'force-dynamic';
@@ -34,14 +34,14 @@ export async function POST(request: NextRequest) {
     const raw = await request.text();
     if (raw.length > 5000) return json({ error: 'Request is too large.' }, 413);
     let body;
-    try { body = JSON.parse(raw); } catch { return json({ error: 'Invalid order mark.' }, 400); }
+    try { body = JSON.parse(raw); } catch { return json({ error: 'Invalid order.' }, 400); }
     const input = parseSteelOrderInput(body);
-    if (!input) return json({ error: 'Invalid order mark.' }, 400);
+    if (!input) return json({ error: 'Invalid order.' }, 400);
     const companyId = wipCompanyId();
-    if (!verifySteelOrderSnapshot(body.orderSnapshot, companyId, input)) return json({ error: 'Refresh saved data before marking this item. Its estimate snapshot is missing or expired.' }, 409);
-    return json({ order: await saveSteelOrderMark(prisma, companyId, actor, input) });
+    if (!verifySteelOrderSnapshot(body.orderSnapshot, companyId, input)) return json({ error: 'Refresh saved data before recording this order. Its estimate snapshot is missing or expired.' }, 409);
+    return json(await saveSteelOrder(prisma, companyId, actor, input));
   } catch (error) {
     if (error instanceof SteelOrderConflict) return json({ error: error.message }, 409);
-    return json({ error: 'Unable to save the order mark. Refresh saved data before retrying.' }, 503);
+    return json({ error: 'Unable to save the order. Refresh saved data before retrying.' }, 503);
   }
 }

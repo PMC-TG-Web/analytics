@@ -37,7 +37,7 @@ test('worksheet and exports honor project/activity filters, keep units separate,
   assert.equal(steelOrderWorksheet(unstarted, 'all')[0].toOrderQuantity, 50);
   assert.equal(steelOrderWorksheet(filterSteelProjects(projects, { ...filters, projectId: '1' }), 'all')[0].orderedQuantity, 100);
   const needed = steelOrderWorksheetCsv(projects, 'needed', 'All projects', '2026-11-10');
-  assert.match(needed, /"Need to order"/); assert.match(needed, /"EA","50","2 · Job 2"/);
+  assert.match(needed, /"Left to order"/); assert.match(needed, /"EA","50","2 · Job 2"/);
   const ordered = steelOrderWorksheetCsv(projects, 'ordered', 'All projects', '2026-11-10');
   assert.equal(ordered.split('\r\n').length, 2); assert.match(ordered, /"EA","100","1 · Job 1","11\/10\/2026"/); assert.doesNotMatch(ordered, /Job 2/);
   const all = steelOrderWorksheetCsv(projects, 'all', 'All projects', '2026-11-10');

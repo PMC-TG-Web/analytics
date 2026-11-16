@@ -2615,6 +2615,7 @@ model PmcProject {
   allocations     PmcScheduleAllocation[]
   wipPlan         WipPlan?
   steelOrderMarks SteelOrderMark[]
+  steelOrderEntries SteelOrderEntry[]
   wipImportDraft  WipImportDraft?
   actionItems     PmcActionItem[]
   actionItemSyncState PmcActionItemSyncState?
@@ -2659,6 +2660,26 @@ model SteelOrderMark {
 
   @@id([companyId, projectId, materialId])
   @@map("steel_order_marks")
+}
+
+/// One line per recorded change to a job material's ordered total. SteelOrderMark keeps the running total.
+model SteelOrderEntry {
+  id String @id @default(uuid())
+  companyId String @map("company_id")
+  projectId String @map("project_id")
+  materialId String @map("material_id") @db.VarChar(64)
+  itemKey String @map("item_key")
+  kind String @db.VarChar(16)
+  quantity Decimal @db.Decimal(18, 4)
+  estimateQuantity Decimal? @map("estimate_quantity") @db.Decimal(18, 4)
+  createdBy String @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  voidedBy String? @map("voided_by")
+  voidedAt DateTime? @map("voided_at") @db.Timestamptz(6)
+  project PmcProject @relation(fields: [companyId, projectId], references: [companyId, procoreProjectId], onDelete: Restrict, map: "steel_order_entries_project_fkey")
+
+  @@index([companyId, projectId, materialId, createdAt], map: "steel_order_entries_material_idx")
+  @@map("steel_order_entries")
 }
 
 model WipPlan {

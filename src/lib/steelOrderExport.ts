@@ -1,13 +1,12 @@
-import type { SteelProject } from './steelNeeds.ts';
+import type { SteelItem, SteelProject } from './steelNeeds.ts';
 import { steelBundleSize } from './steelBundles.ts';
 
 /** Inclusive Eastern calendar days as YYYY-MM-DD. An empty end leaves that side open. */
 export type SteelOrderRange = { from: string; to: string };
+/** One job's orders of one material in the range. */
 export type SteelOrderExportRow = {
-  /** Total adds up one material across jobs; Job is one job's share of it. */
-  type: 'Total' | 'Job'; description: string; kind: string; unit: string; quantity: number;
-  bundles: number | null; piecesPerBundle: number | null; projectNumber: string; projectName: string;
-  jobs: number; days: string[]; recordedBy: string[]; corrected: boolean;
+  description: string; kind: SteelItem['kind']; unit: string; quantity: number; bundles: number | null;
+  projectNumber: string; projectName: string; days: string[];
 };
 
 const easternDay = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/New_York' });
@@ -16,18 +15,13 @@ export const steelEasternDay = (timestamp: string | Date) => easternDay.format(n
 const usDay = (day: string) => `${day.slice(5, 7)}/${day.slice(8, 10)}/${day.slice(0, 4)}`;
 const round = (value: number) => Math.round(value * 10000) / 10000;
 
-export function steelOrderRangeLabel(range: SteelOrderRange): string {
-  if (range.from && range.to) return range.from === range.to ? usDay(range.from) : `${usDay(range.from)} to ${usDay(range.to)}`;
-  return range.from ? `From ${usDay(range.from)}` : range.to ? `Through ${usDay(range.to)}` : 'All dates';
-}
-
 /**
  * What was ordered in a date range: order-log lines by the Eastern day they were recorded, undone lines left out.
- * Total corrections count toward the net and are flagged. Totals saved before the log have no date and cannot be included.
+ * Total corrections count toward the net. Totals saved before the log have no date and cannot be included.
  */
 export function steelOrdersInRange(projects: SteelProject[], range: SteelOrderRange) {
   const valid = !range.from || !range.to || range.from <= range.to;
-  const materials = new Map<string, SteelOrderExportRow[]>();
+  const rows: SteelOrderExportRow[] = [];
   const jobs = new Set<string>();
   let orders = 0;
   for (const project of valid ? projects : []) for (const item of project.items) {
@@ -40,28 +34,35 @@ export function steelOrdersInRange(projects: SteelProject[], range: SteelOrderRa
     if (!lines.length || !quantity) continue;
     orders += lines.length; jobs.add(project.key);
     const piecesPerBundle = steelBundleSize(item);
-    materials.set(item.key, [...(materials.get(item.key) || []), {
-      type: 'Job', description: item.description, kind: item.kind, unit: item.unit, quantity, piecesPerBundle,
-      bundles: piecesPerBundle ? round(quantity / piecesPerBundle) : null, projectNumber: project.projectNumber, projectName: project.projectName, jobs: 1,
-      days: [...new Set(lines.map(entry => steelEasternDay(entry.createdAt)))].sort(), recordedBy: [...new Set(lines.map(entry => entry.createdBy))].sort(),
-      corrected: lines.some(entry => entry.kind === 'correction'),
-    }]);
+    rows.push({ description: item.description, kind: item.kind, unit: item.unit, quantity, bundles: piecesPerBundle ? round(quantity / piecesPerBundle) : null,
+      projectNumber: project.projectNumber, projectName: project.projectName, days: [...new Set(lines.map(entry => steelEasternDay(entry.createdAt)))].sort() });
   }
-  const rows = [...materials.values()].flatMap(jobRows => {
-    const [first] = jobRows, quantity = round(jobRows.reduce((sum, row) => sum + row.quantity, 0));
-    const total: SteelOrderExportRow = { ...first, type: 'Total', quantity, bundles: first.piecesPerBundle ? round(quantity / first.piecesPerBundle) : null,
-      projectNumber: '', projectName: `All jobs (${jobRows.length})`, jobs: jobRows.length,
-      days: [...new Set(jobRows.flatMap(row => row.days))].sort(), recordedBy: [...new Set(jobRows.flatMap(row => row.recordedBy))].sort(), corrected: jobRows.some(row => row.corrected) };
-    return [total, ...jobRows.sort((a, b) => a.projectName.localeCompare(b.projectName) || a.projectNumber.localeCompare(b.projectNumber))];
-  }).sort((a, b) => a.kind.localeCompare(b.kind) || a.description.localeCompare(b.description) || a.unit.localeCompare(b.unit));
+  rows.sort((a, b) => a.kind.localeCompare(b.kind) || a.description.localeCompare(b.description) || a.unit.localeCompare(b.unit)
+    || a.projectName.localeCompare(b.projectName) || a.projectNumber.localeCompare(b.projectNumber));
   return { rows, orders, jobs: jobs.size, valid };
 }
 
-export function steelOrdersCsv(projects: SteelProject[], range: SteelOrderRange, scope: string, loadedAt: string): string {
-  const header = ['Row', 'Material', 'Unit', 'Quantity ordered', 'Bundles', 'Pieces per bundle', 'Job number', 'Job', 'Order dates (Eastern)', 'Recorded by', 'Notes', 'Order date range (Eastern)', 'Filter scope', 'Data read at'];
-  const bundles = (value: number | null) => value === null ? '' : Math.round(value * 100) / 100;
-  const rows: unknown[][] = [header, ...steelOrdersInRange(projects, range).rows.map(row => [row.type, row.description, row.unit, row.quantity, bundles(row.bundles), row.piecesPerBundle ?? '',
-    row.projectNumber, row.projectName, row.days.map(usDay).join('; '), row.recordedBy.join('; '), row.corrected ? 'Includes a total correction' : '', steelOrderRangeLabel(range), scope, loadedAt])];
+/** Job details first, then five blank rows and a separate totals-by-material table. */
+export function steelOrdersCsv(projects: SteelProject[], range: SteelOrderRange): string {
+  const orders = steelOrdersInRange(projects, range).rows;
+  const rows: unknown[][] = [['Material', 'Unit', 'Quantity ordered', 'Bundles', 'Job number', 'Job', 'Order date'],
+    ...orders.map(row => [row.description, row.unit, row.quantity, row.bundles === null ? '' : Math.round(row.bundles * 100) / 100,
+      row.projectNumber, row.projectName, row.days.map(usDay).join('; ')])];
+  if (orders.length) {
+    const totals = new Map<string, SteelOrderExportRow>();
+    for (const row of orders) {
+      const key = JSON.stringify([row.kind, row.description, row.unit]);
+      const total = totals.get(key);
+      if (total) total.quantity = round(total.quantity + row.quantity);
+      else totals.set(key, { ...row });
+    }
+    rows.push(...Array.from({ length: 5 }, () => []), ['Material totals', 'Unit', 'Quantity ordered', 'Bundles', '', '', '']);
+    for (const total of totals.values()) {
+      const piecesPerBundle = steelBundleSize(total);
+      // Convert the combined quantity, rather than adding the rounded job bundle figures.
+      rows.push([total.description, total.unit, total.quantity, piecesPerBundle ? Math.round(total.quantity / piecesPerBundle * 100) / 100 : '', '', '', '']);
+    }
+  }
   // Text that a spreadsheet could read as a formula is neutralized; real numbers, including negative corrections, stay numbers.
   return '\uFEFF' + rows.map(row => row.map(value => {
     const text = String(value ?? '');

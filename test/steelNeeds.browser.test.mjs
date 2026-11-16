@@ -254,9 +254,12 @@ test('Steel needs browser: by-job orders, order log, undo, corrections, buying l
     const [download] = await Promise.all([page.waitForEvent('download'), exportOrders.click()]);
     assert.equal(download.suggestedFilename(), 'steel-orders-2026-11-10.csv');
     const exported = (await readFile(await download.path(), 'utf8')).replace('\uFEFF', '').split('\r\n');
-    assert.equal(exported.length, 3, 'one total and one job row: no wire, no School, nothing that is only needed');
-    assert.ok(exported[1].startsWith(`"Total","${line.name}","EA","100","0.67","150","","All jobs (1)","11/10/2026","${actor}","Includes a total correction","11/10/2026"`), exported[1]);
-    assert.ok(exported[2].startsWith(`"Job","${line.name}","EA","100","0.67","150","100","Warehouse","11/10/2026"`), exported[2]);
+    assert.equal(exported.length, 9, 'one job row, five blank rows, then the material totals header and row');
+    assert.equal(exported[0], '"Material","Unit","Quantity ordered","Bundles","Job number","Job","Order date"');
+    assert.equal(exported[1], `"${line.name}","EA","100","0.67","100","Warehouse","11/10/2026"`);
+    assert.deepEqual(exported.slice(2, 7), ['', '', '', '', '']);
+    assert.equal(exported[7], '"Material totals","Unit","Quantity ordered","Bundles","","",""');
+    assert.equal(exported[8], `"${line.name}","EA","100","0.67","","",""`);
     await through.fill('2026-11-09');
     await exportArea.getByText('The first date is after the second.', { exact: true }).waitFor();
     assert.equal(await exportOrders.isDisabled(), true);

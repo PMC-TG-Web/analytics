@@ -85,10 +85,6 @@ export default function SteelNeedsPage() {
   const projects = filterSteelProjects(report?.projects || [], { status, kind, query, projectId, through, timing });
   // The export follows the job filters but never Hide fully ordered: a fully ordered material is exactly what was just ordered.
   const filtered = [status, kind, query, projectId, through, timing].some(Boolean);
-  const scope = [status === 'started' ? 'Field work started' : status === 'not-started' ? 'Field work not started' : 'Started + not started jobs',
-    projectId ? report?.projects.find(project => project.key === projectId)?.projectName : 'All In Progress jobs',
-    kind || 'Rebar + wire', through ? `Starting by ${month(through)}` : '', timing === 'unscheduled' ? 'No start month only' : '', query ? `Search: ${query}` : '',
-  ].filter(Boolean).join(' · ');
   const orderRange = { from: orderFrom, to: orderTo }, ordered = steelOrdersInRange(projects, orderRange);
   const exportNote = !ordered.valid ? 'The first date is after the second.' : !ordered.orders ? `No orders recorded in these dates${filtered ? ' for the filtered jobs' : ''}.`
     : `${ordered.orders} ${ordered.orders === 1 ? 'order' : 'orders'} from ${ordered.jobs} ${ordered.jobs === 1 ? 'job' : 'jobs'}${filtered ? ', within the filters below' : ''}.`;
@@ -100,7 +96,7 @@ export default function SteelNeedsPage() {
   const folded = showFilters ? '' : 'hidden sm:block';
   function download() {
     if (pendingKeys.current.size || !ordered.orders) return;
-    const csv = steelOrdersCsv(projects, orderRange, scope, report?.loadedAt || '');
+    const csv = steelOrdersCsv(projects, orderRange);
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
     const span = [orderFrom || 'earliest', orderTo || 'latest'];
     const anchor = document.createElement('a'); anchor.href = url; anchor.download = `steel-orders-${span[0] === span[1] ? span[0] : span.join('_to_')}.csv`; anchor.click();

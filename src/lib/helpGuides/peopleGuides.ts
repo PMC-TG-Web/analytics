@@ -45,7 +45,7 @@ export const peopleGuides = [
     ],
   }),
   defineGuide('employees', {
-    updated: '2026-11-12',
+    updated: '2026-11-17',
     purpose: 'Use this page to keep the company’s employee list: contact details, job title, hourly rate, hire dates and whether each person is active. From each row you can also log time off and certifications. Administrators also choose here which pages each person can open.',
     steps: [
       { title: 'Find the person', body: [
@@ -90,6 +90,7 @@ export const peopleGuides = [
       'Access the person already has, including access that comes from a role, shows as selected. Changing pages here does not remove an administrator or owner role.',
       'Rows under **System and redirected pages** cannot be selected. Each has a note saying where its access is managed.',
       '**Manage Access Templates** uses the same page list.',
+      'After sign-in, the navigation shows **Loading navigation…** until the person’s page access is confirmed. Only their allowed page links then appear. Help and Sign out stay available during this check. The menu checks again when the tab becomes active and every 45 seconds while visible.',
     ],
     terms: [
       ['Active / Inactive', 'Whether the person currently works here. Inactive employees drop out of the pick lists on other pages, such as Crew Management and Certifications. When an administrator makes someone inactive, that person’s page access is switched off as well.'],
@@ -110,6 +111,7 @@ export const peopleGuides = [
       '**Email** or **Status** cannot be changed, or **Delete** is grayed out: the person has a sign-in account and you are not an administrator. The page says “An administrator manages this employee’s sign-in email and access status.”',
       'You do not see **Navigation Permissions**, **Template** or **Manage Access Templates**: only administrators do.',
       'A person still cannot open a page after their access was saved: confirm that **Email** on their record is the address they sign in with, then ask them to reload. Allow a minute for the change to reach them.',
+      '**Navigation unavailable. Reload to retry.** means the initial access check failed. Reload the page. Restricted page links stay hidden until the check succeeds; a later failed refresh keeps only the last confirmed menu for that same person.',
       '**Delete** removes the record for good after one confirmation, and the person’s certification records are deleted with it. If the person has simply left, set them to **Inactive** instead.',
       'The downloaded PDF can list inactive employees even when **Include inactive employees** is not selected. Review the list before you share it.',
       'The page loads at most 100 employee records. If the company’s list is longer and someone is missing under **All**, tell an administrator.',

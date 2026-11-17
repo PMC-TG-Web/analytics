@@ -15,8 +15,9 @@ export function canAccessNavigationLink(
   if (!state.email) return false;
   // Help is available to every signed-in account, regardless of page grants.
   if (link.href === '/help') return true;
-  // Backend guards enforce access while the initial permissions read is pending.
-  if ((!state.loaded || state.failed) && !state.permissions) return true;
+  // Pending, failed, or other-identity reads cannot establish page access.
+  // A failed background refresh may retain this user's last confirmed grants.
+  if (!state.permissions) return false;
   const pagePermission = independentPermissionForPath(link.href);
   if (pagePermission) return expandAssignedPermissions([...(state.permissions || [])]).includes(pagePermission);
   const hasPermission = (permission: string) => state.permissions?.some(

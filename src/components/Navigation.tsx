@@ -79,8 +79,7 @@ export default function Navigation({
   const { user, loading } = useAuth();
   const pathname = usePathname();
   const isGlobalNavigationManaged = useContext(GlobalNavigationContext);
-  const [permissionsLoaded, setPermissionsLoaded] = useState(false);
-  const [permissionsFailed, setPermissionsFailed] = useState(false);
+  const [permissionRead, setPermissionRead] = useState<{ email: string; failed: boolean } | null>(null);
   const [localPreview, setLocalPreview] = useState(false);
 
   useEffect(() => {
@@ -109,12 +108,10 @@ export default function Navigation({
       onPermissions: (permissions) => {
         USER_PERMISSIONS[email] = permissions;
         setPermissionSnapshot({ email, permissions: expandAssignedPermissions(permissions) });
-        setPermissionsLoaded(true);
-        setPermissionsFailed(false);
+        setPermissionRead({ email, failed: false });
       },
       onError: () => {
-        setPermissionsLoaded(true);
-        setPermissionsFailed(true);
+        setPermissionRead({ email, failed: true });
       },
     });
     const refreshIfVisible = () => {
@@ -177,6 +174,8 @@ export default function Navigation({
   const currentPermissions = permissionSnapshot?.email === user?.email?.trim().toLowerCase()
     ? permissionSnapshot?.permissions
     : null;
+  const permissionsLoaded = permissionRead?.email === user?.email?.trim().toLowerCase();
+  const permissionsFailed = permissionsLoaded && permissionRead?.failed === true;
 
   const canAccessLink = (link: NavLink) => (!isSubcontractAllocationPath(link.href) || canAccessSubcontractAllocation(user?.email)) && canAccessNavigationLink(link, {
     email: user?.email,
@@ -212,7 +211,12 @@ export default function Navigation({
   };
 
   return (
-    <nav className="flex flex-wrap items-center justify-end gap-2">
+    <nav aria-label="Main navigation" className="flex flex-wrap items-center justify-end gap-2">
+      {user?.email && !currentPermissions && (
+        <span role="status" className="px-2 text-xs text-gray-600">
+          {permissionsFailed ? "Navigation unavailable. Reload to retry." : "Loading navigation…"}
+        </span>
+      )}
       {visibleNavLinks.map(renderNavLink)}
 
       {visibleScheduleLinks.length > 0 && (

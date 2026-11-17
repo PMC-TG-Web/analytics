@@ -5,6 +5,32 @@ import { canAccessNavigationLink, createNavigationPermissionRefresh } from '../s
 const email = 'operator@example.test';
 const response = (permissions, responseEmail = email) => Response.json({ data: { email: responseEmail, permissions } });
 
+test('restricted links stay hidden before a confirmed read, including failures and identity changes', () => {
+  const links = [
+    { href: '/employees', page: 'employees' },
+    { href: '/accounting/project-profitability', page: 'accounting-project-profitability', fallbackPage: 'admin' },
+    { href: '/help/employees', page: 'employees' },
+    { href: '/legacy-page', page: 'legacy', fallbackPage: 'admin' },
+  ];
+  for (const loaded of [false, true]) for (const failed of [false, true]) {
+    for (const link of links) {
+      assert.equal(canAccessNavigationLink(link, { email, permissions: null, loaded, failed }), false);
+    }
+  }
+});
+
+test('confirmed grants stay limited during background refreshes and an empty revocation grants nothing', () => {
+  const allowed = { href: '/analytics', page: 'analytics' };
+  const restricted = { href: '/employees', page: 'employees' };
+  for (const failed of [false, true]) {
+    const state = { email, permissions: ['page:/analytics'], loaded: true, failed };
+    assert.equal(canAccessNavigationLink(allowed, state), true);
+    assert.equal(canAccessNavigationLink(restricted, state), false);
+    assert.equal(canAccessNavigationLink(allowed, { ...state, permissions: [] }), false);
+    assert.equal(canAccessNavigationLink(allowed, { ...state, email: null }), false);
+  }
+});
+
 test('Help remains visible to signed-in users with no Home grant or any page grants', () => {
   const help = { href: '/help', page: 'help' };
   for (const permissions of [[], ['crew-dispatch'], ['accounting-project-profitability']]) {

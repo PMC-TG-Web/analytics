@@ -87,6 +87,7 @@ async function runStep(params: {
   path: string;
   timeoutMs?: number;
   syncScope?: string;
+  potentialCursor?: string;
 }) {
   try {
     const response = await fetch(`${params.origin}${params.path}`, {
@@ -102,6 +103,7 @@ async function runStep(params: {
         forceUserOAuth: false,
         ...(params.step === "budget-line-items" ? { fetchAll: true } : {}),
         syncScope: params.syncScope,
+        ...(params.syncScope === 'potential' ? { chunkPotential: true, potentialCursor: params.potentialCursor } : {}),
       }),
       signal: AbortSignal.timeout(params.timeoutMs ?? 4 * 60_000),
     });
@@ -497,13 +499,20 @@ async function runPostInConnection(request: NextRequest) {
       secret,
       projectId: project.projectId,
       timeoutMs: STRUCTURE_STAGE_TIMEOUT_MS,
+      potentialCursor: progress.potentialCursor,
       ...stage,
     });
     steps.push(result);
 
     const success = steps.length === STRUCTURE_STAGES.length && steps.every((step) => step.status === "ok");
     const pending = !success && result.status === "ok";
-    const checkpoint = { cycleStartedAt: progress.cycleStartedAt, steps: steps.filter((step) => step.status === "ok") };
+    const nextCursor = stage.step === 'potential-change-orders' && result.status === 'ok'
+      ? (result.detail as { nextPotentialCursor?: string } | null)?.nextPotentialCursor : undefined;
+    const resumeCursor = result.status === 'error' ? progress.potentialCursor : nextCursor;
+    const checkpoint = { cycleStartedAt: progress.cycleStartedAt,
+      steps: nextCursor ? progress.steps : steps.filter((step) => step.status === "ok"),
+      ...(resumeCursor ? { potentialCursor: resumeCursor } : {}),
+    };
     const rateLimit = steps.find((step) => step.rateLimited);
     const error = success || pending ? null : JSON.stringify(steps.find((step) => step.status === "error")?.detail || "Nightly structural sync failed").slice(0, 4_000);
     const rateLimitUntil = rateLimit?.rateLimitUntil ? new Date(rateLimit.rateLimitUntil) : null;

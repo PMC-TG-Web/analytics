@@ -29,7 +29,7 @@ import {
   isApprovedChangeOrderStatus,
 } from '@/lib/procoreCommitmentMakerTasks';
 import { enqueueCommitmentMakerApprovalTasks } from '@/lib/procoreCommitmentMakerTaskQueue';
-import { fetchCompleteChangeOrderSnapshot, retireMissingChangeOrderPackages } from '@/lib/procoreChangeOrderSnapshot';
+import { fetchCompleteChangeOrderSnapshot, potentialOrderChunk, retireMissingChangeOrderPackages } from '@/lib/procoreChangeOrderSnapshot';
 
 export const dynamic = 'force-dynamic';
 
@@ -196,7 +196,7 @@ async function fetchPotentialChangeOrdersPage(
   projectId: string,
   page: number,
   perPage: number
-): Promise<JsonObject[]> {
+): Promise<unknown> {
   const qs = new URLSearchParams({
     project_id: projectId,
     page: String(page),
@@ -209,7 +209,7 @@ async function fetchPotentialChangeOrdersPage(
     companyId,
     [404]
   );
-  return unwrapArray(data);
+  return data;
 }
 
 async function fetchPotentialChangeOrderLines(
@@ -341,6 +341,7 @@ async function runSync(request: Request) {
     }> = [];
     const warnings: string[] = [];
     const errors: string[] = [];
+    let nextPotentialCursor: string | null = null;
 
     for (const projectId of projectIds) {
       projectsScanned += 1;
@@ -378,16 +379,22 @@ async function runSync(request: Request) {
       let projectPotentialUpserted = 0;
       let projectPotentialLinesFetched = 0;
       let projectPotentialLinesUpserted = 0;
+      let chunk: ReturnType<typeof potentialOrderChunk> | null = null;
+      if (syncScope === 'potential' && body.chunkPotential === true && explicitProjectIds.length === 1) {
+        const roster = await fetchCompleteChangeOrderSnapshot(page =>
+          fetchPotentialChangeOrdersPage(accessToken, companyId, projectId, page, perPage), perPage);
+        chunk = potentialOrderChunk(roster, body.potentialCursor);
+      }
       while (syncScope !== 'packages') {
         let potentialItems: JsonObject[];
         try {
-          potentialItems = await fetchPotentialChangeOrdersPage(
+          potentialItems = chunk?.records ?? unwrapArray(await fetchPotentialChangeOrdersPage(
             accessToken,
             companyId,
             projectId,
             potentialPage,
             perPage
-          );
+          ));
         } catch (err) {
           potentialFetchComplete = false;
           const message = err instanceof Error ? err.message : String(err);
@@ -464,18 +471,19 @@ async function runSync(request: Request) {
           }
         }
 
-        if (potentialItems.length < perPage) break;
+        if (chunk || potentialItems.length < perPage) break;
         potentialPage += 1;
         if (potentialPage > 50) {
           potentialFetchComplete = false;
           break;
         }
       }
-      if (syncScope !== 'packages' && potentialFetchComplete) {
+      if (chunk && potentialFetchComplete) nextPotentialCursor = chunk.next;
+      if (syncScope !== 'packages' && potentialFetchComplete && !nextPotentialCursor) {
         await reconcilePotentialChangeOrders({
           companyId,
           projectId,
-          changeOrderIds: projectPotentialIds,
+          changeOrderIds: chunk ? chunk.ids : projectPotentialIds,
         });
       }
       totalPotentialChangeOrdersFetched += projectPotentialFetched;
@@ -632,6 +640,7 @@ async function runSync(request: Request) {
     return NextResponse.json({
       success: true,
       companyId,
+      ...(body.chunkPotential === true && syncScope === 'potential' ? { nextPotentialCursor } : {}),
       projectsScanned,
       projectsWithPackages,
       projectsSkippedNoPrimeContract,

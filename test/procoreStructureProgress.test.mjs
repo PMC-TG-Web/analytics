@@ -209,6 +209,41 @@ test('body timeout records a retryable failure while retaining prior stage progr
   assert.deepEqual(h.calls.finished[0].result.structureProgress.steps, steps.slice(0, 1));
 });
 
+test('a partial potential order group resumes at its cursor, including after a retry', async () => {
+  const prior = saved(steps.slice(0, 2), new Date().toISOString());
+  const cursor = 'a'.repeat(64) + ':4';
+  const h = routeHarness(async (_url, init) => {
+    assert.equal(JSON.parse(init.body).chunkPotential, true);
+    return Response.json({ success: true, nextPotentialCursor: cursor });
+  }, prior);
+  assert.equal((await h.run()).pending, true);
+  const partial = h.calls.checkpoints[0];
+  assert.deepEqual(partial.structureProgress.steps, prior.structureProgress.steps);
+  const retry = routeHarness(async (_url, init) => {
+    assert.equal(JSON.parse(init.body).potentialCursor, cursor);
+    throw new Error('connection lost');
+  }, partial);
+  assert.equal((await retry.run()).success, false);
+  const failed = retry.calls.finished[0].result;
+  assert.equal(failed.structureProgress.potentialCursor, cursor);
+  const finish = routeHarness(async () => Response.json({ success: true, nextPotentialCursor: null }), failed);
+  assert.equal((await finish.run()).pending, true);
+  assert.equal(finish.calls.checkpoints[0].structureProgress.steps.at(-1).step, 'potential-change-orders');
+  assert.equal(finish.calls.checkpoints[0].structureProgress.potentialCursor, undefined);
+});
+
+test('potential order cursors tolerate reordered source pages and restart on a changed roster', () => {
+  const records = ['5', '3', '2', '1', '4'].map(id => ({ id }));
+  const first = changeOrderSnapshots.potentialOrderChunk(records, undefined);
+  assert.deepEqual(first.records.map(r => r.id), ['1', '2', '3', '4']);
+  const last = changeOrderSnapshots.potentialOrderChunk([...records].reverse(), first.next);
+  assert.deepEqual(last.records, [{ id: '5' }]);
+  assert.equal(last.next, null);
+  assert.deepEqual(last.ids, ['1', '2', '3', '4', '5']);
+  const restarted = changeOrderSnapshots.potentialOrderChunk([...records, { id: '0' }], first.next);
+  assert.deepEqual(restarted.records.map(r => r.id), ['0', '1', '2', '3']);
+});
+
 test('background worker gives pending stages their bounded continuation budget', async t => {
   const oldSecret = process.env.PROCORE_SYNC_SECRET;
   const oldBase = process.env.APP_BASE_URL;
@@ -247,6 +282,7 @@ test('change-order worker scopes preserve full-list reconciliation and interacti
   ]) {
     const reconciled = [];
     const fetched = [];
+    let potentialRoster = [{ id: 'pco' }];
     const imports = {
       'next/server': { NextResponse: { json: (body, init) => Response.json(body, init) } },
       'next/headers': { cookies: async () => ({ get: () => undefined }) },
@@ -257,7 +293,7 @@ test('change-order worker scopes preserve full-list reconciliation and interacti
         getClientCredentialsToken: async () => 'test-token',
         makeRequest: async url => {
           if (url.includes('/prime_contracts?')) return [{ id: 'prime' }];
-          if (url.includes('/potential_change_orders?')) { fetched.push('potential'); return [{ id: 'pco' }]; }
+          if (url.includes('/potential_change_orders?')) { fetched.push('potential'); return potentialRoster; }
           if (url.includes('/potential_change_orders/')) return [];
           if (url.includes('/change_order_packages?')) { fetched.push('packages'); return [{ id: 'pcco' }]; }
           return { id: 'pcco', line_items: [] };
@@ -275,7 +311,8 @@ test('change-order worker scopes preserve full-list reconciliation and interacti
       },
       '@/lib/procorePotentialChangeOrders': {
         ensurePotentialChangeOrderTables: async () => {},
-        upsertPotentialChangeOrder: async () => 'pco',
+        upsertPotentialChangeOrder: async ({ record }) => record.id,
+        upsertPotentialChangeOrderLines: async () => [],
         reconcilePotentialChangeOrderLines: async () => {},
         reconcilePotentialChangeOrders: async args => { reconciled.push(args.changeOrderIds); },
       },
@@ -293,5 +330,18 @@ test('change-order worker scopes preserve full-list reconciliation and interacti
     assert.deepEqual(result.errors, []);
     assert.deepEqual(fetched, expected);
     assert.deepEqual(reconciled, expected.includes('potential') ? [['pco']] : [], 'package-only work must not reconcile away untouched PCOs');
+    if (authenticated && scope === 'potential') {
+      potentialRoster = Array.from({ length: 6 }, (_, i) => ({ id: String(i + 1) }));
+      const runChunk = async potentialCursor => (await module.exports.POST(new Request('https://example.test', {
+        method: 'POST', body: JSON.stringify({ companyId: 'company', projectIds: ['project'], syncScope: scope, chunkPotential: true, potentialCursor }),
+      }))).json();
+      const part = await runChunk(null);
+      assert.equal(part.totalPotentialChangeOrdersUpserted, 4);
+      assert.equal(reconciled.length, 1, 'a partial group cannot remove other orders');
+      const end = await runChunk(part.nextPotentialCursor);
+      assert.equal(end.totalPotentialChangeOrdersUpserted, 2);
+      assert.equal(end.nextPotentialCursor, null);
+      assert.deepEqual(reconciled[1], potentialRoster.map(row => row.id));
+    }
   }
 });

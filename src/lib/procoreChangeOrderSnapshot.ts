@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import { createHash } from 'node:crypto';
 
 type SourceRecord = Record<string, unknown>;
 
@@ -11,8 +12,8 @@ export async function fetchCompleteChangeOrderSnapshot(
   const seen = new Set<string>();
   for (let page = 1; page <= maxPages; page++) {
     const response = await fetchPage(page);
-    const envelope = response as { data?: unknown; change_order_packages?: unknown } | null;
-    const batch = Array.isArray(response) ? response : envelope?.data ?? envelope?.change_order_packages;
+    const envelope = response as { data?: unknown; change_order_packages?: unknown; potential_change_orders?: unknown } | null;
+    const batch = Array.isArray(response) ? response : envelope?.data ?? envelope?.change_order_packages ?? envelope?.potential_change_orders;
     if (!Array.isArray(batch)) throw new Error('Invalid change-order snapshot response.');
     for (const record of batch) {
       const rawId = record && typeof record === 'object' ? record.id : null;
@@ -24,6 +25,21 @@ export async function fetchCompleteChangeOrderSnapshot(
     if (batch.length < perPage) return records;
   }
   throw new Error('Change-order snapshot exceeded the pagination limit.');
+}
+
+// Reread the complete roster on each claim. A membership change restarts the
+// scan, so a cursor can never skip new orders or retire from a partial list.
+export function potentialOrderChunk(records: SourceRecord[], cursor: unknown) {
+  const sorted = [...records].sort((a, b) => String(a.id).localeCompare(String(b.id), 'en'));
+  const ids = sorted.map(record => String(record.id).trim());
+  const digest = createHash('sha256').update(JSON.stringify(ids)).digest('hex');
+  const match = typeof cursor === 'string' && /^([a-f0-9]{64}):(\d+)$/.exec(cursor);
+  const offset = match && match[1] === digest ? Number(match[2]) : 0;
+  const start = Number.isSafeInteger(offset) && offset < ids.length && offset % 4 === 0 ? offset : 0;
+  return {
+    records: sorted.slice(start, start + 4), ids,
+    next: start + 4 < ids.length ? `${digest}:${start + 4}` : null,
+  };
 }
 
 export async function retireMissingChangeOrderPackages(

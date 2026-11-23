@@ -33,15 +33,18 @@ export function nextStructureRunMinutes(now = new Date()): number {
 // last_result must never make the next daily refresh skip its reads.
 export function structureProgress<T extends { step: string; status: string }>(
   previous: unknown, now = new Date(),
-): { cycleStartedAt: string; steps: T[] } {
-  const saved = previous as { structureProgress?: { cycleStartedAt?: string; steps?: T[] } } | null;
+): { cycleStartedAt: string; steps: T[]; potentialCursor?: string } {
+  const saved = previous as { structureProgress?: { cycleStartedAt?: string; steps?: T[]; potentialCursor?: string } } | null;
   const progress = saved?.structureProgress;
   const started = Date.parse(progress?.cycleStartedAt || '');
   const steps = progress?.steps;
   if (Number.isFinite(started) && now.getTime() >= started && now.getTime() - started < 24 * 60 * 60_000
     && Array.isArray(steps) && steps.length < STRUCTURE_STAGES.length
     && steps.every((step, index) => step?.status === 'ok' && step.step === STRUCTURE_STAGES[index].step)) {
-    return { cycleStartedAt: progress!.cycleStartedAt!, steps: [...steps] };
+    const cursor = progress?.potentialCursor;
+    return { cycleStartedAt: progress!.cycleStartedAt!, steps: [...steps],
+      ...(STRUCTURE_STAGES[steps.length]?.step === 'potential-change-orders' && typeof cursor === 'string' ? { potentialCursor: cursor } : {}),
+    };
   }
   return { cycleStartedAt: now.toISOString(), steps: [] };
 }

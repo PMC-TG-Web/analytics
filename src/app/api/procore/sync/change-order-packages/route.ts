@@ -21,7 +21,7 @@ import {
   reconcilePotentialChangeOrderLines,
   reconcilePotentialChangeOrders,
   upsertPotentialChangeOrder,
-  upsertPotentialChangeOrderLine,
+  upsertPotentialChangeOrderLines,
 } from '@/lib/procorePotentialChangeOrders';
 import { procoreApiErrorIsNotFound } from '@/lib/procoreSyncResponse';
 import {
@@ -448,34 +448,15 @@ async function runSync(request: Request) {
               continue;
             }
             projectPotentialLinesFetched += potentialLines.length;
-            const persistedLineIds: string[] = [];
-            let linePersistenceFailed = false;
-            for (let index = 0; index < potentialLines.length; index += 1) {
-              try {
-                const lineId = await upsertPotentialChangeOrderLine({
-                  companyId,
-                  projectId,
-                  changeOrderId,
-                  changeOrderStatus: readText(potentialItem.status),
-                  record: potentialLines[index],
-                  index,
-                });
-                persistedLineIds.push(lineId);
-                projectPotentialLinesUpserted += 1;
-              } catch (err) {
-                linePersistenceFailed = true;
-                const message = err instanceof Error ? err.message : String(err);
-                errors.push(`project:${projectId} potential:${changeOrderId} line:${index + 1} => ${message}`);
-              }
-            }
-            if (!linePersistenceFailed) {
-              await reconcilePotentialChangeOrderLines({
-                companyId,
-                projectId,
-                changeOrderId,
-                lineItemIds: persistedLineIds,
-              });
-            }
+            const persistedLineIds = await upsertPotentialChangeOrderLines({
+              companyId, projectId, changeOrderId,
+              changeOrderStatus: readText(potentialItem.status),
+              records: potentialLines,
+            });
+            projectPotentialLinesUpserted += persistedLineIds.length;
+            await reconcilePotentialChangeOrderLines({
+              companyId, projectId, changeOrderId, lineItemIds: persistedLineIds,
+            });
           } catch (err) {
             potentialFetchComplete = false;
             const message = err instanceof Error ? err.message : String(err);

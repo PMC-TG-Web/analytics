@@ -169,15 +169,7 @@ function isLabor(lineItemTypeCode: string | null, wbsCode: string | null): boole
   return lineItemTypeCode?.toUpperCase() === "L" || /(?:^|\.)L$/i.test(wbsCode ?? "");
 }
 
-export async function upsertPotentialChangeOrderLine(params: {
-  companyId: string;
-  projectId: string;
-  changeOrderId: string;
-  changeOrderStatus: string | null;
-  record: JsonObject;
-  index: number;
-}): Promise<string> {
-  const { companyId, projectId, changeOrderId, changeOrderStatus, record, index } = params;
+function potentialLineRow(record: JsonObject, index: number) {
   const costCode = asObject(record.cost_code) ?? {};
   const budgetCode = asObject(record.budget_code) ?? {};
   const wbsCode = asObject(record.wbs_code) ?? {};
@@ -203,58 +195,76 @@ export async function upsertPotentialChangeOrderLine(params: {
     record.line_item_type,
   );
   const quantity = readNumber(record.quantity);
-
-  await prisma.$executeRawUnsafe(
-    `
-      INSERT INTO procore_potential_change_order_lines (
-        company_id, project_id, change_order_id, line_item_id,
-        change_order_status, description, cost_code_id, cost_code, wbs_code,
-        line_item_type_code, uom, quantity, unit_cost, amount, labor_hours,
-        payload, source_created_at, source_updated_at, synced_at, updated_at
-      ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-        $11, $12, $13, $14, $15, $16::jsonb,
-        $17::timestamptz, $18::timestamptz, NOW(), NOW()
-      )
-      ON CONFLICT (company_id, project_id, change_order_id, line_item_id)
-      DO UPDATE SET
-        change_order_status = EXCLUDED.change_order_status,
-        description = EXCLUDED.description,
-        cost_code_id = EXCLUDED.cost_code_id,
-        cost_code = EXCLUDED.cost_code,
-        wbs_code = EXCLUDED.wbs_code,
-        line_item_type_code = EXCLUDED.line_item_type_code,
-        uom = EXCLUDED.uom,
-        quantity = EXCLUDED.quantity,
-        unit_cost = EXCLUDED.unit_cost,
-        amount = EXCLUDED.amount,
-        labor_hours = EXCLUDED.labor_hours,
-        payload = EXCLUDED.payload,
-        source_created_at = EXCLUDED.source_created_at,
-        source_updated_at = EXCLUDED.source_updated_at,
-        synced_at = NOW(),
-        updated_at = NOW()
-    `,
-    companyId,
-    projectId,
-    changeOrderId,
-    id,
-    changeOrderStatus,
-    firstText(record.description, record.name, record.title),
-    firstText(costCode.id, budgetCode.cost_code_id),
-    normalizedCostCode,
-    normalizedWbsCode,
-    lineItemTypeCode,
-    firstText(record.uom, asObject(record.unit_of_measure)?.name),
+  return {
+    line_item_id: id,
+    description: firstText(record.description, record.name, record.title),
+    cost_code_id: firstText(costCode.id, budgetCode.cost_code_id),
+    cost_code: normalizedCostCode,
+    wbs_code: normalizedWbsCode,
+    line_item_type_code: lineItemTypeCode,
+    uom: firstText(record.uom, asObject(record.unit_of_measure)?.name),
     quantity,
-    readNumber(record.unit_cost),
-    readNumber(record.amount ?? record.total_amount ?? record.extended_amount),
-    isLabor(lineItemTypeCode, normalizedWbsCode) ? quantity : null,
-    JSON.stringify(record),
-    timestamp(record.created_at),
-    timestamp(record.updated_at),
-  );
-  return id;
+    unit_cost: readNumber(record.unit_cost),
+    amount: readNumber(record.amount ?? record.total_amount ?? record.extended_amount),
+    labor_hours: isLabor(lineItemTypeCode, normalizedWbsCode) ? quantity : null,
+    payload: record,
+    source_created_at: timestamp(record.created_at),
+    source_updated_at: timestamp(record.updated_at),
+  };
+}
+
+export async function upsertPotentialChangeOrderLines(params: {
+  companyId: string;
+  projectId: string;
+  changeOrderId: string;
+  changeOrderStatus: string | null;
+  records: JsonObject[];
+}): Promise<string[]> {
+  const rows = params.records.map(potentialLineRow);
+  // Preserve sequential upsert semantics when Procore repeats a line identity.
+  const unique = [...new Map(rows.map(row => [row.line_item_id, row])).values()];
+  for (let start = 0; start < unique.length; start += 100) {
+    await prisma.$executeRawUnsafe(
+      `
+        INSERT INTO procore_potential_change_order_lines (
+          company_id, project_id, change_order_id, line_item_id,
+          change_order_status, description, cost_code_id, cost_code, wbs_code,
+          line_item_type_code, uom, quantity, unit_cost, amount, labor_hours,
+          payload, source_created_at, source_updated_at, synced_at, updated_at
+        )
+        SELECT $1, $2, $3, line_item_id, $4, description, cost_code_id,
+               cost_code, wbs_code, line_item_type_code, uom, quantity, unit_cost,
+               amount, labor_hours, payload, source_created_at, source_updated_at, NOW(), NOW()
+        FROM jsonb_to_recordset($5::jsonb) AS lines(
+          line_item_id text, description text, cost_code_id text, cost_code text,
+          wbs_code text, line_item_type_code text, uom text, quantity numeric,
+          unit_cost numeric, amount numeric, labor_hours numeric, payload jsonb,
+          source_created_at timestamptz, source_updated_at timestamptz
+        )
+        ON CONFLICT (company_id, project_id, change_order_id, line_item_id)
+        DO UPDATE SET
+          change_order_status = EXCLUDED.change_order_status,
+          description = EXCLUDED.description,
+          cost_code_id = EXCLUDED.cost_code_id,
+          cost_code = EXCLUDED.cost_code,
+          wbs_code = EXCLUDED.wbs_code,
+          line_item_type_code = EXCLUDED.line_item_type_code,
+          uom = EXCLUDED.uom,
+          quantity = EXCLUDED.quantity,
+          unit_cost = EXCLUDED.unit_cost,
+          amount = EXCLUDED.amount,
+          labor_hours = EXCLUDED.labor_hours,
+          payload = EXCLUDED.payload,
+          source_created_at = EXCLUDED.source_created_at,
+          source_updated_at = EXCLUDED.source_updated_at,
+          synced_at = NOW(),
+          updated_at = NOW()
+      `,
+      params.companyId, params.projectId, params.changeOrderId, params.changeOrderStatus,
+      JSON.stringify(unique.slice(start, start + 100)),
+    );
+  }
+  return rows.map(row => row.line_item_id);
 }
 
 export async function reconcilePotentialChangeOrderLines(params: {

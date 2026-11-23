@@ -29,7 +29,7 @@ import {
   isApprovedChangeOrderStatus,
 } from '@/lib/procoreCommitmentMakerTasks';
 import { enqueueCommitmentMakerApprovalTasks } from '@/lib/procoreCommitmentMakerTaskQueue';
-import { fetchCompleteChangeOrderSnapshot, potentialOrderChunk, retireMissingChangeOrderPackages } from '@/lib/procoreChangeOrderSnapshot';
+import { fetchCompleteChangeOrderSnapshot, changeOrderChunk, retireMissingChangeOrderPackages } from '@/lib/procoreChangeOrderSnapshot';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,7 +46,7 @@ type PrimeContractRecord = {
   updated_at?: string;
 };
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function readText(value: unknown): string {
   return String(value ?? '').trim();
@@ -128,9 +128,9 @@ function choosePrimeContract(records: PrimeContractRecord[]): PrimeContractRecor
   })[0];
 }
 
-// ─── DB helpers ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ DB helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-// ─── Procore fetchers ────────────────────────────────────────────────────────
+// â”€â”€â”€ Procore fetchers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function fetchPrimeContracts(
   accessToken: string,
@@ -245,7 +245,7 @@ async function fetchPotentialChangeOrderLines(
   return [];
 }
 
-// ─── Main handler ────────────────────────────────────────────────────────────
+// â”€â”€â”€ Main handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function POST(request: Request) {
   if (hasValidProcoreSyncSecret(request)) return streamSyncResponse(() => runSync(request));
@@ -341,7 +341,9 @@ async function runSync(request: Request) {
     }> = [];
     const warnings: string[] = [];
     const errors: string[] = [];
-    let nextPotentialCursor: string | null = null;
+    const legacyPotential = syncScope === 'potential' && body.chunkPotential === true;
+    const chunkRequested = explicitProjectIds.length === 1 && (legacyPotential || body.chunkChangeOrders === true);
+    let nextChangeOrderCursor: string | null = null;
 
     for (const projectId of projectIds) {
       projectsScanned += 1;
@@ -379,11 +381,11 @@ async function runSync(request: Request) {
       let projectPotentialUpserted = 0;
       let projectPotentialLinesFetched = 0;
       let projectPotentialLinesUpserted = 0;
-      let chunk: ReturnType<typeof potentialOrderChunk> | null = null;
-      if (syncScope === 'potential' && body.chunkPotential === true && explicitProjectIds.length === 1) {
+      let chunk: ReturnType<typeof changeOrderChunk> | null = null;
+      if (syncScope === 'potential' && chunkRequested) {
         const roster = await fetchCompleteChangeOrderSnapshot(page =>
           fetchPotentialChangeOrdersPage(accessToken, companyId, projectId, page, perPage), perPage);
-        chunk = potentialOrderChunk(roster, body.potentialCursor);
+        chunk = changeOrderChunk(roster, body.changeOrderCursor ?? body.potentialCursor);
       }
       while (syncScope !== 'packages') {
         let potentialItems: JsonObject[];
@@ -478,8 +480,8 @@ async function runSync(request: Request) {
           break;
         }
       }
-      if (chunk && potentialFetchComplete) nextPotentialCursor = chunk.next;
-      if (syncScope !== 'packages' && potentialFetchComplete && !nextPotentialCursor) {
+      if (chunk && potentialFetchComplete) nextChangeOrderCursor = chunk.next;
+      if (syncScope !== 'packages' && potentialFetchComplete && !nextChangeOrderCursor) {
         await reconcilePotentialChangeOrders({
           companyId,
           projectId,
@@ -521,9 +523,11 @@ async function runSync(request: Request) {
           continue;
         }
 
-        projectFetched = items.length;
+        const packageChunk = syncScope === 'packages' && chunkRequested ? changeOrderChunk(items, body.changeOrderCursor) : null;
+        const selectedItems = packageChunk?.records ?? items;
+        projectFetched = selectedItems.length;
 
-        for (const item of items) {
+        for (const item of selectedItems) {
           try {
             const packageId = readText(item.id);
             if (!packageId) continue;
@@ -609,7 +613,8 @@ async function runSync(request: Request) {
           }
         }
 
-        if (!hadError && projectUpserted === items.length) {
+        if (!hadError && packageChunk) nextChangeOrderCursor = packageChunk.next;
+        if (!hadError && !nextChangeOrderCursor && projectUpserted === selectedItems.length) {
           totalPackagesRetired += await retireMissingChangeOrderPackages(prisma, {
             companyId, projectId, contractId, packageIds: items.map(item => readText(item.id)),
             startedAt: snapshotStartedAt,
@@ -640,7 +645,8 @@ async function runSync(request: Request) {
     return NextResponse.json({
       success: true,
       companyId,
-      ...(body.chunkPotential === true && syncScope === 'potential' ? { nextPotentialCursor } : {}),
+      ...(chunkRequested && (syncScope === 'potential' || syncScope === 'packages') ? { nextChangeOrderCursor } : {}),
+      ...(legacyPotential ? { nextPotentialCursor: nextChangeOrderCursor } : {}),
       projectsScanned,
       projectsWithPackages,
       projectsSkippedNoPrimeContract,

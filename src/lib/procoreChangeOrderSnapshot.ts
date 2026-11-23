@@ -29,7 +29,7 @@ export async function fetchCompleteChangeOrderSnapshot(
 
 // Reread the complete roster on each claim. A membership change restarts the
 // scan, so a cursor can never skip new orders or retire from a partial list.
-export function potentialOrderChunk(records: SourceRecord[], cursor: unknown) {
+export function changeOrderChunk(records: SourceRecord[], cursor: unknown) {
   const sorted = [...records].sort((a, b) => String(a.id).localeCompare(String(b.id), 'en'));
   const ids = sorted.map(record => String(record.id).trim());
   const digest = createHash('sha256').update(JSON.stringify(ids)).digest('hex');

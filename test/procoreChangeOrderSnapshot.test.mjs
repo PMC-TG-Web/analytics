@@ -58,10 +58,23 @@ function setup({ roster = [{ id: 'current', status: 'draft' }], failPersist = fa
   };
   const module = { exports: {} };
   new Function('require', 'module', 'exports', compiled)(id => { assert.ok(id in mocks, id); return mocks[id]; }, module, module.exports);
-  return { saved, retired, run: async () => (await module.exports.POST(new Request('http://localhost/api/procore/sync/change-order-packages', {
-    method: 'POST', body: JSON.stringify({ companyId: 'company', projectIds: ['project'], syncScope: 'packages' }),
+  return { saved, retired, run: async (options = {}) => (await module.exports.POST(new Request('http://localhost/api/procore/sync/change-order-packages', {
+    method: 'POST', body: JSON.stringify({ companyId: 'company', projectIds: ['project'], syncScope: 'packages', ...options }),
   }))).json() };
 }
+
+test('the package worker retires against the full roster only after its last successful group', async () => {
+  const roster = Array.from({ length: 7 }, (_, i) => ({ id: String(i + 1) }));
+  const h = setup({ roster });
+  const first = await h.run({ chunkChangeOrders: true });
+  assert.deepEqual(first.errors, []);
+  assert.equal(first.totalPackagesUpserted, 4);
+  assert.equal(h.retired.length, 0);
+  const last = await h.run({ chunkChangeOrders: true, changeOrderCursor: first.nextChangeOrderCursor });
+  assert.equal(last.totalPackagesUpserted, 3);
+  assert.equal(last.nextChangeOrderCursor, null);
+  assert.deepEqual(h.retired[0].where.packageId.notIn, roster.map(row => row.id));
+});
 
 test('completed sync flags missing packages by company/project/prime-contract without changing source history', async () => {
   const route = setup(); const result = await route.run();

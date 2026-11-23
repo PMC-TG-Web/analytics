@@ -33,17 +33,18 @@ export function nextStructureRunMinutes(now = new Date()): number {
 // last_result must never make the next daily refresh skip its reads.
 export function structureProgress<T extends { step: string; status: string }>(
   previous: unknown, now = new Date(),
-): { cycleStartedAt: string; steps: T[]; potentialCursor?: string } {
-  const saved = previous as { structureProgress?: { cycleStartedAt?: string; steps?: T[]; potentialCursor?: string } } | null;
+): { cycleStartedAt: string; steps: T[]; changeOrderCursor?: string } {
+  const saved = previous as { structureProgress?: { cycleStartedAt?: string; steps?: T[]; changeOrderCursor?: string; potentialCursor?: string } } | null;
   const progress = saved?.structureProgress;
   const started = Date.parse(progress?.cycleStartedAt || '');
   const steps = progress?.steps;
   if (Number.isFinite(started) && now.getTime() >= started && now.getTime() - started < 24 * 60 * 60_000
     && Array.isArray(steps) && steps.length < STRUCTURE_STAGES.length
     && steps.every((step, index) => step?.status === 'ok' && step.step === STRUCTURE_STAGES[index].step)) {
-    const cursor = progress?.potentialCursor;
+    const stage = STRUCTURE_STAGES[steps.length]?.step;
+    const cursor = progress?.changeOrderCursor ?? (stage === 'potential-change-orders' ? progress?.potentialCursor : undefined);
     return { cycleStartedAt: progress!.cycleStartedAt!, steps: [...steps],
-      ...(STRUCTURE_STAGES[steps.length]?.step === 'potential-change-orders' && typeof cursor === 'string' ? { potentialCursor: cursor } : {}),
+      ...((stage === 'potential-change-orders' || stage === 'change-order-packages') && typeof cursor === 'string' ? { changeOrderCursor: cursor } : {}),
     };
   }
   return { cycleStartedAt: now.toISOString(), steps: [] };

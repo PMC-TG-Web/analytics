@@ -43,6 +43,7 @@ async function prepare(review, folder) {
   });
   if (!project) throw Error('Canonical Procore project is missing.');
   const snapshot = await db.qboProfitabilitySnapshot.findFirst({
+    where: { readOnly: true, rows: { some: { recordType: 'project' } } },
     orderBy: { sourceGeneratedAt: 'desc' },
     select: { id: true },
   });

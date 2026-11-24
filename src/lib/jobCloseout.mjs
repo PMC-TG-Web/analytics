@@ -190,6 +190,8 @@ export function buildCloseout({ projectId, budget, lines, primes, changes, heade
     prime = primes.length ? sum(primes, (p) => cents(p.revised_contract_amount)) : null;
   const keys = new Set(lines.map((r) => String(r.wbs_code_id)));
   const decisions = new Map(signed.map((s) => [s.packageId, s]));
+  if (decisions.size !== signed.length || signed.some((s) => !s.reference?.trim() || !s.packageId))
+    throw Error('Check the signed change order references on the desktop.');
   let basis = prime;
   const changeRows = changes.map((change) => {
     const amount = cents(change.grand_total),
@@ -251,7 +253,7 @@ export function buildCloseout({ projectId, budget, lines, primes, changes, heade
       [
         ['QBO P&L', money(qbo.sales), money(qbo.cost), money(qbo.profit), margin(qbo.profit, qbo.sales)],
         [
-          'Signed contract basis',
+          signed.length ? 'Contract basis with reviewed signed adjustments' : 'Contract basis from entered prime',
           money(basis),
           money(actual),
           money(basis == null ? null : basis - actual),

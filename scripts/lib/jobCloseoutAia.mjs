@@ -108,6 +108,11 @@ export async function readAia(root, folder) {
   if (!apps.length) issues.push('No readable AIA applications found.');
   if (new Set(apps.map((a) => a.number)).size !== apps.length)
     issues.push('Duplicate application numbers. Verify revisions in the folder.');
+  if (apps.length && apps.every((a) => /^\d+$/.test(a.number))) {
+    const sequence = [...new Set(apps.map((a) => Number(a.number)))].sort((a, b) => a - b);
+    if (sequence.some((number, index) => number !== index + 1))
+      issues.push('Application numbers have a gap. Check for missing files or a different numbering sequence.');
+  }
   apps.sort(
     (a, b) => a.date.localeCompare(b.date) || a.number.localeCompare(b.number, undefined, { numeric: true }),
   );

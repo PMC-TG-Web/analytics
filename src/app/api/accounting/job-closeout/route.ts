@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getRequestUserEmail } from '@/lib/requestUser';
 import {
-  hasAccessAdministratorRole,
+  canApproveCloseoutForecast,
   hasDatabasePageAccess,
   loadUserAssignedPermissionsFromDatabase,
 } from '@/lib/permissions';
@@ -25,7 +25,7 @@ async function handle(request: NextRequest, write: boolean) {
       if (project && !/^\d+$/.test(project)) return json({ error: 'Invalid project.' }, 400);
       const projects = await closeoutQueue(prisma, company, project);
       const canZeroForecast =
-        project && hasAccessAdministratorRole(await loadUserAssignedPermissionsFromDatabase(prisma, actor));
+        project && canApproveCloseoutForecast(await loadUserAssignedPermissionsFromDatabase(prisma, actor));
       return json({ projects: projects.map((row) => ({ ...row, canZeroForecast: Boolean(canZeroForecast) })) });
     }
     if (
@@ -54,9 +54,9 @@ async function handle(request: NextRequest, write: boolean) {
       return json({ error: 'Invalid closeout request.' }, 400);
     if (
       input.action === 'zeroForecast' &&
-      !hasAccessAdministratorRole(await loadUserAssignedPermissionsFromDatabase(prisma, actor))
+      !canApproveCloseoutForecast(await loadUserAssignedPermissionsFromDatabase(prisma, actor))
     )
-      return json({ error: 'An owner or administrator must approve a Procore forecast change.' }, 403);
+      return json({ error: 'Forecast approval permission is required to zero forecasts in Procore.' }, 403);
     if (!(await changeCloseout(prisma, company, actor, input)))
       return json(
         {

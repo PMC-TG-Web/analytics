@@ -3,6 +3,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { applyForecastPlan, forecastPlan } from '../scripts/lib/jobCloseoutForecast.mjs';
 import { changeCloseout } from '../src/lib/jobCloseoutStore.mjs';
+import {
+  canApproveCloseoutForecast,
+  CLOSEOUT_ZERO_FORECAST_PERMISSION,
+  hasAccessAdministratorRole,
+  expandAssignedPermissions,
+} from '../src/lib/permissions.ts';
 
 const scope = { companyId: '10', projectId: '20', viewId: '30' };
 const row = (id, amount) => ({
@@ -133,11 +139,26 @@ test('approval queues the saved revision, never client-supplied amounts, and can
   assert.equal(await send({}), true);
   assert.equal(await send({ action: 'refresh', runId: 'queued2' }), false);
 });
-test('live forecast approval requires the administrative role in addition to closeout page access', () => {
+test('the forecast action grant enables approval without granting page or administrator access', () => {
+  for (const role of ['OWNER', 'ADMIN', CLOSEOUT_ZERO_FORECAST_PERMISSION])
+    assert.equal(canApproveCloseoutForecast([role]), true);
+  for (const other of [[], ['admin'], ['page:/accounting/job-closeout'], ['job-closeout']])
+    assert.equal(canApproveCloseoutForecast(other), false);
+  assert.equal(hasAccessAdministratorRole([CLOSEOUT_ZERO_FORECAST_PERMISSION]), false);
+  assert.equal(
+    expandAssignedPermissions([CLOSEOUT_ZERO_FORECAST_PERMISSION]).includes('page:/accounting/job-closeout'),
+    false,
+  );
+});
+test('the closeout API checks active page access and uses the same action grant for display and submission', () => {
   const route = readFileSync(new URL('../src/app/api/accounting/job-closeout/route.ts', import.meta.url), 'utf8');
   assert.match(route, /hasDatabasePageAccess\(prisma, actor, 'page:\/accounting\/job-closeout'\)/);
   assert.match(
     route,
-    /input\.action === 'zeroForecast'\s*&&\s*!hasAccessAdministratorRole\(await loadUserAssignedPermissionsFromDatabase\(prisma, actor\)\)/,
+    /input\.action === 'zeroForecast'\s*&&\s*!canApproveCloseoutForecast\(await loadUserAssignedPermissionsFromDatabase\(prisma, actor\)\)/,
+  );
+  assert.match(
+    route,
+    /project && canApproveCloseoutForecast\(await loadUserAssignedPermissionsFromDatabase\(prisma, actor\)\)/,
   );
 });

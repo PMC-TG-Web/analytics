@@ -8,6 +8,12 @@ export function hasAccessAdministratorRole(assigned: readonly string[]) {
   return assigned.includes('OWNER') || assigned.includes('ADMIN');
 }
 
+export const CLOSEOUT_ZERO_FORECAST_PERMISSION = 'action:job-closeout:zero-forecast';
+
+export function canApproveCloseoutForecast(assigned: readonly string[]) {
+  return hasAccessAdministratorRole(assigned) || assigned.includes(CLOSEOUT_ZERO_FORECAST_PERMISSION);
+}
+
 // User permissions configuration
 // Define groups for easier management
 export const PERMISSION_GROUPS: Record<string, string[]> = {

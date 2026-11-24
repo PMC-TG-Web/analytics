@@ -10,7 +10,8 @@ import { PrismaClient } from '@prisma/client';
 import { buildCloseout } from '../src/lib/jobCloseout.mjs';
 import { changeCloseout, closeoutQueue, discoverCloseouts } from '../src/lib/jobCloseoutStore.mjs';
 import { readAia, locateAiaFolder } from './lib/jobCloseoutAia.mjs';
-import { readProcore } from './lib/jobCloseoutProcore.mjs';
+import { readProcore, zeroProcoreForecast } from './lib/jobCloseoutProcore.mjs';
+import { ForecastChanged } from './lib/jobCloseoutForecast.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 process.chdir(root);
@@ -98,6 +99,7 @@ async function prepare(review, folder) {
     folder,
     report: {
       ...report,
+      forecasts: procore.forecasts,
       company,
       projectId: review.projectId,
       qboCustomerId: customer,
@@ -132,7 +134,29 @@ async function work() {
     const job = await db.jobCloseoutRun.findUniqueOrThrow({ where: { id }, include: { review: true } });
     const where = { id, claim, state: 'running', review: { status: 'completed', completionCount: job.cycle } };
     try {
+      let forecastResult;
+      if (job.report?.forecastSourceRunId) {
+        const source = await db.jobCloseoutRun.findFirstOrThrow({
+          where: {
+            id: job.report.forecastSourceRunId,
+            reviewId: job.reviewId,
+            cycle: job.cycle,
+            revision: job.revision - 1,
+          },
+          select: { report: true },
+        });
+        const checkClaim = async () => {
+          if (!(await db.jobCloseoutRun.count({ where })))
+            throw new ForecastChanged('The PM review or forecast request changed.');
+        };
+        forecastResult = {
+          ...(await zeroProcoreForecast(company, job.review.projectId, source.report.forecasts, checkClaim)),
+          sourceRevision: job.revision - 1,
+          requestedBy: job.requestedBy,
+        };
+      }
       const { folder, report } = await prepare(job.review, job.folder);
+      if (forecastResult) report.forecastResult = forecastResult;
       await db.jobCloseoutRun.updateMany({
         where,
         data: {
@@ -145,8 +169,11 @@ async function work() {
         },
       });
     } catch (e) {
-      const transient = job.attempts < 3;
-      const safeError = String(e.message).split('\n')[0].slice(0, 240);
+      const transient = job.attempts < 3 && !(e instanceof ForecastChanged);
+      const safeError =
+        job.report?.forecastSourceRunId && e.status
+          ? 'Procore forecast request returned HTTP ' + e.status + '. Refresh to verify the current amounts.'
+          : String(e.message).split('\n')[0].slice(0, 240);
       await db.jobCloseoutRun.updateMany({
         where,
         data: {

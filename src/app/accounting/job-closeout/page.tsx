@@ -3,6 +3,16 @@ import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 
 type Section = { title: string; columns: string[]; rows: string[][] };
+type ForecastRow = {
+  lineId: string | null;
+  wbsId: string | null;
+  code: string;
+  description: string;
+  amount: number;
+  strategy: string;
+};
+const dollars = (cents: number) => (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+const forecastTotal = (rows: ForecastRow[]) => dollars(rows.reduce((total, row) => total + row.amount, 0));
 type Report = {
   issues: string[];
   aiaEvidenceIssues?: string[];
@@ -11,6 +21,8 @@ type Report = {
   cleanupCount: number;
   contractor: string;
   qboCustomerId: string;
+  forecasts?: { editable: ForecastRow[]; partial: ForecastRow[] };
+  forecastResult?: { manualZeros: number; alreadyZero: number; requestedBy: string; sourceRevision: number };
 };
 type Project = {
   projectId: string;
@@ -18,6 +30,7 @@ type Project = {
   projectNumber: string;
   cycle: number;
   reviewedAt: string;
+  canZeroForecast?: boolean;
   run: null | {
     id: string;
     state: string;
@@ -26,6 +39,7 @@ type Project = {
     revision: number;
     error: string;
     generatedAt: string;
+    forecastRequested?: boolean;
     decidedBy: string;
     note: string;
   };
@@ -77,7 +91,13 @@ function Review({ job, reload }: { job: Project; reload: () => void }) {
         }),
       });
       if (!response.ok) throw Error((await response.json()).error);
-      setMessage(action === 'refresh' ? 'Refresh queued.' : 'Decision saved.');
+      setMessage(
+        action === 'refresh'
+          ? 'Refresh queued.'
+          : action === 'zeroForecast'
+            ? 'Procore forecast update queued.'
+            : 'Decision saved.',
+      );
       reload();
     } catch (e) {
       setMessage(e instanceof Error ? e.message : 'Unable to save.');
@@ -141,8 +161,74 @@ function Review({ job, reload }: { job: Project; reload: () => void }) {
         )}
       </div>
       {message && <p role="status">{message}</p>}
+      {run?.forecastRequested && (
+        <p role="status">
+          Forecast update {states[run.state]?.toLowerCase()}. The desktop verifies the amounts in Procore before
+          saving the report.
+        </p>
+      )}
       {report && (
         <>
+          <section className="rounded-lg border bg-white p-4 text-slate-900">
+            <h3 className="font-semibold">Forecast to Complete</h3>
+            {report.forecastResult && (
+              <p className="mt-2 text-sm" role="status">
+                Verified {report.forecastResult.manualZeros} rows at lump sum $0.00 in Procore.
+                {report.forecastResult.alreadyZero > 0 &&
+                  ' Already zero using another method: ' + report.forecastResult.alreadyZero + '.'}{' '}
+                Requested by {report.forecastResult.requestedBy} on report {report.forecastResult.sourceRevision}.
+              </p>
+            )}
+            {!report.forecasts ? (
+              <p className="mt-2 text-sm">Select Refresh from sources to load the current forecast rows.</p>
+            ) : (
+              <>
+                {report.forecasts.editable.length ? (
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-sm font-medium">
+                      Review {report.forecasts.editable.length} editable rows totaling{' '}
+                      {forecastTotal(report.forecasts.editable)}
+                    </summary>
+                    <ul className="my-2 space-y-1 text-sm tabular-nums">
+                      {report.forecasts.editable.map((r) => (
+                        <li key={r.lineId}>
+                          {r.code} · {r.description} · {r.strategy} · {dollars(r.amount)}
+                        </li>
+                      ))}
+                    </ul>
+                    {job.canZeroForecast && ['ready', 'approved', 'partial'].includes(run.state) && (
+                      <>
+                        <p className="my-2 text-sm">
+                          Approving sets the listed forecasts to Lump Sum Manual Entry at $0.00 in Procore. Rows
+                          already at zero are skipped.
+                        </p>
+                        <button className={btn} disabled={busy} onClick={() => save('zeroForecast')}>
+                          Approve and zero Forecast to Complete
+                        </button>
+                      </>
+                    )}
+                  </details>
+                ) : (
+                  <p className="mt-2 text-sm">All editable budget rows have a $0.00 forecast.</p>
+                )}
+                {report.forecasts.partial.length > 0 && (
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-sm font-medium">
+                      {report.forecasts.partial.length} unbudgeted rows totaling{' '}
+                      {forecastTotal(report.forecasts.partial)} require review in Procore
+                    </summary>
+                    <ul className="mt-2 space-y-1 text-sm tabular-nums">
+                      {report.forecasts.partial.map((r, i) => (
+                        <li key={i}>
+                          {r.code || 'No budget code'} · {r.description} · {dollars(r.amount)}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+              </>
+            )}
+          </section>
           {report.sections.map((s, i) => (
             <details key={s.title} open={i < 2} className="rounded-lg border bg-white px-4 py-3 text-slate-900">
               <summary className="cursor-pointer font-semibold">{s.title}</summary>

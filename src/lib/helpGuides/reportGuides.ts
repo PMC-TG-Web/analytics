@@ -7,7 +7,8 @@ export const reportGuides = [
     steps:[
       {title:'Select the job',body:'Choose a PM-reviewed project. Check the report time and QBO project ID. The desktop checks for new reviews and refresh requests every 15 minutes while signed in.'},
       {title:'Check the source documents',body:'Expand Bills and direct costs, AIA applications, invoices and credit memos, and the change orders. For Needs AIA evidence, read the reason beside the folder. If the folder is missing, paste its File Explorer path or the part after AIA Documents, then select Refresh from sources.'},
-      {title:'Record the decision',body:'Approve proposed cleanup in Analytics, apply the listed rows in Procore, then refresh. Explain any accepted differences in the review note and sign off the refreshed report.'}
+      {title:'Zero the remaining forecast',body:'Open Review editable rows under Forecast to Complete and check the amounts and methods. An owner or administrator can select Approve and zero Forecast to Complete. The desktop sets those forecasts to Lump Sum Manual Entry at $0.00, verifies them in Procore and refreshes the report. Rows already at zero are skipped. A changed nonzero amount or method requires a fresh review. Unbudgeted rows appear separately because Procore requires a budget line to edit the forecast.'},
+      {title:'Record the decision',body:'Approve any remaining cleanup in Analytics, apply approved row deletions in Procore and refresh. Explain any accepted differences in the review note and sign off the refreshed report.'}
     ],
     data:['The desktop reads the Procore Standard Budget, direct cost detail and prime change orders, the mapped QBO project’s accrual P&L and billing transactions, and the Current Payment Due cells in the project’s Excel applications.',
       'The screen reads a saved report. A new PM completion or source refresh creates a separate report revision. A failed read shows the affected source.'],

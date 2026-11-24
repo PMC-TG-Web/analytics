@@ -336,6 +336,8 @@ Project-completion productivity review tasks use the same assignee rule: only ac
 
 ## Office job closeout
 
+Forecast zeroing uses the closeout page POST action `zeroForecast`. Owners and administrators with closeout access approve the editable rows from one saved revision. A new worker run references that immutable source revision and records the requester. The desktop reads all Standard Budget detail rows, checks project, budget line, WBS, amount and method, and posts fixed zero amounts to Procore v2 Advanced Forecasting Rows. It verifies the lump sum method and zero amounts from the budget view before refreshing the report. Already-zero rows are skipped. Unbudgeted rows are shown separately and require review in Procore. Normal refreshes never submit forecast changes. Validate with `node --test test/jobCloseoutForecast.test.mjs test/jobCloseout.test.mjs`.
+
 The AIA reader retains applications with a blank Period To cell. Positive amounts reconcile to project invoices, and negative amounts reconcile to signed credit memo amounts. An undated application requires a unique exact project amount on both sides. Analytics displays the QBO date separately and flags the missing workbook date for office review. An unresolved undated application keeps the report in Needs AIA evidence with the reason beside the folder.
 
 Folder refreshes accept a full File Explorer path, including Copy as path quotes, or a folder relative to AIA Documents. Analytics saves the relative portion so different desktop sync locations resolve the same project. The desktop verifies the resolved folder and workbook locations are inside the configured share.
@@ -346,7 +348,7 @@ Install the desktop worker with `scripts/installJobCloseoutTask.ps1` on the sign
 
 The worker uses the canonical Procore project ID and the newest imported QBO profitability project mapping. The read-only QBO reader verifies the company, realm, accrual report and detail total. The approved contractor and project folder can be pinned in the screen. Otherwise the host looks for a unique contractor and exact project folder. To retain a signed CO decision between runs, store it in the host's ignored `.tmp/job-closeout-settings.json` under the key `companyId/procoreProjectId`. Each entry accepts a relative `folder` and a `signed` array with string `packageId`, dollar `amount` and a document `reference`. Store project evidence on the designated host.
 
-Cleanup approval records the reviewer, time and report revision. The office applies approved changes in Procore and refreshes for verification. Signoff requires complete AIA evidence and a note for remaining exceptions. Validate with `node --test test/jobCloseout.test.mjs` and the permission tests.
+Cleanup approval records the reviewer, time and report revision. The office applies approved budget row deletions in Procore and refreshes for verification. Signoff requires complete AIA evidence and a note for remaining exceptions. Validate with `node --test test/jobCloseout.test.mjs` and the permission tests.
 
 For chat requests to refresh and save a report, use `node scripts/jobCloseout.mjs --refresh --project=ID`, followed by `--show --project=ID`. Each refresh retains the project folder selected in Analytics.
 

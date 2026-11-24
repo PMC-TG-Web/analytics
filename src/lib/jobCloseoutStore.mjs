@@ -27,11 +27,14 @@ export async function closeoutQueue(db, companyId, projectId = null) {
     },
     orderBy: { reviewedAt: 'desc' },
   });
-  return reviews.map(({ closeouts, completionCount, ...review }) => ({
-    ...review,
-    cycle: completionCount,
-    run: closeouts[0]?.cycle === completionCount ? closeouts[0] : null,
-  }));
+  return reviews.map(({ closeouts, completionCount, ...review }) => {
+    const run = closeouts[0]?.cycle === completionCount ? closeouts[0] : null;
+    return {
+      ...review,
+      cycle: completionCount,
+      run: run?.report?.forecastSourceRunId ? { ...run, forecastRequested: true, report: null } : run,
+    };
+  });
 }
 
 export async function discoverCloseouts(db, companyId) {
@@ -87,7 +90,7 @@ export async function changeCloseout(db, companyId, actor, input) {
   const folder = action === 'refresh' ? closeoutFolder(input.folder) : null;
   const note = input.note?.trim() || null;
   if (
-    !['refresh', 'approve', 'close'].includes(action) ||
+    !['refresh', 'approve', 'close', 'zeroForecast'].includes(action) ||
     !/^\d+$/.test(projectId) ||
     !Number.isInteger(cycle) ||
     (note && note.length > 2000)
@@ -101,8 +104,38 @@ export async function changeCloseout(db, companyId, actor, input) {
       where: { reviewId: review.id, cycle },
       orderBy: { revision: 'desc' },
     });
+    if (
+      action === 'zeroForecast' &&
+      runId &&
+      current?.report?.forecastSourceRunId === runId &&
+      ['queued', 'running', 'retrying'].includes(current.state)
+    )
+      return true;
     if ((current?.id ?? null) !== (runId ?? null)) return false;
+    if (action === 'zeroForecast') {
+      const plan = current?.report?.forecasts;
+      if (
+        !['ready', 'approved', 'partial'].includes(current?.state) ||
+        !plan?.editable?.length ||
+        plan.companyId !== companyId ||
+        plan.projectId !== projectId
+      )
+        return false;
+      await tx.jobCloseoutRun.create({
+        data: {
+          reviewId: review.id,
+          cycle,
+          revision: current.revision + 1,
+          folder: current.folder,
+          requestedBy: actor,
+          report: { forecastSourceRunId: current.id },
+        },
+      });
+      return true;
+    }
     if (action === 'refresh') {
+      if (current?.report?.forecastSourceRunId && ['queued', 'running', 'retrying'].includes(current.state))
+        return false;
       if (['queued', 'running'].includes(current?.state) && folder === closeoutFolder(current.folder)) return true;
       await tx.jobCloseoutRun.create({
         data: { reviewId: review.id, cycle, revision: (current?.revision ?? 0) + 1, folder, requestedBy: actor },

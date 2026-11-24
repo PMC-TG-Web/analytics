@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getRequestUserEmail } from '@/lib/requestUser';
-import { hasDatabasePageAccess } from '@/lib/permissions';
+import {
+  hasAccessAdministratorRole,
+  hasDatabasePageAccess,
+  loadUserAssignedPermissionsFromDatabase,
+} from '@/lib/permissions';
 import { validateCsrfRequest } from '@/lib/csrfProtection';
 import { changeCloseout, CloseoutFolderError, closeoutQueue } from '@/lib/jobCloseoutStore.mjs';
 
@@ -19,7 +23,10 @@ async function handle(request: NextRequest, write: boolean) {
     if (!write) {
       const project = request.nextUrl.searchParams.get('project');
       if (project && !/^\d+$/.test(project)) return json({ error: 'Invalid project.' }, 400);
-      return json({ projects: await closeoutQueue(prisma, company, project) });
+      const projects = await closeoutQueue(prisma, company, project);
+      const canZeroForecast =
+        project && hasAccessAdministratorRole(await loadUserAssignedPermissionsFromDatabase(prisma, actor));
+      return json({ projects: projects.map((row) => ({ ...row, canZeroForecast: Boolean(canZeroForecast) })) });
     }
     if (
       !validateCsrfRequest({
@@ -45,13 +52,20 @@ async function handle(request: NextRequest, write: boolean) {
       (input.note != null && typeof input.note !== 'string')
     )
       return json({ error: 'Invalid closeout request.' }, 400);
+    if (
+      input.action === 'zeroForecast' &&
+      !hasAccessAdministratorRole(await loadUserAssignedPermissionsFromDatabase(prisma, actor))
+    )
+      return json({ error: 'An owner or administrator must approve a Procore forecast change.' }, 403);
     if (!(await changeCloseout(prisma, company, actor, input)))
       return json(
         {
           error:
             input.action === 'refresh'
-              ? 'This review has changed. Reload the report and select Refresh from sources again.'
-              : 'The decision could not be saved. Reload the report and explain any remaining exceptions.',
+              ? 'A newer review or a pending forecast update exists. Reload the report.'
+              : input.action === 'zeroForecast'
+                ? 'Refresh the report and review the current forecast amounts.'
+                : 'The decision could not be saved. Reload the report and explain any remaining exceptions.',
         },
         409,
       );

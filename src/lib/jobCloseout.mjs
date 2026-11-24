@@ -24,7 +24,7 @@ export function compareApplications(apps, invoices, credits = []) {
       type = isCredit ? 'credit memo' : 'invoice';
     const documents = isCredit ? creditMemos : invoices;
     const eligible = app.date ? documents.filter((doc) => doc.date === app.date) : documents;
-    const peers = apps.filter((a) => (a.amount < 0) === isCredit && (!app.date || a.date === app.date));
+    const peers = apps.filter((a) => a.amount < 0 === isCredit && (!app.date || a.date === app.date));
     let candidates = eligible.filter((doc) => doc.amount === app.amount);
     if (app.date && !candidates.length && eligible.length === 1 && peers.length === 1) candidates = eligible;
     const match =
@@ -244,6 +244,7 @@ export function buildCloseout({
   aia,
   signed = [],
   directExceptions = [],
+  forecasts,
 }) {
   const { cleanup, actualColumn, overruns } = budgetReview(budget, lines);
   const issues = [...aia.issues],
@@ -323,6 +324,12 @@ export function buildCloseout({
   if (basis != null && net !== basis)
     issues.push('Net billing minus signed contract basis: ' + money(net - basis) + '.');
   if (cleanup.length) issues.push(cleanup.length + ' proposed budget cleanup item(s) to review.');
+  if (forecasts?.partial.length)
+    issues.push(
+      'Unbudgeted rows still show ' +
+        money(sum(forecasts.partial, (r) => r.amount)) +
+        ' in Forecast to Complete. Review their budget coding in Procore.',
+    );
   if (overruns.length) issues.push(overruns.length + ' budget line(s) have actual costs above Projected Budget.');
   const enteredBudget =
     cents(budget.original_budget_amount) +
@@ -358,7 +365,9 @@ export function buildCloseout({
           margin(enteredBudget - actual, enteredBudget),
         ],
         [
-          'Procore Standard Budget · Projected Budget',
+          forecasts?.partial.length
+            ? 'Procore Standard Budget · budgeted rows'
+            : 'Procore Standard Budget · Projected Budget',
           money(projected),
           money(estimate),
           money(projected - estimate),
@@ -371,7 +380,8 @@ export function buildCloseout({
   const creditRows = qbo.credits.map((c) => {
     const matches = creditOrders.filter((o) => -cents(o.grand_total) === c.amount);
     const unique = matches.length === 1 && qbo.credits.filter((other) => other.amount === c.amount).length === 1;
-    if (!unique) issues.push('Credit memo #' + c.number + ' has no unique match to an approved Procore deduction.');
+    if (!unique)
+      issues.push('Credit memo #' + c.number + ' has no unique match to an approved Procore deduction.');
     return [
       c.number,
       c.date,
@@ -391,7 +401,16 @@ export function buildCloseout({
         ['Procore direct cost records, all statuses', money(headerTotal)],
         ['Project costs on QBO bills', money(billTotal)],
         ['QBO bills minus Procore costs', money(billTotal - actual)],
-        ['Forecast to Complete', money(forecast)],
+        [
+          forecasts?.partial.length ? 'Forecast to Complete on budgeted rows' : 'Forecast to Complete',
+          money(forecast),
+        ],
+        ...(forecasts?.partial.length
+          ? [
+              ['Forecast to Complete on unbudgeted rows', money(sum(forecasts.partial, (r) => r.amount))],
+              ['Forecast to Complete on all rows', money(forecast + sum(forecasts.partial, (r) => r.amount))],
+            ]
+          : []),
         [
           'Net AIA current payments due (files read)',
           aia.apps.length ? money(sum(aia.apps, (a) => a.amount)) : 'Unavailable',

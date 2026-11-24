@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { budgetReview, buildCloseout, compareApplications, compareBills } from '../src/lib/jobCloseout.mjs';
-import { changeCloseout } from '../src/lib/jobCloseoutStore.mjs';
+import { changeCloseout, closeoutFolder, CloseoutFolderError } from '../src/lib/jobCloseoutStore.mjs';
 import { readApplication } from '../scripts/lib/jobCloseoutAia.mjs';
 import { apiPagePermissions } from '../src/lib/independentPagePermissions.js';
 import { resolvePermissionForPath } from '../src/lib/permissionRoutes.js';
@@ -115,6 +115,50 @@ test('gross invoices, credits, signed adjustments, and profit margins have separ
       .rows.some(([k, v]) => k === 'Net billing' && v === '$80.00'),
   );
 });
+test('a refresh saves the portable project folder from an Explorer path', async () => {
+  const folder = 'Contractor/Completed/Project';
+  const absolute = '"C:\\Users\\Estimator\\Sales\\AIA Documents\\Contractor\\Completed\\Project"';
+  for (const input of [
+    absolute,
+    '\\\\server\\sales\\aia documents\\' + folder + '\\',
+    'AIA Documents/' + folder,
+    folder,
+  ]) {
+    assert.equal(closeoutFolder(input), folder);
+  }
+  for (const input of [
+    'C:\\Other\\Project',
+    'C:\\Sales\\AIA Documents',
+    'Contractor\\..\\Outside',
+    'C:\\AIA Documents\\file.xlsx',
+  ]) {
+    assert.throws(() => closeoutFolder(input), CloseoutFolderError);
+  }
+  assert.equal(closeoutFolder(' '), null);
+  let created;
+  const tx = {
+    $queryRaw: async () => [{ id: 'r', completion_count: 1 }],
+    jobCloseoutRun: {
+      findFirst: async () => ({ id: 'old', revision: 1, state: 'partial' }),
+      create: async ({ data }) => {
+        created = data;
+      },
+    },
+  };
+  const db = { $transaction: (action) => action(tx) };
+  assert.equal(
+    await changeCloseout(db, '9', 'office', {
+      projectId: '123',
+      runId: 'old',
+      cycle: 1,
+      action: 'refresh',
+      folder: absolute,
+    }),
+    true,
+  );
+  assert.equal(created.folder, folder);
+});
+
 test('signoff checks current PM cycle, revision, sources, cleanup and accepted variances', async () => {
   let saved = 0;
   const run = {

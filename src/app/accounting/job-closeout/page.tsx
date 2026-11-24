@@ -101,13 +101,13 @@ function Review({ job, reload }: { job: Project; reload: () => void }) {
       </header>
       <div className="rounded-lg border p-4">
         <label className="block text-sm font-semibold" htmlFor="folder">
-          Project folder under AIA Documents
+          AIA project folder
         </label>
         <div className="mt-2 flex flex-wrap gap-2">
           <input
             id="folder"
             className="min-w-48 flex-1 rounded border p-2 text-sm"
-            placeholder="Contractor / Completed / Project"
+            placeholder="Paste the full folder path or Contractor / Completed / Project"
             value={folder}
             onChange={(e) => setFolder(e.target.value)}
           />

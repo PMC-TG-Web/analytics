@@ -45,19 +45,51 @@ export async function discoverCloseouts(db, companyId) {
   if (data.length) await db.jobCloseoutRun.createMany({ data, skipDuplicates: true });
 }
 
+export class CloseoutFolderError extends Error {}
+
+// Store only the part the desktop resolves inside its configured AIA Documents share.
+export function closeoutFolder(input) {
+  if (input == null || input === '') return null;
+  if (typeof input !== 'string') throw new CloseoutFolderError('Enter a project folder path.');
+  const path = input
+    .trim()
+    .replace(/^"(.*)"$/, '$1')
+    .replaceAll('\\', '/');
+  if (!path && !input.trim()) return null;
+  const absolute = /^[A-Za-z]:\//.test(path) || path.startsWith('//');
+  const parts = path.split('/').filter(Boolean);
+  const root = parts.findIndex((part) => part.toLowerCase() === 'aia documents');
+  if (
+    (absolute && root < 0) ||
+    (!absolute && path.startsWith('/')) ||
+    /^\/\/[?.]\//.test(path) ||
+    parts.includes('..')
+  ) {
+    throw new CloseoutFolderError('Choose a project folder inside AIA Documents.');
+  }
+  const relative = (absolute || root === 0 ? parts.slice(root + 1) : parts).join('/');
+  if (
+    !relative ||
+    relative.length > 420 ||
+    /[<>:"|?*\x00-\x1f]/.test(relative) ||
+    relative.split('/').some((part) => part === '.' || /[. ]$/.test(part))
+  ) {
+    throw new CloseoutFolderError('Choose the project folder inside AIA Documents and copy its path.');
+  }
+  if (/\.(xls|xlsx|xlsm)$/i.test(relative)) {
+    throw new CloseoutFolderError('Choose the folder containing the AIA workbooks.');
+  }
+  return relative;
+}
+
 export async function changeCloseout(db, companyId, actor, input) {
   const { projectId, cycle, runId, action } = input;
-  const folder = input.folder?.trim() || null,
-    note = input.note?.trim() || null;
+  const folder = action === 'refresh' ? closeoutFolder(input.folder) : null;
+  const note = input.note?.trim() || null;
   if (
     !['refresh', 'approve', 'close'].includes(action) ||
     !/^\d+$/.test(projectId) ||
     !Number.isInteger(cycle) ||
-    (folder &&
-      (folder.length > 420 ||
-        /[:\x00-\x1f]/.test(folder) ||
-        /^[\\/]/.test(folder) ||
-        folder.split(/[\\/]/).some((s) => s === '..'))) ||
     (note && note.length > 2000)
   )
     return false;
@@ -71,7 +103,7 @@ export async function changeCloseout(db, companyId, actor, input) {
     });
     if ((current?.id ?? null) !== (runId ?? null)) return false;
     if (action === 'refresh') {
-      if (['queued', 'running'].includes(current?.state) && folder === current.folder) return true;
+      if (['queued', 'running'].includes(current?.state) && folder === closeoutFolder(current.folder)) return true;
       await tx.jobCloseoutRun.create({
         data: { reviewId: review.id, cycle, revision: (current?.revision ?? 0) + 1, folder, requestedBy: actor },
       });

@@ -6,7 +6,7 @@ export const reportGuides = [
     purpose:'Job closeout gives the office one reconciliation for each completed Field Productivity review.',
     steps:[
       {title:'Select the job',body:'Choose a PM-reviewed project. Check the report time and QBO project ID. The desktop checks for new reviews and refresh requests every 15 minutes while signed in.'},
-      {title:'Check the source documents',body:'Expand Bills and direct costs, AIA applications and invoices, and the change orders. A blank or ambiguous AIA folder needs a relative project path under AIA Documents. Enter the folder and select Refresh from sources.'},
+      {title:'Check the source documents',body:'Expand Bills and direct costs, AIA applications and invoices, and the change orders. If the AIA folder is missing, copy the project folder path from File Explorer and paste it into AIA project folder. You can also enter the part after AIA Documents. Select Refresh from sources.'},
       {title:'Record the decision',body:'Approve proposed cleanup in Analytics, apply the listed rows in Procore, then refresh. Explain any accepted differences in the review note and sign off the refreshed report.'}
     ],
     data:['The desktop reads the Procore Standard Budget, direct cost detail and prime change orders, the mapped QBO project’s accrual P&L and billing transactions, and the Current Payment Due cells in the project’s Excel applications.',

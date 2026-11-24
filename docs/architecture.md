@@ -336,6 +336,8 @@ Project-completion productivity review tasks use the same assignee rule: only ac
 
 ## Office job closeout
 
+Folder refreshes accept a full File Explorer path, including Copy as path quotes, or a folder relative to AIA Documents. Analytics saves the relative portion so different desktop sync locations resolve the same project. The desktop verifies the resolved folder and workbook locations are inside the configured share.
+
 The completed Field Productivity review queues the office closeout and retains its existing Procore office task. `/accounting/job-closeout` reads saved revisions through the page-authorized `/api/accounting/job-closeout`. New tasks include the project link. The review ID, completion count and revision identify each run. Refreshes preserve prior evidence and signoffs. The worker leases a run before reading sources and only saves for the same completed review cycle.
 
 Install the desktop worker with `scripts/installJobCloseoutTask.ps1` on the signed-in QBO host. The hidden Windows task checks the queue every 15 minutes. For on-demand chat requests, run `node scripts/jobCloseout.mjs --show` to identify the reviewed project, then `--show --project=ID` for the saved report or `--preview --project=ID` for a fresh read. `--work --project=ID` processes that project's pending refresh. Default sources are the sibling QBO_1 workspace and the sales department's AIA Documents share. JOB_CLOSEOUT_QBO_ROOT and JOB_CLOSEOUT_AIA_ROOT can override the host paths.

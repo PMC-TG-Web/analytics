@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getRequestUserEmail } from '@/lib/requestUser';
 import { hasDatabasePageAccess } from '@/lib/permissions';
 import { validateCsrfRequest } from '@/lib/csrfProtection';
-import { changeCloseout, closeoutQueue } from '@/lib/jobCloseoutStore.mjs';
+import { changeCloseout, CloseoutFolderError, closeoutQueue } from '@/lib/jobCloseoutStore.mjs';
 
 export const dynamic = 'force-dynamic';
 const json = (body: unknown, status = 200) =>
@@ -49,12 +49,15 @@ async function handle(request: NextRequest, write: boolean) {
       return json(
         {
           error:
-            'The decision could not be saved. Reload the report, check the folder and explain any remaining exceptions.',
+            input.action === 'refresh'
+              ? 'This review has changed. Reload the report and select Refresh from sources again.'
+              : 'The decision could not be saved. Reload the report and explain any remaining exceptions.',
         },
         409,
       );
     return json({ saved: true });
-  } catch {
+  } catch (error) {
+    if (error instanceof CloseoutFolderError) return json({ error: error.message }, 400);
     return json({ error: 'Closeout data is unavailable. Reload to try again.' }, 503);
   }
 }

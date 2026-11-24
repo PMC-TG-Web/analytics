@@ -334,6 +334,16 @@ Project completion is reconciled by `/api/cron/productivity-review-reminders` ev
 
 Project-completion productivity review tasks use the same assignee rule: only active project-team Project Managers with an exact `@pmcdecor.com` email can be newly assigned. Existing task recipients are preserved. If no eligible Project Manager exists, task creation is skipped and an idempotent alert is emailed only to `todd@pmcdecor.com`.
 
+## Office job closeout
+
+The completed Field Productivity review queues the office closeout and retains its existing Procore office task. `/accounting/job-closeout` reads saved revisions through the page-authorized `/api/accounting/job-closeout`. New tasks include the project link. The review ID, completion count and revision identify each run. Refreshes preserve prior evidence and signoffs. The worker leases a run before reading sources and only saves for the same completed review cycle.
+
+Install the desktop worker with `scripts/installJobCloseoutTask.ps1` on the signed-in QBO host. The hidden Windows task checks the queue every 15 minutes. For on-demand chat requests, run `node scripts/jobCloseout.mjs --show` to identify the reviewed project, then `--show --project=ID` for the saved report or `--preview --project=ID` for a fresh read. `--work --project=ID` processes that project's pending refresh. Default sources are the sibling QBO_1 workspace and the sales department's AIA Documents share. JOB_CLOSEOUT_QBO_ROOT and JOB_CLOSEOUT_AIA_ROOT can override the host paths.
+
+The worker uses the canonical Procore project ID and the newest imported QBO profitability project mapping. The read-only QBO reader verifies the company, realm, accrual report and detail total. The approved contractor and project folder can be pinned in the screen. Otherwise the host looks for a unique contractor and exact project folder. To retain a signed CO decision between runs, store it in the host's ignored `.tmp/job-closeout-settings.json` under the key `companyId/procoreProjectId`. Each entry accepts a relative `folder` and a `signed` array with string `packageId`, dollar `amount` and a document `reference`. Store project evidence on the designated host.
+
+Cleanup approval records the reviewer, time and report revision. The office applies approved changes in Procore and refreshes for verification. Signoff requires complete AIA evidence and a note for remaining exceptions. Validate with `node --test test/jobCloseout.test.mjs` and the permission tests.
+
 ## QuickBooks profitability
 
 Open A/R summary filters (2026-11-06): all four main cards and the bottom `Aging summary - current filters` use the same `arTotals` of class/search-filtered invoices as the table footer and CSV, across all pages and automatic snapshot reloads. Invalid class selections display unavailable summaries, not zero totals. Full-company QBO aging, unapplied payments/credits and reconciliation remain available in a separate collapsed `Full-company QBO reconciliation (unfiltered)` reference. No unsupported class allocation or subtraction of company-wide credits from a filtered invoice subset is introduced. Validate with the Open A/R unit and opt-in browser tests.

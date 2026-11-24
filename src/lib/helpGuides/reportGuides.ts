@@ -1,6 +1,20 @@
 import { defineGuide } from './defineGuide.ts';
 
 export const reportGuides = [
+  defineGuide('job-closeout', {
+    updated:'2026-11-24',
+    purpose:'Job closeout gives the office one reconciliation for each completed Field Productivity review.',
+    steps:[
+      {title:'Select the job',body:'Choose a PM-reviewed project. Check the report time and QBO project ID. The desktop checks for new reviews and refresh requests every 15 minutes while signed in.'},
+      {title:'Check the source documents',body:'Expand Bills and direct costs, AIA applications and invoices, and the change orders. A blank or ambiguous AIA folder needs a relative project path under AIA Documents. Enter the folder and select Refresh from sources.'},
+      {title:'Record the decision',body:'Approve proposed cleanup in Analytics, apply the listed rows in Procore, then refresh. Explain any accepted differences in the review note and sign off the refreshed report.'}
+    ],
+    data:['The desktop reads the Procore Standard Budget, direct cost detail and prime change orders, the mapped QBO project’s accrual P&L and billing transactions, and the Current Payment Due cells in the project’s Excel applications.',
+      'The screen reads a saved report. A new PM completion or source refresh creates a separate report revision. A failed read shows the affected source.'],
+    terms:[['Margin','Profit divided by revenue, expressed as a percentage. The QBO row uses accrual sales and net profit.'],['Projected Budget','The Standard Budget includes the change orders assigned to its budget rows. Approved prime changes without a corresponding row appear separately.'],['Signed contract basis','The entered revised prime amount adjusted for documented signed amounts reviewed by the office. Verify other amounts against the signed documents when closing.'],['Gross and net billing','AIA payments due are compared to invoices. Issued credit memos reduce net billing. Open credits reduce the open receivable.']],
+    example:'A bill of $400 and a manual direct cost of $400 can bring the job totals into balance. Check the supporting records before accepting the missing transaction link.',
+    checks:['Duplicate applications, ambiguous invoice matches, missing source documents and sub-cent display rounding can explain differences. Check the named workbook and invoice.','Check the QBO host and shared-drive connection if a refresh fails. Click Refresh from sources to request another read.']
+  }),
   defineGuide('qbo-open-ar', {
     updated: '2026-11-12',
     purpose: 'Open A/R lists every unpaid QuickBooks Online (QBO) invoice and shows how overdue each one is. A/R means accounts receivable: money customers still owe on invoices already sent. Use it to see who owes money, how old each balance is, and to export the list. The page is read only: nothing here creates or changes an invoice or payment in QBO.',
@@ -526,7 +540,7 @@ export const reportGuides = [
 ];
 
 const productivityDetails = {
-  updated: '2026-11-12',
+  updated: '2026-11-24',
   purpose: 'Field Productivity compares what each purchase order (PO) planned with what the field has recorded: quantities expected against quantities used, and labor hours budgeted against hours worked. Use it to spot overruns and lines with no entries, and to hand a finished project to the office. The **Analytics** menu item opens this same page.',
   steps: [
     { title: 'Find the project', body: [
@@ -550,7 +564,7 @@ const productivityDetails = {
     { title: 'Mark a finished project reviewed', body: [
       'The button at the right of each project’s header shows where the project stands: **Waiting for Complete**, **Review** with a date, **□ Mark reviewed** or **✓ Reviewed**.',
       'A project can be reviewed 30 days after it is marked Complete on the Procore Bid Board.',
-      'Select **□ Mark reviewed**, then **Complete review**. Your email and the time are saved, and a Procore task named Field Productivity Office Review is created for Todd and David.',
+      'Select **□ Mark reviewed**, then **Complete review**. Your email and the time are saved, a Procore task named Field Productivity Office Review is created for Todd and David, and the job enters the office Job closeout queue.',
       'Marking reviewed records a field review only. It does not mean the job has been billed or paid.',
       'Selecting **✓ Reviewed** un-reviews the project after you confirm. A Procore task that was already created stays in Procore.',
     ] },

@@ -20,6 +20,12 @@ export const APP_PAGES = [
     ]
   },
   {
+    "pathname": "/accounting/job-closeout",
+    "sources": [
+      "accounting/job-closeout/page.tsx"
+    ]
+  },
+  {
     "pathname": "/accounting/open-ar",
     "sources": [
       "accounting/open-ar/page.tsx"

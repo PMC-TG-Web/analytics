@@ -2943,7 +2943,33 @@ model PmcSyncLog {
 /// Durable office handoff for a reviewed Field Productivity project.
 /// The notification fields make email delivery visible and retryable without
 /// sending duplicate messages for the same completed review.
+model JobCloseoutRun {
+  id             String    @id @default(dbgenerated("(gen_random_uuid())::text"))
+  reviewId       String    @map("review_id")
+  cycle          Int
+  revision       Int
+  state          String    @default("queued")
+  folder         String?
+  report         Json?
+  error          String?
+  attempts       Int       @default(0)
+  claim          String?
+  retryAt        DateTime  @default(now()) @map("retry_at") @db.Timestamptz(6)
+  requestedAt    DateTime  @default(now()) @map("requested_at") @db.Timestamptz(6)
+  requestedBy    String?   @map("requested_by")
+  generatedAt    DateTime? @map("generated_at") @db.Timestamptz(6)
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(6)
+  decidedBy      String?   @map("decided_by")
+  note           String?
+  review         ProductivityProjectReview @relation(fields: [reviewId], references: [id])
+
+  @@unique([reviewId, cycle, revision])
+  @@index([state, retryAt])
+  @@map("job_closeout_runs")
+}
+
 model ProductivityProjectReview {
+  closeouts          JobCloseoutRun[]
   id                 String    @id @default(dbgenerated("(gen_random_uuid())::text"))
   companyId          String    @map("company_id")
   projectId          String    @map("project_id")

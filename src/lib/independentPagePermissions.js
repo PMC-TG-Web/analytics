@@ -11,6 +11,7 @@ export const LEGACY_PERMISSION_FALLBACKS = {
 };
 
 export const FEATURE_PAGES = {
+  'job-closeout': '/accounting/job-closeout',
   'steel-needs': '/steel-needs',
   home: '/', dashboard: '/dashboard', 'pm-dashboard': '/pm-dashboard', kpi: '/kpi',
   wip: '/wip', projects: '/projects', procore: '/procore', employees: '/employees',
@@ -110,6 +111,7 @@ export function updateIndependentPagePermission(assigned, path, enabled) {
 // API consumers are reviewed explicitly; discovery never infers or grants API access.
 // Shared endpoints accept any authorized consuming page, without unlocking sibling pages.
 const API_PAGE_RULES = [
+  ['/api/accounting/job-closeout', ['/accounting/job-closeout']],
   ['/api/steel-needs', ['/steel-needs']],
   ['/api/accounting/open-ar', ['/accounting/open-ar']],
   ['/api/reporting/hours', ['/reporting/hours']],

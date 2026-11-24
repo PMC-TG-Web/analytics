@@ -12,7 +12,7 @@ export function hasAccessAdministratorRole(assigned: readonly string[]) {
 // Define groups for easier management
 export const PERMISSION_GROUPS: Record<string, string[]> = {
   "OWNER": [
-    "steel-needs",
+    "job-closeout", "steel-needs",
     "home", "dashboard", "pm-dashboard", "kpi", "scheduling", "wip", "productivity", "short-term-schedule", "crew-dispatch", "crew-management",
     "long-term-schedule", "concrete-orders-schedule", "project-schedule", "projects", "project",
     "procore", "endpoints", "field", "estimating-tools", "constants", "equipment", 
@@ -20,7 +20,7 @@ export const PERMISSION_GROUPS: Record<string, string[]> = {
     "procore-timecards", "procore-line-items", "procore-commitments", "procore-scope-map", "accounting-direct-cost-bills"
   ],
   "ADMIN": [
-    "steel-needs",
+    "job-closeout", "steel-needs",
     "home", "dashboard", "pm-dashboard", "kpi", "scheduling", "wip", "productivity", "short-term-schedule", "crew-dispatch", "crew-management",
     "long-term-schedule", "concrete-orders-schedule", "project-schedule", "projects", "project",
     "procore", "estimating-tools", "constants", "equipment", 

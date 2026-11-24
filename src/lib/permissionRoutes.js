@@ -52,6 +52,8 @@ export const PATH_PERMISSION_RULES = [
   { prefix: '/analytics/cost-code-sales', permission: 'analytics-cost-code-sales' },
   { prefix: '/analytics', permission: 'analytics' },
   { prefix: '/accounting/direct-cost-bills', permission: 'accounting-direct-cost-bills' },
+  { prefix: '/accounting/job-closeout', permission: 'job-closeout' },
+  { prefix: '/help/job-closeout', permission: 'job-closeout' },
   { prefix: '/accounting/project-profitability', permission: 'accounting-project-profitability' },
   { prefix: '/accounting/open-ar', permission: 'accounting-open-ar' },
   // Help guides use the permission of the page they describe; /help itself is open to any signed-in user.
@@ -92,6 +94,7 @@ export const PATH_PERMISSION_RULES = [
 ];
 
 const API_PERMISSION_RULES = [
+  { prefix: '/api/accounting/job-closeout', permission: 'job-closeout' },
   { prefix: '/api/steel-needs', permission: 'steel-needs' },
   { prefix: '/api/crew-management/employees', permission: 'crew-management' },
   { prefix: '/api/estimating-tools/projects', permission: 'estimating-tools' },

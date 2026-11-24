@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { createJiti } from 'jiti';
-import { cents } from '../../src/lib/jobCloseout.mjs';
+import { checkDirectCostLines } from '../../src/lib/jobCloseout.mjs';
 
 export async function readProcore(companyId, projectId) {
   const jiti = createJiti(import.meta.url, { alias: { '@': path.resolve('src') } });
@@ -44,22 +44,7 @@ export async function readProcore(companyId, projectId) {
     const direct = 'projects/' + projectId + '/direct_costs';
     const headers = await list(direct);
     const directLines = await list(direct + '/line_items');
-    const totals = new Map();
-    for (const l of directLines) {
-      if (String(l.project?.id) !== projectId) throw Error('Direct cost line returned for another project.');
-      const id = String(l.holder?.id);
-      totals.set(id, (totals.get(id) ?? 0) + cents(l.amount));
-    }
-    let directTotal = 0;
-    for (const h of headers) {
-      const id = String(h.id),
-        value = cents(h.amount);
-      if ((totals.get(id) ?? 0) !== value) throw Error('Direct cost ' + id + ' differs from its line items.');
-      totals.delete(id);
-      directTotal += value;
-    }
-    if (totals.size || directTotal !== cents(budget['Direct Costs']))
-      throw Error('Direct cost detail does not tie to the Standard Budget.');
+    const directExceptions = checkDirectCostLines(projectId, headers, directLines);
     const primes = await list('prime_contracts?' + filter + '&view=extended'),
       changes = [];
     for (const contract of primes) {
@@ -71,6 +56,6 @@ export async function readProcore(companyId, projectId) {
         changes.push(detail);
       }
     }
-    return { budget, lines, headers, primes, changes };
+    return { budget, lines, headers, primes, changes, directExceptions };
   });
 }

@@ -42,6 +42,14 @@ test('proposals require a full roster, zero activity, and a deletable row', () =
     /Set forecast/,
   );
 });
+test('customized Standard Budget uses visible cost columns without converting missing source values into zero', () => {
+  const custom = { ...row, 'Direct Costs': 12 };
+  for (const field of ['Job to Date Costs', 'Pending Cost Changes', 'Revised Budget']) delete custom[field];
+  const totals = { ...custom, budget_line_item_ids: ['101'] };
+  assert.equal(budgetReview(totals, [custom]).actualColumn, 'Direct Costs');
+  assert.equal(budgetReview(totals, [custom]).overruns[0][3], '$12.00');
+  assert.throws(() => budgetReview(totals, [{ ...custom, 'Direct Costs': null }]), /Incomplete budget column/);
+});
 test('displayed AIA cents, shifted payment label and dates survive reading', () => {
   const book = {
     SheetNames: ['Application for Payment'],
@@ -60,6 +68,14 @@ test('displayed AIA cents, shifted payment label and dates survive reading', () 
   const inv = { id: '1', number: '12', date: app.date, amount: 1013 };
   assert.match(compareApplications([app], [inv]).issues.join(' '), /\$0.01/);
   assert.match(compareApplications([app], [inv, { ...inv, id: '2' }]).issues.join(' '), /no unique/);
+});
+test('direct cost discrepancies retain the record and line amounts for review', async () => {
+  const { checkDirectCostLines } = await import('../src/lib/jobCloseout.mjs');
+  const lines = [{ project: { id: '12' }, holder: { id: 31 }, amount: 7 }];
+  assert.deepEqual(checkDirectCostLines('12', [{ id: 31, status: 'approved', amount: 8 }], lines), [
+    ['31', 'approved', '$8.00', '$7.00', '-$1.00'],
+  ]);
+  assert.throws(() => checkDirectCostLines('99', [], lines), /another project/);
 });
 test('unlinked manual offsets cannot clear an individual bill by amount alone', () => {
   const result = compareBills('12', [{ id: 'x', amount: 10 }], [{ id: '11', amount: 1000, number: 'A' }]);

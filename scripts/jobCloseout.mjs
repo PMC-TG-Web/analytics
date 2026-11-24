@@ -8,7 +8,7 @@ import os from 'node:os';
 import dotenv from 'dotenv';
 import { PrismaClient } from '@prisma/client';
 import { buildCloseout } from '../src/lib/jobCloseout.mjs';
-import { closeoutQueue, discoverCloseouts } from '../src/lib/jobCloseoutStore.mjs';
+import { changeCloseout, closeoutQueue, discoverCloseouts } from '../src/lib/jobCloseoutStore.mjs';
 import { readAia, locateAiaFolder } from './lib/jobCloseoutAia.mjs';
 import { readProcore } from './lib/jobCloseoutProcore.mjs';
 
@@ -115,14 +115,17 @@ async function work() {
     const candidates =
       await db.$queryRaw`SELECT j.id FROM job_closeout_runs j JOIN productivity_project_reviews r ON r.id=j.review_id
       WHERE r.company_id=${company} AND (${projectId ?? null}::text IS NULL OR r.project_id=${projectId ?? null}) AND r.status='completed' AND r.completion_count=j.cycle
-        AND j.state IN ('queued','running','retrying') AND j.retry_at<=now()
+        AND (j.state='queued' OR (j.state IN ('running','retrying') AND j.retry_at<=now()))
         AND NOT EXISTS (SELECT 1 FROM job_closeout_runs n WHERE n.review_id=j.review_id AND n.cycle=j.cycle AND n.revision>j.revision)
       ORDER BY j.requested_by IS NULL, j.requested_at LIMIT 1`;
     if (!candidates.length) break;
     const id = candidates[0].id,
       claim = randomUUID();
     const leased = await db.jobCloseoutRun.updateMany({
-      where: { id, state: { in: ['queued', 'running', 'retrying'] }, retryAt: { lte: new Date() } },
+      where: {
+        id,
+        OR: [{ state: 'queued' }, { state: { in: ['running', 'retrying'] }, retryAt: { lte: new Date() } }],
+      },
       data: { state: 'running', claim, attempts: { increment: 1 }, retryAt: new Date(Date.now() + 20 * 60000) },
     });
     if (!leased.count) continue;
@@ -164,12 +167,27 @@ try {
   if (mode === '--work') await work();
   else if (mode === '--show')
     console.log(JSON.stringify(await closeoutQueue(db, company, projectId ?? null), null, 2));
-  else if (mode === '--preview' && projectId) {
+  else if (mode === '--refresh' && projectId) {
+    const [review] = await closeoutQueue(db, company, projectId);
+    if (!review) throw Error('This project needs a completed PM review.');
+    const queued = await changeCloseout(db, company, 'Desktop closeout worker', {
+      projectId,
+      cycle: review.cycle,
+      action: 'refresh',
+      runId: review.run?.id,
+      folder: review.run?.folder,
+    });
+    if (!queued) throw Error('Another review is in progress. Reload the current report.');
+    await work();
+    const [saved] = await closeoutQueue(db, company, projectId);
+    console.log(JSON.stringify({ projectId, state: saved?.run?.state, error: saved?.run?.error }));
+  } else if (mode === '--preview' && projectId) {
     const review = await db.productivityProjectReview.findFirstOrThrow({
       where: { companyId: company, projectId, status: 'completed' },
     });
-    console.log(JSON.stringify(await prepare(review, null), null, 2));
-  } else throw Error('Use --work, --show [--project=ID] or --preview --project=ID.');
+    const [saved] = await closeoutQueue(db, company, projectId);
+    console.log(JSON.stringify(await prepare(review, saved?.run?.folder), null, 2));
+  } else throw Error('Use --work, --show [--project=ID], --refresh --project=ID or --preview --project=ID.');
 } finally {
   await db.$disconnect();
 }

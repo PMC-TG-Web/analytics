@@ -344,6 +344,8 @@ The worker uses the canonical Procore project ID and the newest imported QBO pro
 
 Cleanup approval records the reviewer, time and report revision. The office applies approved changes in Procore and refreshes for verification. Signoff requires complete AIA evidence and a note for remaining exceptions. Validate with `node --test test/jobCloseout.test.mjs` and the permission tests.
 
+For chat requests to refresh and save a report, use `node scripts/jobCloseout.mjs --refresh --project=ID`, followed by `--show --project=ID`. Each refresh retains the project folder selected in Analytics.
+
 ## QuickBooks profitability
 
 Open A/R summary filters (2026-11-06): all four main cards and the bottom `Aging summary - current filters` use the same `arTotals` of class/search-filtered invoices as the table footer and CSV, across all pages and automatic snapshot reloads. Invalid class selections display unavailable summaries, not zero totals. Full-company QBO aging, unapplied payments/credits and reconciliation remain available in a separate collapsed `Full-company QBO reconciliation (unfiltered)` reference. No unsupported class allocation or subtraction of company-wide credits from a filtered invoice subset is introduced. Validate with the Open A/R unit and opt-in browser tests.

@@ -12,7 +12,7 @@ export const reportGuides = [
     data:['The desktop reads the Procore Standard Budget, direct cost detail and prime change orders, the mapped QBO project’s accrual P&L and billing transactions, and the Current Payment Due cells in the project’s Excel applications.',
       'The screen reads a saved report. A new PM completion or source refresh creates a separate report revision. A failed read shows the affected source.'],
     terms:[['Margin','Profit divided by revenue, expressed as a percentage. The QBO row uses accrual sales and net profit.'],['Projected Budget','The Standard Budget includes the change orders assigned to its budget rows. Approved prime changes without a corresponding row appear separately.'],['Signed contract basis','The entered revised prime amount adjusted for documented signed amounts reviewed by the office. Verify other amounts against the signed documents when closing.'],['Gross and net billing','AIA payments due are compared to invoices. Issued credit memos reduce net billing. Open credits reduce the open receivable.']],
-    example:'A bill of $400 and a manual direct cost of $400 can bring the job totals into balance. Check the supporting records before accepting the missing transaction link.',
+    example:'The Budget overruns table identifies which cost column it used. If Job to Date Costs is hidden in the Standard Budget view, it compares Direct Costs with Projected Budget.',
     checks:['Duplicate applications, ambiguous invoice matches, missing source documents and sub-cent display rounding can explain differences. Check the named workbook and invoice.','Check the QBO host and shared-drive connection if a refresh fails. Click Refresh from sources to request another read.']
   }),
   defineGuide('qbo-open-ar', {

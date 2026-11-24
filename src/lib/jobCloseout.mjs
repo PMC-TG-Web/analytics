@@ -52,6 +52,25 @@ export function compareApplications(apps, invoices) {
   return { rows, issues };
 }
 
+export function checkDirectCostLines(projectId, headers, lines) {
+  const totals = new Map();
+  for (const line of lines) {
+    if (String(line.project?.id) !== projectId) throw Error('Direct cost line returned for another project.');
+    const id = String(line.holder?.id);
+    totals.set(id, (totals.get(id) ?? 0) + cents(line.amount));
+  }
+  const exceptions = [];
+  for (const header of headers) {
+    const id = String(header.id),
+      total = totals.get(id) ?? 0,
+      posted = cents(header.amount);
+    if (total !== posted) exceptions.push([id, header.status, money(posted), money(total), money(total - posted)]);
+    totals.delete(id);
+  }
+  for (const [id, total] of totals) exceptions.push([id, 'Missing header', '—', money(total), 'Review']);
+  return exceptions;
+}
+
 export function compareBills(projectId, headers, bills) {
   const groups = new Map(),
     manual = [],
@@ -125,7 +144,17 @@ export function budgetReview(summary, lines) {
     !lines.every((r) => ids.includes(String(r.id)))
   )
     throw Error('Standard Budget detail and summary rosters differ.');
-  for (const f of budgetFields) {
+  const required = ['original_budget_amount', 'Projected Budget', 'Direct Costs', 'Estimated Cost at Completion'];
+  for (const f of required) {
+    if (!Object.hasOwn(summary, f)) throw Error('The Standard Budget view needs the ' + f + ' column.');
+  }
+  // Procore administrators can hide optional columns. Keep every available monetary check.
+  const visibleFields = budgetFields.filter(
+    (f) => Object.hasOwn(summary, f) || lines.some((r) => Object.hasOwn(r, f)),
+  );
+  const actualColumn = visibleFields.includes('Job to Date Costs') ? 'Job to Date Costs' : 'Direct Costs';
+  for (const f of visibleFields) {
+    if (lines.some((r) => r[f] == null) || summary[f] == null) throw Error('Incomplete budget column: ' + f + '.');
     if (sum(lines, (r) => cents(r[f])) !== cents(summary[f]))
       throw Error('Standard Budget detail does not reconcile for ' + f + '.');
   }
@@ -149,7 +178,7 @@ export function budgetReview(summary, lines) {
     else if (
       r.budgeted === true &&
       r.deletable === true &&
-      budgetFields.every((f) => cents(r[f]) === 0) &&
+      visibleFields.every((f) => cents(r[f]) === 0) &&
       (!('Committed Costs' in r) || cents(r['Committed Costs']) === 0) &&
       !r.budget_notes &&
       !r.budget_forecast.notes
@@ -163,7 +192,7 @@ export function budgetReview(summary, lines) {
         'Remove row',
       ]);
     }
-    const variance = cents(r['Job to Date Costs']) - cents(r['Projected Budget']);
+    const variance = cents(r[actualColumn]) - cents(r['Projected Budget']);
     if (variance > 0)
       overruns.push({
         variance,
@@ -171,16 +200,27 @@ export function budgetReview(summary, lines) {
           code,
           description,
           money(cents(r['Projected Budget'])),
-          money(cents(r['Job to Date Costs'])),
+          money(cents(r[actualColumn])),
           money(variance),
         ],
       });
   }
-  return { cleanup, overruns: overruns.sort((a, b) => b.variance - a.variance).map((r) => r.row) };
+  return { cleanup, actualColumn, overruns: overruns.sort((a, b) => b.variance - a.variance).map((r) => r.row) };
 }
 
-export function buildCloseout({ projectId, budget, lines, primes, changes, headers, qbo, aia, signed = [] }) {
-  const { cleanup, overruns } = budgetReview(budget, lines);
+export function buildCloseout({
+  projectId,
+  budget,
+  lines,
+  primes,
+  changes,
+  headers,
+  qbo,
+  aia,
+  signed = [],
+  directExceptions = [],
+}) {
+  const { cleanup, actualColumn, overruns } = budgetReview(budget, lines);
   const issues = [...aia.issues],
     sections = [];
   const actual = cents(budget['Direct Costs']),
@@ -232,6 +272,15 @@ export function buildCloseout({ projectId, budget, lines, primes, changes, heade
     creditTotal = sum(qbo.credits, (i) => i.amount),
     net = invoiceTotal - creditTotal;
   const billTotal = sum(qbo.bills, (b) => b.amount);
+  const headerTotal = sum(headers, (h) => cents(h.amount));
+  if (headerTotal !== actual)
+    issues.push(
+      'Procore direct cost records minus Standard Budget Direct Costs: ' +
+        money(headerTotal - actual) +
+        '. Check record status and budget coding.',
+    );
+  if (directExceptions.length)
+    issues.push(directExceptions.length + ' Procore direct cost record(s) differ from the underlying lines.');
   if (actual !== billTotal)
     issues.push('QBO bills minus Procore Direct Costs: ' + money(billTotal - actual) + '.');
   if (qbo.cost !== billTotal) issues.push('QBO has other posted costs of ' + money(qbo.cost - billTotal) + '.');
@@ -304,6 +353,7 @@ export function buildCloseout({ projectId, budget, lines, primes, changes, heade
       ['Measure', 'Amount'],
       [
         ['Direct Costs in Procore', money(actual)],
+        ['Procore direct cost records, all statuses', money(headerTotal)],
         ['Project costs on QBO bills', money(billTotal)],
         ['QBO bills minus Procore costs', money(billTotal - actual)],
         ['Forecast to Complete', money(forecast)],
@@ -331,13 +381,18 @@ export function buildCloseout({ projectId, budget, lines, primes, changes, heade
     ),
     section(
       'Budget overruns',
-      ['Budget code', 'Description', 'Projected Budget', 'Job to Date Costs', 'Over budget'],
+      ['Budget code', 'Description', 'Projected Budget', actualColumn, 'Over budget'],
       overruns,
     ),
     section(
       'Bills and direct costs',
       ['QBO bill', 'Vendor / description', 'Date', 'QBO', 'Procore', 'QBO minus Procore', 'Result'],
       billRows,
+    ),
+    section(
+      'Direct cost line exceptions',
+      ['Direct cost ID', 'Status', 'Record amount', 'Line items', 'Difference'],
+      directExceptions,
     ),
     section(
       'AIA applications and invoices',

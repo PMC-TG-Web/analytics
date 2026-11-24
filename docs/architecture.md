@@ -336,6 +336,8 @@ Project-completion productivity review tasks use the same assignee rule: only ac
 
 ## Office job closeout
 
+The AIA reader retains applications with a blank Period To cell. Positive amounts reconcile to project invoices, and negative amounts reconcile to signed credit memo amounts. An undated application requires a unique exact project amount on both sides. Analytics displays the QBO date separately and flags the missing workbook date for office review. An unresolved undated application keeps the report in Needs AIA evidence with the reason beside the folder.
+
 Folder refreshes accept a full File Explorer path, including Copy as path quotes, or a folder relative to AIA Documents. Analytics saves the relative portion so different desktop sync locations resolve the same project. The desktop verifies the resolved folder and workbook locations are inside the configured share.
 
 The completed Field Productivity review queues the office closeout and retains its existing Procore office task. `/accounting/job-closeout` reads saved revisions through the page-authorized `/api/accounting/job-closeout`. New tasks include the project link. The review ID, completion count and revision identify each run. Refreshes preserve prior evidence and signoffs. The worker leases a run before reading sources and only saves for the same completed review cycle.

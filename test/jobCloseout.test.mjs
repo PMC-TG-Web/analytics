@@ -69,6 +69,59 @@ test('displayed AIA cents, shifted payment label and dates survive reading', () 
   assert.match(compareApplications([app], [inv]).issues.join(' '), /\$0.01/);
   assert.match(compareApplications([app], [inv, { ...inv, id: '2' }]).issues.join(' '), /no unique/);
 });
+test('undated negative payment stays in the report and reconciles only to a unique credit memo', () => {
+  const sheet = {
+    V2: { v: 3 },
+    A31: { t: 's', v: 'Current Payment Due' },
+    I31: { t: 'n', v: -12.305, w: '-12.31' },
+  };
+  const book = { SheetNames: ['Application for Payment'], Sheets: { 'Application for Payment': sheet } };
+  const app = readApplication(book, 'Credit.xlsx');
+  assert.equal(app.date, null);
+  const memo = { id: 'c1', number: '200', date: '2026-08-04', amount: 1231 };
+  const invoice = { ...memo, id: 'i1' };
+  const result = compareApplications([app], [invoice], [memo]);
+  assert.deepEqual(result.evidenceIssues, []);
+  assert.deepEqual(result.rows[0].slice(3), ['-$12.31', 'Credit memo #200', '2026-08-04', '-$12.31', '$0.00']);
+  assert.match(result.issues.join(' '), /blank Period To/);
+  for (const candidates of [[], [memo, { ...memo, id: 'c2' }]]) {
+    assert.equal(compareApplications([app], [invoice], candidates).evidenceIssues.length, 1);
+  }
+  assert.equal(compareApplications([app, { ...app, number: '4' }], [], [memo]).evidenceIssues.length, 2);
+  sheet.V3 = { v: 'bad' };
+  assert.throws(() => readApplication(book, 'Credit.xlsx'), /Period To/);
+});
+
+test('AIA credits reduce net applications without reducing the gross invoice comparison', () => {
+  const app = { number: '1', date: '2026-08-01', file: 'One.xlsx', cell: 'I31', amount: 10000 };
+  const credit = { ...app, number: '2', file: 'Two.xlsx', date: null, amount: -1000 };
+  const input = {
+    projectId: '12',
+    budget: summary,
+    lines: [row],
+    primes: [],
+    changes: [],
+    headers: [],
+    qbo: {
+      cost: 0,
+      sales: 9000,
+      profit: 9000,
+      bills: [],
+      invoices: [{ id: 'i', number: '88', date: app.date, amount: 10000, balance: 0 }],
+      credits: [{ id: 'c', number: '89', date: '2026-08-04', amount: 1000, balance: 0 }],
+    },
+    aia: { apps: [app, credit], issues: [], complete: true, schedule: [] },
+  };
+  const report = buildCloseout(input);
+  const measures = Object.fromEntries(report.sections.find((s) => s.title === 'Reconciliation').rows);
+  assert.equal(report.complete, true);
+  assert.equal(measures['Net AIA current payments due (files read)'], '$90.00');
+  assert.equal(measures['Gross invoices less positive AIA applications'], '$0.00');
+  const pending = buildCloseout({ ...input, qbo: { ...input.qbo, credits: [] } });
+  assert.equal(pending.complete, false);
+  assert.match(pending.aiaEvidenceIssues[0], /Two.xlsx/);
+});
+
 test('direct cost discrepancies retain the record and line amounts for review', async () => {
   const { checkDirectCostLines } = await import('../src/lib/jobCloseout.mjs');
   const lines = [{ project: { id: '12' }, holder: { id: 31 }, amount: 7 }];

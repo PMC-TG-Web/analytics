@@ -6,14 +6,14 @@ export const reportGuides = [
     purpose:'Job closeout gives the office one reconciliation for each completed Field Productivity review.',
     steps:[
       {title:'Select the job',body:'Choose a PM-reviewed project. Check the report time and QBO project ID. The desktop checks for new reviews and refresh requests every 15 minutes while signed in.'},
-      {title:'Check the source documents',body:'Expand Bills and direct costs, AIA applications and invoices, and the change orders. If the AIA folder is missing, copy the project folder path from File Explorer and paste it into AIA project folder. You can also enter the part after AIA Documents. Select Refresh from sources.'},
+      {title:'Check the source documents',body:'Expand Bills and direct costs, AIA applications, invoices and credit memos, and the change orders. For Needs AIA evidence, read the reason beside the folder. If the folder is missing, paste its File Explorer path or the part after AIA Documents, then select Refresh from sources.'},
       {title:'Record the decision',body:'Approve proposed cleanup in Analytics, apply the listed rows in Procore, then refresh. Explain any accepted differences in the review note and sign off the refreshed report.'}
     ],
     data:['The desktop reads the Procore Standard Budget, direct cost detail and prime change orders, the mapped QBO project’s accrual P&L and billing transactions, and the Current Payment Due cells in the project’s Excel applications.',
       'The screen reads a saved report. A new PM completion or source refresh creates a separate report revision. A failed read shows the affected source.'],
     terms:[['Margin','Profit divided by revenue, expressed as a percentage. The QBO row uses accrual sales and net profit.'],['Projected Budget','The Standard Budget includes the change orders assigned to its budget rows. Approved prime changes without a corresponding row appear separately.'],['Signed contract basis','The entered revised prime amount adjusted for documented signed amounts reviewed by the office. Verify other amounts against the signed documents when closing.'],['Gross and net billing','AIA payments due are compared to invoices. Issued credit memos reduce net billing. Open credits reduce the open receivable.']],
     example:'The Budget overruns table identifies which cost column it used. If Job to Date Costs is hidden in the Standard Budget view, it compares Direct Costs with Projected Budget.',
-    checks:['Duplicate applications, ambiguous invoice matches, missing source documents and sub-cent display rounding can explain differences. Check the named workbook and invoice.','Check the QBO host and shared-drive connection if a refresh fails. Click Refresh from sources to request another read.']
+    checks:['A negative Current Payment Due is compared with QBO credit memos. If Period To is blank, a unique exact project amount can identify the invoice or credit memo. The office review note flags that basis. Multiple candidates require more evidence.','Duplicate applications, missing documents and rounding can explain differences. Check the named workbook and QBO document.','Check the QBO host and shared-drive connection if a refresh fails. Click Refresh from sources to request another read.']
   }),
   defineGuide('qbo-open-ar', {
     updated: '2026-11-12',

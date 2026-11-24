@@ -12,44 +12,69 @@ const sum = (rows, pick) => rows.reduce((n, row) => n + pick(row), 0);
 const margin = (profit, sales) => (sales ? ((100 * profit) / sales).toFixed(2) + '%' : 'Unavailable');
 const section = (title, columns, rows) => ({ title, columns, rows });
 
-export function compareApplications(apps, invoices) {
+export function compareApplications(apps, invoices, credits = []) {
   const used = new Set(),
-    rows = [],
-    issues = [];
-  const groups = Map.groupBy(apps, (a) => a.date);
-  for (const app of apps) {
-    const sameDate = invoices.filter((i) => i.date === app.date);
-    let candidates = sameDate.filter((i) => i.amount === app.amount);
-    if (!candidates.length && sameDate.length === 1 && groups.get(app.date).length === 1) candidates = sameDate;
+    applicationRows = new Map(),
+    issues = [],
+    evidenceIssues = [];
+  const creditMemos = credits.map((c) => ({ ...c, amount: -c.amount }));
+  // Give dated evidence priority when more than one application might claim a document.
+  for (const app of [...apps.filter((a) => a.date), ...apps.filter((a) => !a.date)]) {
+    const isCredit = app.amount < 0,
+      type = isCredit ? 'credit memo' : 'invoice';
+    const documents = isCredit ? creditMemos : invoices;
+    const eligible = app.date ? documents.filter((doc) => doc.date === app.date) : documents;
+    const peers = apps.filter((a) => (a.amount < 0) === isCredit && (!app.date || a.date === app.date));
+    let candidates = eligible.filter((doc) => doc.amount === app.amount);
+    if (app.date && !candidates.length && eligible.length === 1 && peers.length === 1) candidates = eligible;
     const match =
       candidates.length === 1 &&
-      !used.has(candidates[0].id) &&
-      groups.get(app.date).filter((a) => a.amount === app.amount).length === 1
+      !used.has(candidates[0]) &&
+      peers.filter((a) => a.amount === app.amount).length === 1
         ? candidates[0]
         : null;
-    if (match) used.add(match.id);
+    if (match) used.add(match);
     const diff = match ? match.amount - app.amount : null;
-    if (!match || diff)
+    if (!app.date && !match)
+      evidenceIssues.push(
+        app.file +
+          ' · Period To is blank and no unique ' +
+          type +
+          ' matches the application amount. Verify the period or supporting document.',
+      );
+    else if (!app.date)
       issues.push(
         'AIA #' +
           app.number +
-          (match ? ': invoice minus application ' + money(diff) : ': no unique invoice match.'),
+          ' has a blank Period To. QBO ' +
+          type +
+          ' #' +
+          match.number +
+          ' matches by unique project amount.',
       );
-    rows.push([
+    else if (!match || diff)
+      issues.push(
+        'AIA #' +
+          app.number +
+          (match ? ': ' + type + ' minus application ' + money(diff) : ': no unique ' + type + ' match.'),
+      );
+    applicationRows.set(app, [
       app.number,
-      app.date,
+      app.date || 'Not entered',
       app.file + ' · ' + app.cell,
       money(app.amount),
-      match?.number ?? 'Review',
+      match ? (isCredit ? 'Credit memo #' : 'Invoice #') + match.number : 'Review',
+      match?.date ?? '—',
       money(match?.amount),
       money(diff),
     ]);
   }
-  for (const i of invoices.filter((i) => !used.has(i.id))) {
+  const rows = apps.map((a) => applicationRows.get(a));
+  for (const i of invoices.filter((i) => !used.has(i))) {
     issues.push('Invoice #' + i.number + ' has no confirmed AIA match.');
-    rows.push(['—', i.date, '—', '—', i.number, money(i.amount), 'Review']);
+    rows.push(['—', '—', '—', '—', 'Invoice #' + i.number, i.date, money(i.amount), 'Review']);
   }
-  return { rows, issues };
+  return { rows, issues, evidenceIssues };
 }
 
 export function checkDirectCostLines(projectId, headers, lines) {
@@ -266,8 +291,18 @@ export function buildCloseout({
     issues.push('A reviewed signed amount has no current approved change order. Verify its source.');
   if (prime == null) issues.push('Prime contract unavailable.');
   const { rows: billRows, issues: billIssues } = compareBills(projectId, headers, qbo.bills);
-  const { rows: aiaRows, issues: aiaIssues } = compareApplications(aia.apps, qbo.invoices);
-  issues.push(...billIssues, ...aiaIssues);
+  const {
+    rows: aiaRows,
+    issues: aiaIssues,
+    evidenceIssues,
+  } = compareApplications(aia.apps, qbo.invoices, qbo.credits);
+  const aiaEvidenceIssues = [...aia.issues, ...evidenceIssues];
+  const complete = aia.complete && !evidenceIssues.length;
+  const positiveApplications = sum(
+    aia.apps.filter((a) => a.amount >= 0),
+    (a) => a.amount,
+  );
+  issues.push(...billIssues, ...aiaIssues, ...evidenceIssues);
   const invoiceTotal = sum(qbo.invoices, (i) => i.amount),
     creditTotal = sum(qbo.credits, (i) => i.amount),
     net = invoiceTotal - creditTotal;
@@ -336,7 +371,7 @@ export function buildCloseout({
   const creditRows = qbo.credits.map((c) => {
     const matches = creditOrders.filter((o) => -cents(o.grand_total) === c.amount);
     const unique = matches.length === 1 && qbo.credits.filter((other) => other.amount === c.amount).length === 1;
-    if (!unique) issues.push('Credit memo #' + c.number + ' needs supporting Procore or AIA documentation.');
+    if (!unique) issues.push('Credit memo #' + c.number + ' has no unique match to an approved Procore deduction.');
     return [
       c.number,
       c.date,
@@ -358,13 +393,13 @@ export function buildCloseout({
         ['QBO bills minus Procore costs', money(billTotal - actual)],
         ['Forecast to Complete', money(forecast)],
         [
-          'AIA current payments due (files read)',
+          'Net AIA current payments due (files read)',
           aia.apps.length ? money(sum(aia.apps, (a) => a.amount)) : 'Unavailable',
         ],
         ['QBO gross invoices', money(invoiceTotal)],
         [
-          'Gross invoices less AIA payments due',
-          aia.complete ? money(invoiceTotal - sum(aia.apps, (a) => a.amount)) : 'Unavailable',
+          'Gross invoices less positive AIA applications',
+          aia.complete ? money(invoiceTotal - positiveApplications) : 'Unavailable',
         ],
         ['Credit memos issued', money(creditTotal)],
         ['Net billing', money(net)],
@@ -395,14 +430,15 @@ export function buildCloseout({
       directExceptions,
     ),
     section(
-      'AIA applications and invoices',
+      'AIA applications, invoices and credit memos',
       [
         'Application',
         'Period ending',
         'Source',
         'Current payment due',
-        'QBO invoice',
-        'Invoice amount',
+        'QBO document',
+        'QBO date',
+        'QBO amount',
         'Difference',
       ],
       aiaRows,
@@ -436,5 +472,5 @@ export function buildCloseout({
       aia.schedule.map((r) => [r.description, money(r.amount)]),
     ),
   );
-  return { issues, sections, complete: aia.complete, cleanupCount: cleanup.length };
+  return { issues, sections, complete, aiaEvidenceIssues, cleanupCount: cleanup.length };
 }

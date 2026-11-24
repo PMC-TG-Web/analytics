@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 type Section = { title: string; columns: string[]; rows: string[][] };
 type Report = {
   issues: string[];
+  aiaEvidenceIssues?: string[];
   sections: Section[];
   complete: boolean;
   cleanupCount: number;
@@ -120,6 +121,24 @@ function Review({ job, reload }: { job: Project; reload: () => void }) {
             {run.error}
           </p>
         )}
+        {run?.state === 'partial' && report && (
+          <div className="mt-3 text-sm" role="status">
+            <strong>AIA evidence needed</strong>
+            {report.aiaEvidenceIssues?.length ? (
+              <ul className="mt-1 list-disc pl-5">
+                {report.aiaEvidenceIssues.map((issue, i) => (
+                  <li key={i}>{issue}</li>
+                ))}
+              </ul>
+            ) : (
+              <p>
+                <a className="underline" href="#office-review">
+                  See the source issues in Office review.
+                </a>
+              </p>
+            )}
+          </div>
+        )}
       </div>
       {message && <p role="status">{message}</p>}
       {report && (
@@ -157,7 +176,7 @@ function Review({ job, reload }: { job: Project; reload: () => void }) {
               )}
             </details>
           ))}
-          <section className="rounded-lg border p-4">
+          <section id="office-review" className="rounded-lg border p-4">
             <h3 className="font-semibold">Office review</h3>
             {report.issues.length ? (
               <ul className="my-3 list-disc space-y-1 pl-5 text-sm">

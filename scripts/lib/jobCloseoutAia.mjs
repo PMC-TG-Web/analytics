@@ -34,9 +34,17 @@ export function readApplication(book, file) {
   });
   if (candidates.length !== 1) throw Error('Current Payment Due amount is missing or ambiguous.');
   const number = String(sheet.V2?.v ?? '').trim();
-  const d = XLSX.SSF.parse_date_code(sheet.V3?.v, { date1904: !!book.Workbook?.WBProps?.date1904 });
-  if (!number || !d?.y) throw Error('Application number or period ending needs review.');
-  const date = [d.y, String(d.m).padStart(2, '0'), String(d.d).padStart(2, '0')].join('-');
+  if (!number) throw Error('Application number is missing.');
+  const period = sheet.V3?.v;
+  let date = null;
+  if (period != null && period !== '' && period !== 0) {
+    const d =
+      typeof period === 'number' && Number.isFinite(period)
+        ? XLSX.SSF.parse_date_code(period, { date1904: !!book.Workbook?.WBProps?.date1904 })
+        : null;
+    if (!d?.y || !d.d) throw Error('The Period To cell (V3) needs a valid Excel date.');
+    date = [d.y, String(d.m).padStart(2, '0'), String(d.d).padStart(2, '0')].join('-');
+  }
   const schedule = [];
   const continuation = book.Sheets[book.SheetNames.find((n) => n.trim().toLowerCase() === 'continuation sheet')];
   if (continuation) {
@@ -113,8 +121,12 @@ export async function readAia(root, folder) {
     if (sequence.some((number, index) => number !== index + 1))
       issues.push('Application numbers have a gap. Check for missing files or a different numbering sequence.');
   }
-  apps.sort(
-    (a, b) => a.date.localeCompare(b.date) || a.number.localeCompare(b.number, undefined, { numeric: true }),
-  );
+  if (apps.every((a) => /^\d+$/.test(a.number))) apps.sort((a, b) => Number(a.number) - Number(b.number));
+  else
+    apps.sort(
+      (a, b) =>
+        (a.date ?? '').localeCompare(b.date ?? '') ||
+        a.number.localeCompare(b.number, undefined, { numeric: true }),
+    );
   return { apps, issues, complete: !issues.length, schedule: apps.at(-1)?.schedule ?? [] };
 }

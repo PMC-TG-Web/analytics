@@ -71,6 +71,7 @@ export const reportGuides = [
       '“A/R data is stale” appears when the last successful refresh is more than 75 minutes old. The numbers are the last good report, not live balances.',
       '“This is a saved report for … not today” means the report was last refreshed on an earlier day. Select **Refresh from QBO**.',
       'If the QBO host is offline, turn it on and sign in. If an A/R refresh was interrupted, the host clears the unfinished request when it reconnects. Select **Refresh from QBO** to try again, or let the next hourly refresh run. Check **Refreshed** to confirm when the new report was read.',
+      'Every five minutes, Analytics checks for an offline host, a failed or expired refresh, a missing report, and a report older than 75 minutes. Todd receives an email with the last known successful refresh time and a link to Open A/R. The monitor also reports when it cannot check the app. Repeated checks during the same incident do not send additional emails.',
       '“Reconciliation needs review” means open invoices less unapplied payments and credits do not equal QuickBooks’ net A/R. Other A/R transactions, or changes made in QuickBooks during the refresh, can cause this. Refresh again and compare with QuickBooks before relying on the total.',
       'A refresh is rejected, and the previous report kept, if QuickBooks returns invalid amounts or incomplete data, or if there are foreign-currency receivables or future-dated open transactions.',
     ],

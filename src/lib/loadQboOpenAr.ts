@@ -1,6 +1,6 @@
 import { prisma } from './prisma';
 import { enqueueQboBillRelay } from './qboBillRelay';
-import { OpenArDataError, parseOpenArReport, type OpenArHealth } from './qboOpenAr';
+import { OpenArDataError, isOpenArStale, parseOpenArReport, type OpenArHealth } from './qboOpenAr';
 import { saveQboOpenArSnapshot } from './saveQboOpenArSnapshot.ts';
 
 export async function loadQboOpenAr(companyId: string) {
@@ -73,4 +73,33 @@ export async function completeQboOpenAr(companyId: string, id: string) {
   }
   const report = await saveQboOpenArSnapshot(prisma, companyId, job.result);
   return { refresh: { id, state: 'succeeded' }, report };
+}
+
+export async function loadQboOpenArAlertStatus(companyId: string) {
+  const hostId = process.env.QBO_BILL_RELAY_HOST_ID || 'primary';
+  const [health, snapshot, failure] = await Promise.all([
+    loadQboOpenArHealth(companyId),
+    prisma.qboOpenArSnapshot.findFirst({
+      where: { companyId }, orderBy: { sourceGeneratedAt: 'desc' }, select: { sourceGeneratedAt: true, importedAt: true },
+    }),
+    prisma.qboBillRelayJob.findFirst({
+      where: { companyId, hostId, operation: 'open-ar', OR: [
+        { state: { in: ['failed', 'expired'] } },
+        { state: { in: ['queued', 'processing'] }, expiresAt: { lte: new Date() } },
+      ] },
+      orderBy: { createdAt: 'desc' }, select: { id: true, state: true, expiresAt: true, finishedAt: true },
+    }),
+  ]);
+  const lastReadAt = snapshot?.sourceGeneratedAt.toISOString() ?? null;
+  let reason: 'offline' | 'failed' | 'expired' | 'missing' | 'stale' | null = null;
+  if (!health.hostOnline) reason = 'offline';
+  else if (health.latestRefresh?.state === 'failed') reason = 'failed';
+  else if (health.latestRefresh?.state === 'expired') reason = 'expired';
+  else if (failure && (!snapshot || (failure.finishedAt ?? failure.expiresAt) > snapshot.importedAt)) {
+    // A retry waiting in the queue does not establish that the report recovered.
+    reason = failure.state === 'failed' ? 'failed' : 'expired';
+  }
+  else if (!lastReadAt) reason = 'missing';
+  else if (isOpenArStale(lastReadAt, Date.now())) reason = 'stale';
+  return { reason, lastReadAt, lastFailureId: failure?.id ?? null };
 }

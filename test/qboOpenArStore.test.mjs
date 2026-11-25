@@ -25,6 +25,13 @@ globalThis.__openArStore = {
       assert.equal(args.where.companyId, '123');
       assert.equal(args.where.operation, 'open-ar');
       if (args.where.id) return { id: args.where.id, state: state.jobState, result: state.payload, error: state.jobError, expiresAt: new Date(Date.now() + 300000) };
+      if (args.select.finishedAt && args.where.OR) {
+        assert.equal(args.where.hostId, 'primary');
+        assert.deepEqual(args.where.OR[0].state.in, ['failed', 'expired']);
+        assert.deepEqual(args.where.OR[1].state.in, ['queued', 'processing']);
+        assert.ok(args.where.OR[1].expiresAt.lte instanceof Date);
+        return state.failure;
+      }
       if (args.where.OR) {
         assert.deepEqual(args.where.OR[0], { state: 'processing' }, 'never replace a still-running read solely because its browser deadline passed');
         return state.existing;
@@ -51,7 +58,7 @@ registerHooks({ resolve(specifier, context, next) {
   }
   return next(specifier, context);
 } });
-const { loadQboOpenAr, loadQboOpenArHealth, queueQboOpenAr, completeQboOpenAr } = await import('../src/lib/loadQboOpenAr.ts');
+const { loadQboOpenAr, loadQboOpenArHealth, loadQboOpenArAlertStatus, queueQboOpenAr, completeQboOpenAr } = await import('../src/lib/loadQboOpenAr.ts');
 test('ordinary reads use only saved company-scoped snapshots and explicitly return no snapshot', async () => {
   assert.equal(await loadQboOpenAr('123'), null);
   assert.deepEqual(state.reads[0].where, { companyId: '123' });
@@ -120,4 +127,25 @@ test('health reports company-scoped offline, failed and expired reads without ex
   assert.equal((await loadQboOpenArHealth('123')).latestRefresh.state, 'expired');
   state.host.companyId = 'other';
   assert.equal((await loadQboOpenArHealth('123')).hostOnline, false);
+});
+
+test('alert status reads only metadata and waits for a saved snapshot before treating a retry as recovered', async () => {
+  const now = Date.now();
+  state.host = { companyId: '123', updatedAt: new Date(now) };
+  state.latestJob = { state: 'queued', createdAt: new Date(now), expiresAt: new Date(now + 300000) };
+  state.saved = null; state.failure = null;
+  const reason = async () => (await loadQboOpenArAlertStatus('123')).reason;
+  assert.equal(await reason(), 'missing');
+  state.saved = { sourceGeneratedAt: new Date(now - 76 * 60000), importedAt: new Date(now - 76 * 60000) };
+  assert.equal(await reason(), 'stale');
+  state.saved = { sourceGeneratedAt: new Date(now - 60000), importedAt: new Date(now - 59000) };
+  state.failure = { id: 'one', state: 'failed', finishedAt: new Date(now - 30000) };
+  assert.equal(await reason(), 'failed');
+  state.failure = { id: 'two', state: 'processing', expiresAt: new Date(now - 30000) };
+  assert.equal(await reason(), 'expired');
+  state.saved = { sourceGeneratedAt: new Date(now), importedAt: new Date(now) };
+  assert.deepEqual(await loadQboOpenArAlertStatus('123'), { reason: null, lastReadAt: new Date(now).toISOString(), lastFailureId: 'two' });
+  assert.deepEqual(state.reads.at(-1).select, { sourceGeneratedAt: true, importedAt: true });
+  state.host = null;
+  assert.equal(await reason(), 'offline');
 });

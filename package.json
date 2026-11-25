@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@auth0/nextjs-auth0": "4.26.0",
+    "@netlify/blobs": "11.1.11",
     "@prisma/client": "6.19.3",
     "@prisma/extension-accelerate": "^3.0.1",
     "chart.js": "^4.4.1",

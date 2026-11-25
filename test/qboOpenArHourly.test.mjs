@@ -40,13 +40,17 @@ test('the exact cron POST verifies its secret and configured company before queu
   const module = { exports: {} };
   const imports = {
     'next/server': { NextRequest, NextResponse },
-    '@/lib/loadQboOpenAr': { queueQboOpenAr: async (...args) => { calls.push(args); if (fail) throw new Error('host offline'); return { id: 'job', state: 'queued' }; } },
+    '@/lib/loadQboOpenAr': {
+      queueQboOpenAr: async (...args) => { calls.push(args); if (fail) throw new Error('host offline'); return { id: 'job', state: 'queued' }; },
+      loadQboOpenArAlertStatus: async company => { calls.push(['status', company]); if (fail) throw new Error('private details'); return { reason: null, lastReadAt: null, lastFailureId: null }; },
+    },
   };
   vm.runInNewContext(`(function(require,module,exports){${code}})(require,module,module.exports)`, {
     module, Error, console: { error() {} }, process: { env: { PROCORE_SYNC_SECRET: 'fixture-secret', PROCORE_COMPANY_ID: '123' } },
     require: id => { assert.ok(id in imports, id); return imports[id]; },
   });
   for (const secret of ['', 'wrong']) {
+    assert.equal((await module.exports.GET(new NextRequest('https://example.test/api/cron/qbo-open-ar', { headers: { 'x-sync-secret': secret } }))).status, 401);
     const response = await module.exports.POST(new NextRequest('https://example.test/api/cron/qbo-open-ar', { method: 'POST', headers: { 'x-sync-secret': secret } }));
     assert.equal(response.status, 401);
   }
@@ -54,10 +58,16 @@ test('the exact cron POST verifies its secret and configured company before queu
   const request = () => new NextRequest('https://example.test/api/cron/qbo-open-ar?companyId=untrusted', { method: 'POST', headers: { 'x-sync-secret': 'fixture-secret' } });
   assert.equal((await module.exports.POST(request())).status, 202);
   assert.deepEqual(calls, [['123', true]]);
+  const check = () => module.exports.GET(new NextRequest('https://example.test/api/cron/qbo-open-ar?companyId=untrusted', { headers: { 'x-sync-secret': 'fixture-secret' } }));
+  assert.equal((await check()).status, 200);
+  assert.deepEqual(calls.at(-1), ['status', '123']);
   fail = true;
+  const unavailable = await check(); assert.equal(unavailable.status, 503); assert.doesNotMatch(await unavailable.text(), /private details/);
   const response = await module.exports.POST(request()); assert.equal(response.status, 503); assert.match((await response.json()).error, /last saved report was retained/);
   assert.equal(isRouteAuthorizedApiRequest('/api/cron/qbo-open-ar', 'POST'), true);
-  assert.equal(isRouteAuthorizedApiRequest('/api/cron/qbo-open-ar', 'GET'), false);
+  assert.equal(isRouteAuthorizedApiRequest('/api/cron/qbo-open-ar', 'GET'), true);
+  assert.equal(isRouteAuthorizedApiRequest('/api/cron/qbo-open-ar', 'PUT'), false);
+  assert.equal(isRouteAuthorizedApiRequest('/api/cron/qbo-open-ar/other', 'GET'), false);
   assert.equal(isRouteAuthorizedApiRequest('/api/cron/qbo-open-ar/other', 'POST'), false);
 });
 test('host persistence is validated and immutable without any browser completion request', async () => {

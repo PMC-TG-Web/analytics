@@ -2,11 +2,11 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import FormsCloseoutPanel from "./FormsCloseoutPanel";
-import { projectsWithPurchaseOrderLabor } from "@/lib/productivityLaborCard";
 import {
   calculateWeightedCompletion,
   type WeightedCompletion,
 } from "@/lib/productivityWeightedCompletion";
+import { hasProjectTimecards } from "@/lib/productivityLaborCard";
 
 const PROJECT_REVIEW_EMAILS = [
   "todd@pmcdecor.com",
@@ -79,6 +79,7 @@ type LaborGroup = {
   totalHours: number;
   remainingHours: number;
   laborBurnRatio: number | null;
+  timecardEntryCount: number;
   entryCount: number;
   firstEntryDate: string | null;
   lastEntryDate: string | null;
@@ -964,8 +965,6 @@ export default function ProductivityAnalyticsPage() {
       .sort((a, b) => a.projectName.localeCompare(b.projectName));
   }, [activityFilter, filteredLines, laborGroups, lines, projectFilter, reviewFilter, reviewsByProject, search]);
 
-  const projectsWithPoLabor = useMemo(() => projectsWithPurchaseOrderLabor(lines), [lines]);
-
   const laborGroupsByProject = useMemo(() => {
     const byProject = new Map<string, LaborGroup[]>();
     for (const group of laborGroups) {
@@ -1323,7 +1322,8 @@ export default function ProductivityAnalyticsPage() {
                   const descriptionGroups = groupLinesByDescription(projectLines);
                   const activeDescriptions = descriptionGroups.filter((group) => group.productivityLogCount > 0).length;
                   const projectLaborGroups = laborGroupsByProject.get(project.projectId) || [];
-                  const projectTimecardEntries = projectLaborGroups.reduce((sum, group) => sum + group.entryCount, 0);
+                  const projectTimecardEntries = projectLaborGroups.reduce((sum, group) => sum + group.timecardEntryCount, 0);
+                  const showLaborCard = hasProjectTimecards(projectTimecardEntries);
                   const projectCompletion = calculateWeightedCompletion({
                     lines: projectLines,
                     labor: projectLaborGroups,
@@ -1389,7 +1389,7 @@ export default function ProductivityAnalyticsPage() {
                         </button>
                         <div className="flex flex-wrap items-center justify-end gap-2">
                           <WeightedCompletionBadge completion={projectCompletion} dark />
-                          <LaborCompletionChip groups={projectLaborGroups} />
+                          {showLaborCard && <LaborCompletionChip groups={projectLaborGroups} />}
                           <QuantityChips totals={projectTotals} />
                           <button
                             type="button"
@@ -1632,7 +1632,7 @@ export default function ProductivityAnalyticsPage() {
                               </div>
                             );
                           })}
-                          {!projectsWithPoLabor.has(project.projectId) && (
+                          {showLaborCard && (
                             <LaborDrilldown projectId={project.projectId} groups={projectLaborGroups} />
                           )}
                         </div>

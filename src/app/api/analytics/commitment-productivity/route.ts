@@ -211,6 +211,7 @@ export async function GET(request: NextRequest) {
               NULLIF(BTRIM(t."costCodeId"), '') AS cost_code_id,
               COALESCE(t.hours, t."totalHoursWorked", 0)::double precision AS actual_hours,
               1::bigint AS entry_count,
+              1::bigint AS timecard_entry_count,
               t.date AS entry_date
             FROM "TimecardEntry" t
             WHERE t."procoreCompanyId" = $1
@@ -241,6 +242,7 @@ export async function GET(request: NextRequest) {
                 )
               )::double precision AS actual_hours,
               1::bigint AS entry_count,
+              0::bigint AS timecard_entry_count,
               c.accounting_date::timestamp AS entry_date
             FROM forms_productivity_closeouts c
             WHERE c.company_id = $1
@@ -266,6 +268,7 @@ export async function GET(request: NextRequest) {
               MAX(cost_code_id) AS cost_code_id,
               SUM(actual_hours)::double precision AS actual_hours,
               SUM(entry_count)::bigint AS entry_count,
+              SUM(timecard_entry_count)::bigint AS timecard_entry_count,
               MIN(entry_date) AS first_entry_date,
               MAX(entry_date) AS last_entry_date
             FROM actual_entries
@@ -303,6 +306,7 @@ export async function GET(request: NextRequest) {
                 (COALESCE(b.original_expected_hours, 0) + COALESCE(c.approved_change_hours, 0))
             END::double precision AS labor_burn_ratio,
             COALESCE(a.entry_count, 0)::bigint AS entry_count,
+            COALESCE(a.timecard_entry_count, 0)::bigint AS timecard_entry_count,
             a.first_entry_date,
             a.last_entry_date
           FROM scope_keys k
@@ -378,6 +382,7 @@ export async function GET(request: NextRequest) {
       remainingHours: toNumber(row.remaining_hours),
       laborBurnRatio: row.labor_burn_ratio === null ? null : toNumber(row.labor_burn_ratio),
       entryCount: toNumber(row.entry_count),
+      timecardEntryCount: toNumber(row.timecard_entry_count),
       firstEntryDate: toIso(row.first_entry_date),
       lastEntryDate: toIso(row.last_entry_date),
     }));

@@ -542,7 +542,7 @@ export const reportGuides = [
 ];
 
 const productivityDetails = {
-  updated: '2026-11-24',
+  updated: '2026-11-25',
   purpose: 'Field Productivity compares what each purchase order (PO) planned with what the field has recorded: quantities expected against quantities used, and labor hours budgeted against hours worked. Use it to spot overruns and lines with no entries, and to hand a finished project to the office. The **Analytics** menu item opens this same page.',
   steps: [
     { title: 'Find the project', body: [
@@ -560,7 +560,7 @@ const productivityDetails = {
     { title: 'Compare expected with used', body: [
       'For each line read **Expected**, **Used**, **Remaining** and **Progress**. A negative **Remaining** is shown in red, and **Progress** is marked **Over**.',
       'Under **Activity**, select the number of logs to list the productivity logs behind the line: date, PO, quantity used, who created it, status and notes.',
-      'The project’s header shows **Weighted** completion, a **Labor** figure (hours used / expected) and a figure for each unit (quantity used / expected).',
+      'The project’s header shows **Weighted** completion and a figure for each unit (quantity used / expected). Projects with saved timecards also show **Labor** hours used / expected.',
       'If the project has a **Labor** card, open it to see hours by labor description and the timecards behind them.',
     ] },
     { title: 'Mark a finished project reviewed', body: [
@@ -591,7 +591,7 @@ const productivityDetails = {
     ['Remaining', 'Expected minus used. A negative number means more was recorded than expected: an overrun, extra work, or a duplicate entry to investigate.'],
     ['Progress', 'Used divided by expected. It measures recorded quantity, not physical completion, billing or efficiency. **No budget qty** means the line has no expected quantity.'],
     ['Weighted', 'One completion figure for a project or purchase order. Concrete, rebar and labor together carry 80%, split equally, and all other lines carry 20%. A group with nothing expected is left out and the rest is re-weighted. Each group counts for no more than 100%. Hover over the figure to see the parts.'],
-    ['Labor card', 'A separate **Labor** section, shown only for projects whose purchase orders have no Labor lines. Where a purchase order has Labor lines, labor appears inside the purchase order instead. Search and filters do not change which projects get the card.'],
+    ['Labor card', 'A separate **Labor** section for any project with saved, non-deleted timecard entries, including projects that also record labor on purchase orders. Productivity logs and Admin Closeout entries alone do not show the card. Search and PO filters do not change which projects get the card.'],
     ['Summary cards', 'On large screens: **Projects**, **Purchase Orders**, **PO Lines** and **Exceptions**. **Exceptions** counts productivity logs that could not be matched to a purchase-order line.'],
     ['Review Status', '**Waiting for Complete**: not yet Complete on the Bid Board. **30-day cooldown**: Complete, waiting 30 days. **Ready for review**: can be marked reviewed. **Reviewed**: done. **Not reviewed**: every project not yet reviewed.'],
     ['Office task queued / Office task retrying', 'The review is saved. The Procore task is being created, or will be tried again automatically.'],

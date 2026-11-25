@@ -1,0 +1,148 @@
+diff --git a/src/bill-relay-worker.js b/src/bill-relay-worker.js
+index dccbb2d..32c501b 100644
+--- a/src/bill-relay-worker.js
++++ b/src/bill-relay-worker.js
+@@ -6,6 +6,7 @@ import path from 'node:path';
+ import { pathToFileURL } from 'node:url';
+ import { configuredBillService } from './direct-cost-bill-runtime.js';
+ import { acquireBillServiceLock } from './bill-service-lock.js';
++import { createRelayPoll } from './relay-poll.js';
+
+ const analyticsRoot = path.resolve(process.env.ANALYTICS_ROOT || '../analytics');
+ const appEnv = parse(await readFile(path.join(analyticsRoot, '.env'), 'utf8'));
+@@ -34,34 +35,32 @@ async function heartbeat() {
+ const heartbeatTimer = setInterval(() => { heartbeat().catch(() => {}); }, 6000);
+ console.log('Shared QBO bill host started. Outbound database relay; no listening port.');
+ try {
+-  // The exclusive service lock proves a previous process no longer owns these read-only jobs.
+-  await prisma.qboBillRelayJob.updateMany({
+-    where: { hostId, companyId, operation: 'open-ar', state: 'processing' },
+-    data: { state: 'failed', error: 'The QBO host restarted during the A/R refresh. Retry to read current balances.', finishedAt: new Date() },
++  const poll = createRelayPoll(prisma.qboBillRelayJob, { hostId, companyId }, async () => {
++    if (Date.now() - lastHeartbeat > 5000) {
++      await heartbeat();
++    }
++    const jobs = await prisma.qboBillRelayJob.findMany({ where: { hostId, companyId, state: 'queued', expiresAt: { gt: new Date() } }, orderBy: { createdAt: 'asc' }, take: 12 });
++    for (const job of jobs) {
++      if (stopping) break;
++      const claim = await prisma.qboBillRelayJob.updateMany({ where: { id: job.id, state: 'queued', expiresAt: { gt: new Date() } }, data: { state: 'processing', startedAt: new Date() } });
++      if (!claim.count) continue;
++      lastWork = Date.now();
++      let result, error;
++      try {
++        result = await service(job.payload);
++        if (job.operation === 'open-ar') {
++          const source = path.join(analyticsRoot, 'src', 'lib', 'saveQboOpenArSnapshot.ts');
++          const { saveQboOpenArSnapshot } = await import(pathToFileURL(source).href);
++          await saveQboOpenArSnapshot(prisma, companyId, result);
++        }
++      }
++      catch (e) { error = e instanceof Error ? e.message : 'QBO bill request failed.'; }
++      await prisma.qboBillRelayJob.update({ where: { id: job.id }, data: { state: error ? 'failed' : 'succeeded', ...(error ? { error: error.slice(0, 1000) } : { result }), finishedAt: new Date() } });
++    }
+   });
+   while (!stopping) {
+     try {
+-      if (Date.now() - lastHeartbeat > 5000) {
+-        await heartbeat();
+-      }
+-      const jobs = await prisma.qboBillRelayJob.findMany({ where: { hostId, companyId, state: 'queued', expiresAt: { gt: new Date() } }, orderBy: { createdAt: 'asc' }, take: 12 });
+-      for (const job of jobs) {
+-        if (stopping) break;
+-        const claim = await prisma.qboBillRelayJob.updateMany({ where: { id: job.id, state: 'queued', expiresAt: { gt: new Date() } }, data: { state: 'processing', startedAt: new Date() } });
+-        if (!claim.count) continue;
+-        lastWork = Date.now();
+-        let result, error;
+-        try {
+-          result = await service(job.payload);
+-          if (job.operation === 'open-ar') {
+-            const source = path.join(analyticsRoot, 'src', 'lib', 'saveQboOpenArSnapshot.ts');
+-            const { saveQboOpenArSnapshot } = await import(pathToFileURL(source).href);
+-            await saveQboOpenArSnapshot(prisma, companyId, result);
+-          }
+-        }
+-        catch (e) { error = e instanceof Error ? e.message : 'QBO bill request failed.'; }
+-        await prisma.qboBillRelayJob.update({ where: { id: job.id }, data: { state: error ? 'failed' : 'succeeded', ...(error ? { error: error.slice(0, 1000) } : { result }), finishedAt: new Date() } });
+-      }
++      await poll();
+     } catch {
+       // Do not log database URLs, OAuth payloads, or automatically replay an uncertain write.
+       if (Date.now() - lastError > 60_000) { console.error('Bill relay connection interrupted; saved bill receipts remain on this host.'); lastError = Date.now(); }
+diff --git a/src/relay-poll.js b/src/relay-poll.js
+new file mode 100644
+index 0000000..3a74aea
+--- /dev/null
++++ b/src/relay-poll.js
+@@ -0,0 +1,21 @@
++// The worker holds the exclusive host lock and awaits each poll before starting the next.
++export function createRelayPoll(relayJobs, { hostId, companyId }, processQueuedJobs) {
++  if (!hostId || !/^\d+$/.test(companyId)) throw new Error('The QBO relay requires a host and company.');
++  let recoveryNeeded = true;
++  return async function poll() {
++    if (recoveryNeeded) {
++      // Between polls no read is in flight, even if its claim or final update lost its reply.
++      await relayJobs.updateMany({
++        where: { hostId, companyId, operation: 'open-ar', state: 'processing' },
++        data: { state: 'failed', error: 'The QBO host lost track of this A/R refresh. Retry to read current balances.', finishedAt: new Date() },
++      });
++      recoveryNeeded = false;
++    }
++    try {
++      await processQueuedJobs();
++    } catch (error) {
++      recoveryNeeded = true;
++      throw error;
++    }
++  };
++}
+diff --git a/test/relay-poll.test.js b/test/relay-poll.test.js
+new file mode 100644
+index 0000000..724848c
+--- /dev/null
++++ b/test/relay-poll.test.js
+@@ -0,0 +1,45 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { createRelayPoll } from '../src/relay-poll.js';
++
++test('a running worker recovers an interrupted A/R claim once the database returns', async () => {
++  const scope = { hostId: 'primary', companyId: '123' };
++  const oldRead = { ...scope, operation: 'open-ar', state: 'queued' };
++  const otherRows = [
++    { ...scope, operation: 'post', state: 'processing' },
++    { ...scope, operation: 'open-ar', state: 'succeeded' },
++    { ...oldRead, companyId: '456', state: 'processing' },
++    { ...oldRead, hostId: 'other', state: 'processing' },
++    { ...oldRead },
++  ];
++  const originalRows = structuredClone(otherRows);
++  let databaseOffline = false, sweeps = 0, polls = 0;
++  const poll = createRelayPoll({
++    async updateMany({ where, data }) {
++      sweeps++;
++      if (databaseOffline) throw new Error('Database offline');
++      for (const row of [oldRead, ...otherRows]) {
++        if (Object.entries(where).every(([key, value]) => row[key] === value)) Object.assign(row, data);
++      }
++    },
++  }, scope, async () => {
++    polls++;
++    if (polls === 1) {
++      oldRead.state = 'processing';
++      databaseOffline = true;
++      throw new Error('Lost connection recording completion');
++    }
++    assert.equal(oldRead.state, 'failed');
++  });
++
++  await assert.rejects(poll(), /recording completion/);
++  await assert.rejects(poll(), /Database offline/);
++  assert.equal(polls, 1);
++  databaseOffline = false;
++  await poll();
++  await poll();
++  assert.equal(sweeps, 3);
++  assert.equal(polls, 3);
++  assert.ok(oldRead.finishedAt instanceof Date);
++  assert.deepEqual(otherRows, originalRows);
++});

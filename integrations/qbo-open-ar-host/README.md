@@ -44,6 +44,14 @@ After acquiring the exclusive service lock at startup, the host marks its own
 interrupted `open-ar` reads failed so they cannot block subsequent refreshes;
 it never resets processing bill jobs or removes financial receipts.
 
+Apply `relay-recovery.patch` after `hourly-refresh.patch` using the same
+backup and idle-host restart procedure. The worker checks for interrupted
+A/R reads at startup and before its next poll after a relay error. If the
+database is unavailable, it retries recovery before claiming any new work.
+The worker holds the service lock and has finished awaiting the previous poll,
+so it can identify an abandoned read even when a slow read would exceed the
+browser timeout. Run `node --test test/relay-poll.test.js` in the host checkout.
+
 The published Netlify `qbo-open-ar-hourly` schedule runs at `0 * * * *`.
 It calls the exact POST `/api/cron/qbo-open-ar` using the existing
 `PROCORE_SYNC_SECRET` (or `SYNC_SECRET`) and `APP_BASE_URL`/`URL`. No new

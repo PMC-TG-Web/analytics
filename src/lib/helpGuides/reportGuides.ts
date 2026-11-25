@@ -17,7 +17,7 @@ export const reportGuides = [
     checks:['A negative Current Payment Due is compared with QBO credit memos. If Period To is blank, a unique exact project amount can identify the invoice or credit memo. The office review note flags that basis. Multiple candidates require more evidence.','Duplicate applications, missing documents and rounding can explain differences. Check the named workbook and QBO document.','Check the QBO host and shared-drive connection if a refresh fails. Click Refresh from sources to request another read.']
   }),
   defineGuide('qbo-open-ar', {
-    updated: '2026-11-12',
+    updated: '2026-11-25',
     purpose: 'Open A/R lists every unpaid QuickBooks Online (QBO) invoice and shows how overdue each one is. A/R means accounts receivable: money customers still owe on invoices already sent. Use it to see who owes money, how old each balance is, and to export the list. The page is read only: nothing here creates or changes an invoice or payment in QBO.',
     steps: [
       { title: 'Check how current the report is', body: [
@@ -70,7 +70,7 @@ export const reportGuides = [
       '“A selected class is no longer available” means a refresh removed a class you had checked. Select **Clear filters** to see totals again.',
       '“A/R data is stale” appears when the last successful refresh is more than 75 minutes old. The numbers are the last good report, not live balances.',
       '“This is a saved report for … not today” means the report was last refreshed on an earlier day. Select **Refresh from QBO**.',
-      'If **Refresh from QBO** fails, or a notice says the QBO host is offline or the latest refresh failed, the host computer must be turned on and signed in. Then retry, or wait for the next hourly refresh. The saved report stays usable with its original date.',
+      'If the QBO host is offline, turn it on and sign in. If an A/R refresh was interrupted, the host clears the unfinished request when it reconnects. Select **Refresh from QBO** to try again, or let the next hourly refresh run. Check **Refreshed** to confirm when the new report was read.',
       '“Reconciliation needs review” means open invoices less unapplied payments and credits do not equal QuickBooks’ net A/R. Other A/R transactions, or changes made in QuickBooks during the refresh, can cause this. Refresh again and compare with QuickBooks before relying on the total.',
       'A refresh is rejected, and the previous report kept, if QuickBooks returns invalid amounts or incomplete data, or if there are foreign-currency receivables or future-dated open transactions.',
     ],
